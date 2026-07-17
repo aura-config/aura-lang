@@ -128,6 +128,16 @@ impl<'a> Parser<'a> {
         self.skip_newlines();
     }
 
+    /// Точка входа для одиночного выражения (интерполяции `#{...}`, REPL).
+    pub fn parse_expression(mut self) -> Result<Expr<'a>, Diagnostic> {
+        let e = self.parse_expr(0)?;
+        self.skip_newlines();
+        if !matches!(self.peek(), TokenKind::Eof) {
+            return Err(self.err("E0204", "unexpected trailing tokens after expression", "expected end of expression"));
+        }
+        Ok(e)
+    }
+
     // ---- Модуль ----
 
     pub fn parse_module(mut self) -> Result<Module<'a>, Vec<Diagnostic>> {

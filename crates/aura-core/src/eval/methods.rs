@@ -1,0 +1,210 @@
+//! Реестр методов (SPEC §4.4). Диспетчеризация по (TypeTag получателя, имя метода).
+//! Регистрация через fn-указатели: новый метод = функция + `register`, парсер не меняется.
+
+use indexmap::IndexMap;
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use super::value::{TypeTag, Value};
+use super::Interpreter;
+use crate::error::Diagnostic;
+use crate::span::Span;
+
+pub type MethodFn<'a> =
+    fn(&mut Interpreter<'a>, &Value<'a>, &[Value<'a>], Span) -> Result<Value<'a>, Diagnostic>;
+
+pub struct MethodRegistry<'a> {
+    table: HashMap<(TypeTag, &'static str), MethodFn<'a>>,
+}
+
+impl<'a> MethodRegistry<'a> {
+    pub fn new() -> Self {
+        MethodRegistry { table: HashMap::new() }
+    }
+
+    pub fn register(&mut self, tag: TypeTag, name: &'static str, f: MethodFn<'a>) {
+        self.table.insert((tag, name), f);
+    }
+
+    pub fn get(&self, tag: TypeTag, name: &str) -> Option<MethodFn<'a>> {
+        self.table.get(&(tag, name)).copied()
+    }
+
+    pub fn builtin() -> Self {
+        let mut r = Self::new();
+        r.register(TypeTag::Str, "upper", m_str_upper);
+        r.register(TypeTag::Str, "lower", m_str_lower);
+        r.register(TypeTag::Str, "len", m_len);
+        r.register(TypeTag::Str, "parse_toml", m_parse_toml);
+        r.register(TypeTag::List, "len", m_len);
+        r.register(TypeTag::List, "compact", m_list_compact);
+        r.register(TypeTag::List, "uniq", m_list_uniq);
+        r.register(TypeTag::List, "map", m_list_map);
+        r.register(TypeTag::List, "filter", m_list_filter);
+        r.register(TypeTag::Object, "len", m_len);
+        r.register(TypeTag::Object, "merge", m_obj_merge);
+        r
+    }
+}
+
+impl Default for MethodRegistry<'_> {
+    fn default() -> Self {
+        Self::builtin()
+    }
+}
+
+fn rt(code: &'static str, msg: impl Into<String>, span: Span) -> Diagnostic {
+    Diagnostic::error(code, msg, span, "in this method call")
+}
+
+fn m_str_upper<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    _sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Str(s) = recv else { unreachable!() };
+    Ok(Value::str(s.to_uppercase()))
+}
+
+fn m_str_lower<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    _sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Str(s) = recv else { unreachable!() };
+    Ok(Value::str(s.to_lowercase()))
+}
+
+fn m_len<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    _sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let n = match recv {
+        Value::Str(s) => s.chars().count(),
+        Value::List(xs) => xs.len(),
+        Value::Object(m) => m.len(),
+        _ => unreachable!(),
+    };
+    Ok(Value::Int(n as i64))
+}
+
+/// `.compact()` — удаляет Null с сохранением порядка (SPEC §4.4).
+fn m_list_compact<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    _sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else { unreachable!() };
+    Ok(Value::list(xs.iter().filter(|v| !matches!(v, Value::Null)).cloned().collect()))
+}
+
+/// `.uniq()` — дедупликация с сохранением первого вхождения.
+fn m_list_uniq<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    _sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else { unreachable!() };
+    let mut out: Vec<Value<'a>> = Vec::with_capacity(xs.len());
+    for v in xs.iter() {
+        if !out.contains(v) {
+            out.push(v.clone());
+        }
+    }
+    Ok(Value::list(out))
+}
+
+fn expect_lambda<'a, 'b>(args: &'b [Value<'a>], name: &str, sp: Span) -> Result<&'b Value<'a>, Diagnostic> {
+    match args.last() {
+        Some(f @ Value::Function(_)) => Ok(f),
+        _ => Err(rt("E0315", format!("`{name}` requires a lambda argument"), sp)),
+    }
+}
+
+/// `.map (elem, index) -> ... end` — колбэк получает элемент и индекс.
+fn m_list_map<'a>(
+    it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else { unreachable!() };
+    let f = expect_lambda(args, "map", sp)?.clone();
+    let mut out = Vec::with_capacity(xs.len());
+    for (i, v) in xs.iter().enumerate() {
+        out.push(it.call_value(&f, &[v.clone(), Value::Int(i as i64)], sp)?);
+    }
+    Ok(Value::list(out))
+}
+
+fn m_list_filter<'a>(
+    it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else { unreachable!() };
+    let f = expect_lambda(args, "filter", sp)?.clone();
+    let mut out = Vec::new();
+    for (i, v) in xs.iter().enumerate() {
+        match it.call_value(&f, &[v.clone(), Value::Int(i as i64)], sp)? {
+            Value::Bool(true) => out.push(v.clone()),
+            Value::Bool(false) => {}
+            other => {
+                return Err(rt("E0306", format!("filter lambda must return Bool, got {}", other.type_name()), sp))
+            }
+        }
+    }
+    Ok(Value::list(out))
+}
+
+/// `.merge(other)` — правый операнд перекрывает ключи левого.
+fn m_obj_merge<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Object(base) = recv else { unreachable!() };
+    let Some(Value::Object(other)) = args.first() else {
+        return Err(rt("E0306", "merge expects an Object argument", sp));
+    };
+    let mut out: IndexMap<String, Value<'a>> = (**base).clone();
+    for (k, v) in other.iter() {
+        out.insert(k.clone(), v.clone());
+    }
+    Ok(Value::object(out))
+}
+
+/// `.parse_toml()` — целые TOML → Int (D6).
+fn m_parse_toml<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Str(s) = recv else { unreachable!() };
+    let parsed: toml::Value =
+        toml::from_str(s).map_err(|e| rt("E0314", format!("invalid TOML: {e}"), sp))?;
+    Ok(toml_to_value(parsed))
+}
+
+fn toml_to_value<'a>(t: toml::Value) -> Value<'a> {
+    match t {
+        toml::Value::String(s) => Value::str(s),
+        toml::Value::Integer(n) => Value::Int(n),
+        toml::Value::Float(n) => Value::Float(n),
+        toml::Value::Boolean(b) => Value::Bool(b),
+        toml::Value::Datetime(d) => Value::str(d.to_string()),
+        toml::Value::Array(xs) => Value::list(xs.into_iter().map(toml_to_value).collect()),
+        toml::Value::Table(t) => {
+            Value::Object(Arc::new(t.into_iter().map(|(k, v)| (k, toml_to_value(v))).collect()))
+        }
+    }
+}
