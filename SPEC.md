@@ -276,6 +276,7 @@ pub enum ImportSource<'a> {
 
 pub enum Stmt<'a> {
     Assign { name: &'a str, shadow: bool, value: Expr<'a>, span: Span }, // [shadow] x = expr (D7)
+    Property { key: &'a str, value: Expr<'a>, span: Span },              // key: expr | key: <объектный блок> — внутри domain/component
     Assert { cond: Expr<'a>, message: Option<Expr<'a>>, span: Span },    // assert cond, "msg" (D5)
     TypeDecl(SchemaDeclaration<'a>),
     FuncDecl { name: &'a str, params: Vec<&'a str>, body: ObjectBody<'a>, span: Span },
