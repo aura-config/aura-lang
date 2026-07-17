@@ -87,7 +87,11 @@ pub struct Interpreter<'a> {
     /// Переопределения окружения для тестов/dry-run снапшотов; приоритет над реальным env.
     pub env_overrides: HashMap<String, String>,
     pub options: Options,
-    /// Заранее вычисленные модули по алиасу; Фаза 4 заменит на ModuleCache + VFS.
+    /// --allow-imports-io: выдать импортированным модулям I/O-права корня (D1).
+    pub allow_imports_io: bool,
+    /// Выставляется загрузчиком VFS: false во время eval импортированного модуля.
+    pub current_root: bool,
+    /// Вычисленные модули по алиасу; заполняется загрузчиком VFS (или тестами напрямую).
     modules: HashMap<String, Value<'a>>,
     call_depth: u32,
 }
@@ -104,6 +108,8 @@ impl<'a> Interpreter<'a> {
             env_cap: EnvCap::Deny,
             env_overrides: HashMap::new(),
             options,
+            allow_imports_io: false,
+            current_root: true,
             modules: HashMap::new(),
             call_depth: 0,
         }
@@ -470,6 +476,12 @@ impl<'a> Interpreter<'a> {
         args: &[Value<'a>],
         span: Span,
     ) -> Result<Option<Value<'a>>, Diagnostic> {
+        // D1: импортированным модулям I/O запрещён без --allow-imports-io (SPEC §4.3).
+        if matches!(name, "env" | "read_file") && !self.current_root && !self.allow_imports_io {
+            let mut d = rt("E0310", format!("imported module has no capability to call {name}()"), span);
+            d.help = Some("pass --allow-imports-io to grant imports the root I/O capabilities".to_string());
+            return Err(d);
+        }
         match name {
             "env" => {
                 let Some(Value::Str(var)) = args.first() else {
