@@ -60,6 +60,27 @@ pub fn version_satisfies(request: &[u64], exact: &[u64]) -> bool {
     exact.len() >= request.len() && request.iter().zip(exact).all(|(a, b)| a == b)
 }
 
+/// Конвенция сетевого registry (используется ТОЛЬКО командой `aura add`;
+/// eval к сети не обращается никогда): `github/<owner>/<repo>@vX.Y.Z` →
+/// raw-файл `package.aura` тега `vX.Y.Z` репозитория.
+pub fn registry_url(path: &str, version: &str) -> Result<String, String> {
+    let version = version.strip_prefix('v').unwrap_or(version);
+    if parse_version(version).map_or(true, |v| v.len() != 3) {
+        return Err(format!(
+            "network install requires an exact version (vX.Y.Z), got 'v{version}'"
+        ));
+    }
+    let segments: Vec<&str> = path.split('/').collect();
+    match segments.as_slice() {
+        ["github", owner, repo] => Ok(format!(
+            "https://raw.githubusercontent.com/{owner}/{repo}/v{version}/package.aura"
+        )),
+        _ => Err(format!(
+            "unsupported registry path '{path}': expected github/<owner>/<repo>"
+        )),
+    }
+}
+
 /// Локальный диск: файловые импорты относительно импортирующего файла,
 /// registry — локальный кэш-каталог `<registry_dir>/<path>/<version>.aura` (сети в v1.2 нет).
 pub struct LocalFsResolver {
@@ -193,5 +214,23 @@ impl FileResolver for MemoryResolver {
             .get(&key)
             .cloned()
             .ok_or_else(|| format!("not found: {key}"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::registry_url;
+
+    #[test]
+    fn registry_url_convention() {
+        assert_eq!(
+            registry_url("github/acme/aura-k8s", "v1.2.3").unwrap(),
+            "https://raw.githubusercontent.com/acme/aura-k8s/v1.2.3/package.aura"
+        );
+        // network install requires an exact version
+        assert!(registry_url("github/acme/aura-k8s", "v1.2").is_err());
+        // unknown host / bare name
+        assert!(registry_url("gitlab/acme/pkg", "v1.0.0").is_err());
+        assert!(registry_url("just-a-name", "v1.0.0").is_err());
     }
 }

@@ -68,7 +68,7 @@ end
 ```
 
 ```console
-$ aura eval production_deploy.aura --allow-read=. --allow-env=APP_ENV
+aura eval production_deploy.aura --allow-read=. --allow-env=APP_ENV
 ```
 
 ```json
@@ -90,17 +90,17 @@ $ aura eval production_deploy.aura --allow-read=. --allow-env=APP_ENV
 ## Быстрый старт
 
 ```console
-$ git clone https://github.com/<you>/aura-lang && cd aura-lang
-$ cargo build --release
-$ cd examples
-$ ../target/release/aura eval production_deploy.aura \
-      --allow-read=. --allow-env=APP_ENV --registry-dir=registry
+git clone https://github.com/<you>/aura-lang && cd aura-lang
+cargo build --release
+cd examples
+../target/release/aura eval production_deploy.aura \
+    --allow-read=. --allow-env=APP_ENV --registry-dir=registry
 ```
 
 Проверка без вычисления (lex + parse + статический анализ):
 
 ```console
-$ aura check production_deploy.aura --strict
+aura check production_deploy.aura --strict
 ```
 
 ## Тур по языку
@@ -252,7 +252,13 @@ aura eval <file.aura>  [--strict] [--dry-run] [--frozen]
                        [--format json|json-flat|yaml|toml] [-o out.json] [--registry-dir=<dir>]
 aura check <file.aura> [--strict]
 aura fmt <files...> [--check]
+aura add <path>@vX.Y.Z [--from <file>] [--registry-dir=<dir>]
 ```
+
+`aura add` — единственное место, где Aura ходит в сеть: пакет скачивается
+(конвенция `github/<owner>/<repo>` → `package.aura` тега `vX.Y.Z`), валидируется,
+кладётся в локальный кэш и фиксируется в `aura.lock` с sha256. **`eval` работает
+оффлайн всегда** — результат не зависит от сети по построению.
 
 | Режим | Поведение |
 | --- | --- |
@@ -320,8 +326,8 @@ Criterion-бенчмарки на эталонном манифесте (`cargo 
 ## Разработка
 
 ```console
-$ cargo test          # 54 теста: юниты + интеграционные по эталонному манифесту
-$ cargo bench         # бенчмарки лексера, парсера, полного пайплайна
+cargo test    # 100 тестов: юниты, conformance-suite, property-тесты, golden-снапшоты
+cargo bench   # бенчмарки лексера, парсера, полного пайплайна
 ```
 
 Полная спецификация языка и архитектуры — [SPEC.md](SPEC.md). Эталонный манифест,
@@ -351,5 +357,5 @@ Aura находится в стадии рабочего превью (v0.1): в
 - [x] D12: `pub def` / `pub type` — экспорт функций и схем из модулей
       (`pkg.fn(...)`, `new pkg.Schema ... end`); экспортированные функции
       выполняются с правами своего модуля, а не вызывающего
-- [ ] Сетевые registry-импорты (`HttpResolver`) поверх готовых `aura.lock`/integrity
-- [ ] `aura add <pkg>@<ver>` — установка пакета в кэш с записью лока
+- [x] `aura add <pkg>@vX.Y.Z` — установка пакета (сеть только здесь; `eval`
+      всегда оффлайн), валидация перед установкой, integrity в `aura.lock`

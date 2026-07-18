@@ -297,6 +297,58 @@ fn diagnostics_render_golden() {
     assert_eq!(got.trim_end(), want.trim_end(), "ariadne report changed");
 }
 
+/// Полный цикл пакета: `aura add --from` → оффлайн `eval` через кэш и лок.
+#[test]
+fn add_then_eval_offline() {
+    let work = std::env::temp_dir().join(format!("aura-add-test-{}", std::process::id()));
+    let registry = work.join("registry");
+    std::fs::create_dir_all(&work).unwrap();
+
+    // Устанавливаем validators.aura как пакет pkg/validators@v1.0.0
+    let pkg_src = examples_dir().join("validators/validators.aura");
+    let run = aura(
+        &work,
+        &[
+            "add",
+            "pkg/validators@v1.0.0",
+            "--from",
+            pkg_src.to_str().unwrap(),
+            "--registry-dir",
+            registry.to_str().unwrap(),
+        ],
+        &[],
+    );
+    assert_eq!(run.code, 0, "add failed: {}", run.stderr);
+    assert!(registry.join("pkg/validators/1.0.0.aura").exists());
+    let lock = std::fs::read_to_string(work.join("aura.lock")).unwrap();
+    assert!(
+        lock.contains("pkg/validators") && lock.contains("sha256-"),
+        "{lock}"
+    );
+
+    // Импорт по диапазону @v1 резолвится в установленную 1.0.0 без сети
+    std::fs::write(
+        work.join("main.aura"),
+        "import pkg/validators@v1 as v\napi: v.service(\"api\", 8080)\n",
+    )
+    .unwrap();
+    let run = aura(
+        &work,
+        &[
+            "eval",
+            "main.aura",
+            "--registry-dir",
+            registry.to_str().unwrap(),
+            "--frozen",
+        ],
+        &[],
+    );
+    assert_eq!(run.code, 0, "offline eval failed: {}", run.stderr);
+    assert!(run.stdout.contains("\"port\": 8080"));
+
+    std::fs::remove_dir_all(&work).ok();
+}
+
 #[test]
 fn dry_run_is_byte_identical_and_writes_nothing() {
     // Инвариант SPEC §6.3: dry-run не меняет результат; два прогона идентичны

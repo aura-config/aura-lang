@@ -1,5 +1,8 @@
 //! CLI-слой (SPEC §7.2) и рендеринг диагностик через ariadne (§7.3).
 
+// Diagnostic по значению: ошибки — холодный путь (см. aura-core/src/lib.rs)
+#![allow(clippy::result_large_err)]
+
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -78,6 +81,18 @@ enum Cmd {
         #[arg(long)]
         strict: bool,
     },
+    /// Установить пакет в локальный registry-кэш и зафиксировать в aura.lock.
+    /// Сеть используется ТОЛЬКО здесь: eval всегда работает оффлайн.
+    Add {
+        /// Спецификатор: github/<owner>/<repo>@vX.Y.Z
+        package: String,
+        /// Установить из локального файла вместо сети (тесты, приватные пакеты)
+        #[arg(long, value_name = "FILE")]
+        from: Option<PathBuf>,
+        /// Каталог локального registry-кэша (по умолчанию ~/.aura/registry)
+        #[arg(long = "registry-dir", value_name = "DIR")]
+        registry_dir: Option<PathBuf>,
+    },
     /// Канонизировать отступы и пустые строки (пишет файлы на место)
     Fmt {
         files: Vec<PathBuf>,
@@ -91,6 +106,11 @@ fn main() -> ExitCode {
     match Cli::parse().cmd {
         Cmd::Check { file, strict } => run_check(&file, strict),
         Cmd::Fmt { files, check } => run_fmt(&files, check),
+        Cmd::Add {
+            package,
+            from,
+            registry_dir,
+        } => run_add(&package, from.as_deref(), registry_dir),
         Cmd::Eval {
             file,
             strict,
@@ -173,6 +193,120 @@ fn run_check(file: &Path, strict: bool) -> ExitCode {
             ExitCode::SUCCESS
         }
     }
+}
+
+fn default_registry_dir() -> PathBuf {
+    std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(PathBuf::from)
+        .unwrap_or_default()
+        .join(".aura")
+        .join("registry")
+}
+
+/// `aura add pkg@vX.Y.Z`: скачать (или взять из --from), провалидировать,
+/// положить в кэш и зафиксировать в ./aura.lock с sha256-integrity.
+fn run_add(package: &str, from: Option<&Path>, registry_dir: Option<PathBuf>) -> ExitCode {
+    let Some((path, version)) = package.split_once('@') else {
+        eprintln!("error: expected <path>@vX.Y.Z, got '{package}'");
+        return ExitCode::from(2);
+    };
+    let version_num = version.strip_prefix('v').unwrap_or(version);
+
+    // 1. Источник: локальный файл или сеть (единственное место, где Aura ходит в сеть)
+    let text = match from {
+        Some(file) => match std::fs::read_to_string(file) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("error: cannot read {}: {e}", file.display());
+                return ExitCode::from(2);
+            }
+        },
+        None => {
+            let url = match aura_core::vfs::registry_url(path, version) {
+                Ok(u) => u,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return ExitCode::from(2);
+                }
+            };
+            eprintln!("fetching {url}");
+            match ureq::get(&url).call() {
+                Ok(resp) => match resp.into_string() {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!("error: cannot read response: {e}");
+                        return ExitCode::from(2);
+                    }
+                },
+                Err(e) => {
+                    eprintln!("error: download failed: {e}");
+                    return ExitCode::from(2);
+                }
+            }
+        }
+    };
+
+    // 2. Валидация пакета до установки (lex + parse + анализ как импортируемого модуля)
+    let cache = SourceCache::new();
+    let (source_id, src) = cache.add(format!("{path}@{version}"), text.clone());
+    let module = match Lexer::new(src, source_id).tokenize().and_then(|toks| {
+        Parser::new(toks)
+            .parse_module()
+            .map_err(|mut ds| ds.remove(0))
+    }) {
+        Ok(m) => m,
+        Err(d) => {
+            eprintln!("error: package is not valid Aura:");
+            render(&d, &cache);
+            return ExitCode::from(1);
+        }
+    };
+    for d in analyze(&module, false) {
+        render(&d, &cache);
+    }
+
+    // 3. Установка в кэш
+    let registry = registry_dir.unwrap_or_else(default_registry_dir);
+    let target_dir = registry.join(path);
+    if let Err(e) = std::fs::create_dir_all(&target_dir) {
+        eprintln!("error: cannot create {}: {e}", target_dir.display());
+        return ExitCode::from(2);
+    }
+    let target = target_dir.join(format!("{version_num}.aura"));
+    if let Err(e) = std::fs::write(&target, text.as_bytes()) {
+        eprintln!("error: cannot write {}: {e}", target.display());
+        return ExitCode::from(2);
+    }
+
+    // 4. Фиксация в ./aura.lock
+    let lock_path = Path::new("aura.lock");
+    let mut lock = match std::fs::read_to_string(lock_path) {
+        Ok(t) => match Lockfile::parse(&t) {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("error: invalid aura.lock: {e}");
+                return ExitCode::from(2);
+            }
+        },
+        Err(_) => Lockfile::default(),
+    };
+    let integrity = aura_core::vfs::lockfile::integrity_of(&text);
+    lock.entries.insert(
+        path.to_string(),
+        aura_core::vfs::lockfile::LockEntry {
+            version: version_num.to_string(),
+            integrity: integrity.clone(),
+        },
+    );
+    if let Err(e) = std::fs::write(lock_path, lock.to_toml_string()) {
+        eprintln!("error: cannot write aura.lock: {e}");
+        return ExitCode::from(2);
+    }
+
+    println!("installed {path}@v{version_num} -> {}", target.display());
+    println!("locked    {integrity}");
+    ExitCode::SUCCESS
 }
 
 fn run_fmt(files: &[PathBuf], check: bool) -> ExitCode {
