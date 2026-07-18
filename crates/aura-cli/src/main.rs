@@ -78,11 +78,19 @@ enum Cmd {
         #[arg(long)]
         strict: bool,
     },
+    /// Канонизировать отступы и пустые строки (пишет файлы на место)
+    Fmt {
+        files: Vec<PathBuf>,
+        /// Не менять файлы, только проверить (exit 1, если есть отличия)
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 fn main() -> ExitCode {
     match Cli::parse().cmd {
         Cmd::Check { file, strict } => run_check(&file, strict),
+        Cmd::Fmt { files, check } => run_fmt(&files, check),
         Cmd::Eval {
             file,
             strict,
@@ -164,6 +172,50 @@ fn run_check(file: &Path, strict: bool) -> ExitCode {
             println!("ok: {}", file.display());
             ExitCode::SUCCESS
         }
+    }
+}
+
+fn run_fmt(files: &[PathBuf], check: bool) -> ExitCode {
+    if files.is_empty() {
+        eprintln!("error: no input files");
+        return ExitCode::from(2);
+    }
+    let mut dirty = false;
+    for file in files {
+        let src = match std::fs::read_to_string(file) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("error: cannot read {}: {e}", file.display());
+                return ExitCode::from(2);
+            }
+        };
+        let cache = SourceCache::new();
+        cache.add(file.display().to_string(), src.clone());
+        let formatted = match aura_core::fmt::format_source(&src) {
+            Ok(f) => f,
+            Err(d) => {
+                render(&d, &cache);
+                return ExitCode::from(1);
+            }
+        };
+        if formatted == src {
+            continue;
+        }
+        dirty = true;
+        if check {
+            println!("would reformat: {}", file.display());
+        } else {
+            if let Err(e) = std::fs::write(file, formatted.as_bytes()) {
+                eprintln!("error: cannot write {}: {e}", file.display());
+                return ExitCode::from(2);
+            }
+            println!("formatted: {}", file.display());
+        }
+    }
+    if check && dirty {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
     }
 }
 

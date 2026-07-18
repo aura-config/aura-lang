@@ -236,6 +236,7 @@ aura eval <file.aura>  [--strict] [--dry-run] [--frozen]
                        [--allow-read=<dir>] [--allow-env[=A,B]] [--allow-imports-io]
                        [--format json|json-flat|yaml|toml] [-o out.json] [--registry-dir=<dir>]
 aura check <file.aura> [--strict]
+aura fmt <files...> [--check]
 ```
 
 | Режим | Поведение |
@@ -324,8 +325,8 @@ Aura находится в стадии рабочего превью (v0.1): в
 - [x] JSON-экспорт и CLI с диагностикой ariadne
 - [x] Чтение и запись JSON/YAML/TOML (`parse_*` / `to_*`, `--format yaml|toml`)
 - [x] Индексация и доступ к произвольным ключам (`xs[0]`, `obj."eu west"`, `.get`)
-- [ ] `aura fmt`
-- [ ] Расширение стандартной библиотеки методов (`join`, `sort`, `split`, …)
+- [x] `aura fmt` — канонизация отступов с гарантией неизменности потока токенов
+- [ ] Расширение стандартной библиотеки методов (`sort`, `split`, `trim`, …)
 - [ ] LSP-сервер
 
 **v1.3 — пакетная экосистема** (следующая минорная версия языка):

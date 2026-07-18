@@ -12,6 +12,7 @@ pub mod analysis;
 pub mod error;
 pub mod eval;
 pub mod facade;
+pub mod fmt;
 pub mod lexer;
 pub mod parser;
 pub mod serialize;

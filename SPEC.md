@@ -605,8 +605,14 @@ aura eval <file.aura> [--strict] [--dry-run] [--frozen]
                       [--allow-read=<paths>] [--allow-env[=A,B]] [--allow-imports-io]
                       [--format json|json-flat] [-o out.json]
 aura check <file.aura> [--strict]        # lex + parse + analysis
-aura fmt --check <file.aura>             # задел
+aura fmt <files...> [--check]            # канонизация отступов
 ```
+
+`aura fmt` — строчно-ориентированный: нормализует отступы (2 пробела/уровень по
+токен-глубине: `domain`/`component`/`def`/`type`/`new`/`->`/`[`/`(`/`key:`-в-конце-строки
+открывают, `end`/`]`/`)` закрывают; строки-продолжения после `,`/`=`/оператора — +1),
+хвостовые пробелы и пустые строки (≤1 подряд); комментарии и внутристрочное
+выравнивание сохраняются. Инвариант: поток токенов до/после идентичен; идемпотентен.
 
 Exit codes: 0 — успех; 1 — диагностические ошибки; 2 — I/O/аргументы.
 

@@ -33,6 +33,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      # Догфуд: все .aura-файлы репозитория канонически отформатированы
+      - name: aura fmt --check
+        run: |
+          cargo build -p aura-cli
+          find examples -name '*.aura' -print0 | xargs -0 ./target/debug/aura fmt --check
 
   strict-gate:
     name: Reference manifest (--strict analysis is intentionally red-tested in conformance)
