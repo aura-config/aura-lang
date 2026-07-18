@@ -38,6 +38,10 @@ impl<'a> MethodRegistry<'a> {
         r.register(TypeTag::Str, "lower", m_str_lower);
         r.register(TypeTag::Str, "len", m_len);
         r.register(TypeTag::Str, "parse_toml", m_parse_toml);
+        r.register(TypeTag::Str, "parse_duration", m_parse_duration);
+        r.register(TypeTag::Str, "parse_datetime", m_parse_datetime);
+        r.register(TypeTag::Int, "format_duration", m_format_duration);
+        r.register(TypeTag::Int, "format_datetime", m_format_datetime);
         r.register(TypeTag::Str, "parse_json", m_parse_json);
         r.register(TypeTag::Str, "parse_yaml", m_parse_yaml);
         r.register(TypeTag::List, "len", m_len);
@@ -440,6 +444,213 @@ fn m_list_join<'a>(
         .map(|v| it.display(v, sp))
         .collect::<Result<_, _>>()?;
     Ok(Value::str(parts.join(&sep)))
+}
+
+/// `"1h30m".parse_duration()` → секунды (Int). Единицы: d, h, m, s.
+/// Детерминированная альтернатива "магическим числам" таймаутов.
+fn m_parse_duration<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Str(s) = recv else { unreachable!() };
+    let err = || {
+        rt(
+            "E0319",
+            format!("invalid duration '{s}': expected e.g. \"1h30m\", units d/h/m/s"),
+            sp,
+        )
+    };
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    let mut total: i64 = 0;
+    let mut components = 0;
+    while i < bytes.len() {
+        let start = i;
+        while i < bytes.len() && bytes[i].is_ascii_digit() {
+            i += 1;
+        }
+        if i == start || i == bytes.len() {
+            return Err(err());
+        }
+        let n: i64 = s[start..i].parse().map_err(|_| err())?;
+        let mult: i64 = match bytes[i] {
+            b'd' => 86400,
+            b'h' => 3600,
+            b'm' => 60,
+            b's' => 1,
+            _ => return Err(err()),
+        };
+        i += 1;
+        total = n
+            .checked_mul(mult)
+            .and_then(|x| total.checked_add(x))
+            .ok_or_else(|| rt("E0304", "duration overflows i64 seconds", sp))?;
+        components += 1;
+    }
+    if components == 0 {
+        return Err(err());
+    }
+    Ok(Value::Int(total))
+}
+
+/// `5400.format_duration()` → "1h30m" (компактно, без нулевых компонент).
+fn m_format_duration<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Int(total) = recv else {
+        unreachable!()
+    };
+    if *total < 0 {
+        return Err(rt(
+            "E0306",
+            "format_duration expects a non-negative number of seconds",
+            sp,
+        ));
+    }
+    if *total == 0 {
+        return Ok(Value::str("0s"));
+    }
+    let (mut rest, mut out) = (*total, String::new());
+    for (unit, secs) in [("d", 86400), ("h", 3600), ("m", 60), ("s", 1)] {
+        let n = rest / secs;
+        if n > 0 {
+            out.push_str(&format!("{n}{unit}"));
+            rest %= secs;
+        }
+    }
+    Ok(Value::str(out))
+}
+
+/// `"2026-07-18T12:00:00Z".parse_datetime()` → epoch-секунды (Int, UTC).
+/// Форматы: `YYYY-MM-DD` (полночь UTC) и RFC3339 с `Z` или смещением `±HH:MM`.
+fn m_parse_datetime<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Str(s) = recv else { unreachable!() };
+    parse_rfc3339(s).map(Value::Int).ok_or_else(|| {
+        rt(
+            "E0320",
+            format!("invalid datetime '{s}': expected RFC3339, e.g. \"2026-07-18T12:00:00Z\""),
+            sp,
+        )
+    })
+}
+
+/// `epoch.format_datetime()` → строка RFC3339 в UTC.
+fn m_format_datetime<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    _sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Int(epoch) = recv else {
+        unreachable!()
+    };
+    let days = epoch.div_euclid(86400);
+    let secs = epoch.rem_euclid(86400);
+    let (y, m, d) = civil_from_days(days);
+    Ok(Value::str(format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+        secs / 3600,
+        (secs % 3600) / 60,
+        secs % 60
+    )))
+}
+
+fn parse_rfc3339(s: &str) -> Option<i64> {
+    let num = |t: &str| -> Option<i64> {
+        if t.bytes().all(|b| b.is_ascii_digit()) && !t.is_empty() {
+            t.parse().ok()
+        } else {
+            None
+        }
+    };
+    let (date, rest) = if s.len() > 10 {
+        s.split_at(10)
+    } else {
+        (s, "")
+    };
+    let mut dp = date.split('-');
+    let (y, m, d) = (num(dp.next()?)?, num(dp.next()?)?, num(dp.next()?)?);
+    if dp.next().is_some() || !(1..=12).contains(&m) || d < 1 || d > days_in_month(y, m) {
+        return None;
+    }
+    let mut epoch = days_from_civil(y, m, d) * 86400;
+    if rest.is_empty() {
+        return Some(epoch);
+    }
+    let rest = rest.strip_prefix('T')?;
+    if rest.len() < 9 {
+        return None;
+    }
+    let (time, zone) = rest.split_at(8);
+    let mut tp = time.split(':');
+    let (hh, mm, ss) = (num(tp.next()?)?, num(tp.next()?)?, num(tp.next()?)?);
+    if tp.next().is_some() || hh > 23 || mm > 59 || ss > 59 {
+        return None;
+    }
+    epoch += hh * 3600 + mm * 60 + ss;
+    match zone {
+        "Z" => Some(epoch),
+        _ => {
+            let sign = match zone.as_bytes().first()? {
+                b'+' => 1,
+                b'-' => -1,
+                _ => return None,
+            };
+            let (oh, om) = zone[1..].split_once(':')?;
+            let (oh, om) = (num(oh)?, num(om)?);
+            if oh > 23 || om > 59 {
+                return None;
+            }
+            Some(epoch - sign * (oh * 3600 + om * 60))
+        }
+    }
+}
+
+fn days_in_month(y: i64, m: i64) -> i64 {
+    match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        _ => {
+            if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) {
+                29
+            } else {
+                28
+            }
+        }
+    }
+}
+
+/// Алгоритмы Говарда Хиннанта: пролептический григорианский календарь ↔ дни от эпохи.
+fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146097 + doe - 719468
+}
+
+fn civil_from_days(z: i64) -> (i64, i64, i64) {
+    let z = z + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
 fn json_to_value<'a>(j: serde_json::Value) -> Value<'a> {

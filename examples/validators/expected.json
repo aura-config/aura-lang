@@ -1,0 +1,20 @@
+{
+  "api": {
+    "name": "api",
+    "port": 8080
+  },
+  "worker": {
+    "name": "worker",
+    "port": 9000
+  },
+  "cache": {
+    "ttl_seconds": 5400,
+    "ttl_human": "1h30m",
+    "refresh_every": "30m"
+  },
+  "maintenance": {
+    "window_start": 1784412000,
+    "window_end": 1784426400,
+    "window_end_human": "2026-07-19T02:00:00Z"
+  }
+}

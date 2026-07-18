@@ -163,7 +163,22 @@ end
 
 Встроенные методы: `upper` `lower` `len` `compact` `uniq` `map` `filter` `merge`
 `first` `last` `get` `keys` `values` `contains` `join` `parse_toml` `parse_json`
-`parse_yaml` `to_json` `to_yaml` `to_toml`. Реестр расширяем без изменений парсера.
+`parse_yaml` `to_json` `to_yaml` `to_toml` `parse_duration` `format_duration`
+`parse_datetime` `format_datetime`. Реестр расширяем без изменений парсера.
+
+### Время — только детерминированное
+
+`now()` в Aura не существует и не появится (D13) — невоспроизводимый конфиг
+невозможно написать по построению. Зато длительности и даты — первоклассные:
+
+```ruby
+ttl = "1h30m".parse_duration()                       # → 5400 (секунды)
+refresh: (ttl / 3).format_duration()                 # → "30m"
+window_end: ("2026-07-18T22:00:00Z".parse_datetime()
+  + "4h".parse_duration()).format_datetime()         # → "2026-07-19T02:00:00Z"
+```
+
+Время сборки, если оно нужно, передаёт хост: `env("BUILD_TIME", ...)` под `--allow-env`.
 
 ### Доступ к данным
 
@@ -326,6 +341,8 @@ Aura находится в стадии рабочего превью (v0.1): в
 - [x] Чтение и запись JSON/YAML/TOML (`parse_*` / `to_*`, `--format yaml|toml`)
 - [x] Индексация и доступ к произвольным ключам (`xs[0]`, `obj."eu west"`, `.get`)
 - [x] `aura fmt` — канонизация отступов с гарантией неизменности потока токенов
+- [x] Детерминированное время: `parse_duration`/`format_duration`,
+      `parse_datetime`/`format_datetime`; `now()` запрещён по построению (D13)
 - [ ] Расширение стандартной библиотеки методов (`sort`, `split`, `trim`, …)
 - [ ] LSP-сервер
 

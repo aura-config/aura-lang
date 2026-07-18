@@ -157,6 +157,20 @@ fn i18n_fallback_merge() {
 }
 
 #[test]
+fn validators_package_d12() {
+    check_ok("validators", "deploy.aura", &[], &[], "expected.json");
+    // валидатор пакета останавливает невозможный порт
+    let dir = examples_dir().join("validators");
+    let run = aura(&dir, &["eval", "bad.aura"], &[]);
+    assert_eq!(run.code, 1);
+    assert!(
+        run.stderr.contains("E0531") && run.stderr.contains("99999"),
+        "package validator must fire: {}",
+        run.stderr
+    );
+}
+
+#[test]
 fn service_catalog() {
     check_ok(
         "service_catalog",

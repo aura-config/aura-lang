@@ -733,6 +733,19 @@ impl<'a> Interpreter<'a> {
             return Err(d);
         }
         match name {
+            // D13: текущего времени в Aura не существует — конфиг детерминирован
+            "now" | "timestamp" => {
+                let mut d = rt(
+                    "E0533",
+                    format!("{name}() does not exist: Aura configs are reproducible by design"),
+                    span,
+                );
+                d.help = Some(
+                    "pass a build timestamp from the host instead: env(\"BUILD_TIME\", ...) with --allow-env=BUILD_TIME"
+                        .to_string(),
+                );
+                Err(d)
+            }
             "env" => {
                 let Some(Value::Str(var)) = args.first() else {
                     return Err(rt("E0306", "env() expects a String name", span));
@@ -1072,6 +1085,40 @@ mod tests {
         assert_eq!(get(&v, "j"), Value::str("{\"a\":1}"));
         assert_eq!(get(&v, "y"), Value::str("a: 1\n"));
         assert_eq!(get(&v, "t"), Value::str("a = 1\n"));
+    }
+
+    #[test]
+    fn durations_and_datetimes() {
+        let v = eval(
+            "a: \"1h30m\".parse_duration()\nb: \"2d\".parse_duration()\nc: 5400.format_duration()\nd: 0.format_duration()\ne: \"2000-01-01T00:00:00Z\".parse_datetime()\nf: \"2000-01-01T02:00:00+02:00\".parse_datetime()\ng: 946684800.format_datetime()\nh: \"2026-07-18\".parse_datetime().format_datetime()",
+        )
+        .unwrap();
+        assert_eq!(get(&v, "a"), Value::Int(5400));
+        assert_eq!(get(&v, "b"), Value::Int(172800));
+        assert_eq!(get(&v, "c"), Value::str("1h30m"));
+        assert_eq!(get(&v, "d"), Value::str("0s"));
+        // 2000-01-01 UTC — известный epoch
+        assert_eq!(get(&v, "e"), Value::Int(946684800));
+        // смещение +02:00 указывает на тот же момент
+        assert_eq!(get(&v, "f"), Value::Int(946684800));
+        assert_eq!(get(&v, "g"), Value::str("2000-01-01T00:00:00Z"));
+        assert_eq!(get(&v, "h"), Value::str("2026-07-18T00:00:00Z"));
+
+        assert_eq!(
+            eval("x: \"90 minutes\".parse_duration()").unwrap_err().code,
+            "E0319"
+        );
+        assert_eq!(
+            eval("x: \"2026-13-01\".parse_datetime()").unwrap_err().code,
+            "E0320"
+        );
+    }
+
+    #[test]
+    fn now_is_banned_d13() {
+        let d = eval("x: now()").unwrap_err();
+        assert_eq!(d.code, "E0533");
+        assert!(d.help.is_some());
     }
 
     #[test]
