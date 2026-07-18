@@ -18,11 +18,24 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
-    pub fn warning(code: &'static str, message: impl Into<String>, span: Span, label: impl Into<String>) -> Self {
-        Diagnostic { severity: Severity::Warning, ..Self::error(code, message, span, label) }
+    pub fn warning(
+        code: &'static str,
+        message: impl Into<String>,
+        span: Span,
+        label: impl Into<String>,
+    ) -> Self {
+        Diagnostic {
+            severity: Severity::Warning,
+            ..Self::error(code, message, span, label)
+        }
     }
 
-    pub fn error(code: &'static str, message: impl Into<String>, span: Span, label: impl Into<String>) -> Self {
+    pub fn error(
+        code: &'static str,
+        message: impl Into<String>,
+        span: Span,
+        label: impl Into<String>,
+    ) -> Self {
         Diagnostic {
             code,
             severity: Severity::Error,

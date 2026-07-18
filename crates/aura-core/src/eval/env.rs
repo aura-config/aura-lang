@@ -23,11 +23,17 @@ pub struct Environment<'a> {
 
 impl<'a> Environment<'a> {
     pub fn root() -> Env<'a> {
-        Arc::new(Environment { vars: RefCell::new(IndexMap::new()), parent: None })
+        Arc::new(Environment {
+            vars: RefCell::new(IndexMap::new()),
+            parent: None,
+        })
     }
 
     pub fn child(parent: &Env<'a>) -> Env<'a> {
-        Arc::new(Environment { vars: RefCell::new(IndexMap::new()), parent: Some(parent.clone()) })
+        Arc::new(Environment {
+            vars: RefCell::new(IndexMap::new()),
+            parent: Some(parent.clone()),
+        })
     }
 
     /// Подъём по цепочке фреймов; клон значения — O(1) (Arc).

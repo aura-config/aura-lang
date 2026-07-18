@@ -17,7 +17,10 @@ pub enum TokenKind<'a> {
     Str(&'a str),
     InterpStr(Vec<StrPart<'a>>),
     /// github/actions/rust-cache@v1.2 → path="github/actions/rust-cache", version="v1.2"
-    ImportPath { path: &'a str, version: &'a str },
+    ImportPath {
+        path: &'a str,
+        version: &'a str,
+    },
     True,
     False,
     Null,

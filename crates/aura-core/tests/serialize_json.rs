@@ -20,16 +20,25 @@ fn eval_manifest<'a>(cache: &'a SourceCache, resolver: &'a MemoryResolver) -> Va
         "[package]\nname = \"app\"\nversion = \"1.2.3\"\n".to_string(),
     )])));
     it.env_cap = EnvCap::Allow(vec!["APP_ENV".to_string()]);
-    it.env_overrides.insert("APP_ENV".to_string(), "production".to_string());
-    loader.eval_entry(&mut it, &ImportSpec::File("production_deploy.aura")).unwrap()
+    it.env_overrides
+        .insert("APP_ENV".to_string(), "production".to_string());
+    loader
+        .eval_entry(&mut it, &ImportSpec::File("production_deploy.aura"))
+        .unwrap()
 }
 
 fn resolver() -> MemoryResolver {
     MemoryResolver {
         files: HashMap::from([
             ("production_deploy.aura".to_string(), MANIFEST.to_string()),
-            ("templates/k8s_defaults.aura".to_string(), "global_labels:\n  team: \"core\"\nend".to_string()),
-            ("github/actions/rust-cache@v1.2".to_string(), "cache_key = \"rust-v1\"".to_string()),
+            (
+                "templates/k8s_defaults.aura".to_string(),
+                "global_labels:\n  team: \"core\"\nend".to_string(),
+            ),
+            (
+                "github/actions/rust-cache@v1.2".to_string(),
+                "cache_key = \"rust-v1\"".to_string(),
+            ),
         ]),
     }
 }
@@ -44,10 +53,22 @@ fn manifest_to_json_golden() {
     let domain = &json["production-eu"];
     // Int → JSON integer, не 9090.0 (D6)
     assert_eq!(domain["metrics"]["port"], serde_json::json!(9090));
-    assert_eq!(domain["meta"], serde_json::json!({ "name": "AUTH", "port": 8001 }));
-    assert_eq!(domain["apps"][0]["image"], serde_json::json!("company/auth:1.2.3"));
-    assert_eq!(domain["apps"][0]["labels"]["team"], serde_json::json!("core"));
-    assert_eq!(domain["security"]["certificates"]["key_path"], serde_json::json!("/etc/ssl/certs/server.key"));
+    assert_eq!(
+        domain["meta"],
+        serde_json::json!({ "name": "AUTH", "port": 8001 })
+    );
+    assert_eq!(
+        domain["apps"][0]["image"],
+        serde_json::json!("company/auth:1.2.3")
+    );
+    assert_eq!(
+        domain["apps"][0]["labels"]["team"],
+        serde_json::json!("core")
+    );
+    assert_eq!(
+        domain["security"]["certificates"]["key_path"],
+        serde_json::json!("/etc/ssl/certs/server.key")
+    );
     // D10: приватные `=` биндинги, функции и схемы не экспортируются
     let keys: Vec<&String> = json.as_object().unwrap().keys().collect();
     assert_eq!(keys, vec!["production-eu"]);
@@ -62,7 +83,10 @@ fn flat_format() {
     let value = eval_manifest(&cache, &r);
     let flat = to_json_flat(&value).unwrap();
     assert_eq!(flat["production-eu.metrics.port"], serde_json::json!(9090));
-    assert_eq!(flat["production-eu.security.certificates.cert_path"], serde_json::json!("/etc/ssl/certs/server.crt"));
+    assert_eq!(
+        flat["production-eu.security.certificates.cert_path"],
+        serde_json::json!("/etc/ssl/certs/server.crt")
+    );
 }
 
 #[test]
@@ -73,8 +97,14 @@ fn function_inside_tree_is_e0601() {
     let src = "domain \"d\"\n  hook: (x) -> x end\nend";
     let toks = Lexer::new(src, 0).tokenize().unwrap();
     let module = Parser::new(toks).parse_module().unwrap();
-    let v = Interpreter::new(Options::default()).eval_module(&module).unwrap();
+    let v = Interpreter::new(Options::default())
+        .eval_module(&module)
+        .unwrap();
     let err = to_json(&v).unwrap_err();
     assert_eq!(err.code, "E0601");
-    assert!(err.message.contains("d.hook"), "path missing: {}", err.message);
+    assert!(
+        err.message.contains("d.hook"),
+        "path missing: {}",
+        err.message
+    );
 }

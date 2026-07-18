@@ -183,7 +183,10 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
             .join(".aura")
             .join("registry")
     });
-    let resolver = LocalFsResolver { root: root.clone(), registry_dir };
+    let resolver = LocalFsResolver {
+        root: root.clone(),
+        registry_dir,
+    };
 
     let lock_path = root.join("aura.lock");
     let mut loader = Loader::new(&cache, &resolver);
@@ -198,10 +201,15 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
         }
     }
 
-    let mut interp = Interpreter::new(Options { strict: cfg.strict, dry_run: cfg.dry_run });
+    let mut interp = Interpreter::new(Options {
+        strict: cfg.strict,
+        dry_run: cfg.dry_run,
+    });
     interp.allow_imports_io = cfg.allow_imports_io;
     if !cfg.allow_read.is_empty() {
-        interp.fs = Box::new(RealFs { allowed: cfg.allow_read.clone() });
+        interp.fs = Box::new(RealFs {
+            allowed: cfg.allow_read.clone(),
+        });
     } else {
         interp.fs = Box::new(DenyFs);
     }
@@ -211,7 +219,11 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
         Some(s) => EnvCap::Allow(s.split(',').map(str::to_string).collect()),
     };
 
-    let file_name = entry.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let file_name = entry
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let value = match loader.eval_entry(&mut interp, &ImportSpec::File(&file_name)) {
         Ok(v) => v,
         Err(d) => {
@@ -224,7 +236,11 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
     if loader.lock.dirty && !cfg.frozen {
         let text = loader.lock.to_toml_string();
         if cfg.dry_run {
-            eprintln!("[dry-run] would write {} bytes to {}", text.len(), lock_path.display());
+            eprintln!(
+                "[dry-run] would write {} bytes to {}",
+                text.len(),
+                lock_path.display()
+            );
         } else if let Err(e) = std::fs::write(&lock_path, &text) {
             eprintln!("error: cannot write {}: {e}", lock_path.display());
             return ExitCode::from(2);
@@ -232,7 +248,9 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
     }
 
     let rendered = match cfg.format {
-        OutFormat::Json => to_json(&value).map(|j| serde_json::to_string_pretty(&j).expect("valid json")),
+        OutFormat::Json => {
+            to_json(&value).map(|j| serde_json::to_string_pretty(&j).expect("valid json"))
+        }
         OutFormat::JsonFlat => {
             to_json_flat(&value).map(|j| serde_json::to_string_pretty(&j).expect("valid json"))
         }
@@ -255,7 +273,11 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
             }
         }
         Some(path) => {
-            eprintln!("[dry-run] would write {} bytes to {}", pretty.len(), path.display());
+            eprintln!(
+                "[dry-run] would write {} bytes to {}",
+                pretty.len(),
+                path.display()
+            );
             println!("{pretty}");
         }
         None => println!("{pretty}"),
@@ -265,7 +287,7 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
 
 /// Рендеринг Diagnostic через ariadne (SPEC §7.3). Спаны без исходника — плоский вывод.
 fn render(d: &Diagnostic, cache: &SourceCache) {
-    use ariadne::{Color, Config, Label, Report, ReportKind, sources};
+    use ariadne::{sources, Color, Config, Label, Report, ReportKind};
 
     let has_source = cache.text(d.primary.0.source).is_some() && d.primary.0.end > 0;
     if !has_source {
@@ -278,7 +300,9 @@ fn render(d: &Diagnostic, cache: &SourceCache) {
 
     let mut files: Vec<(String, String)> = Vec::new();
     let mut resolve = |sp: Span| -> (String, std::ops::Range<usize>) {
-        let name = cache.name(sp.source).unwrap_or_else(|| "<input>".to_string());
+        let name = cache
+            .name(sp.source)
+            .unwrap_or_else(|| "<input>".to_string());
         let text = cache.text(sp.source).unwrap_or("").to_string();
         // ariadne индексирует по символам, спаны Aura — байтовые
         let start = char_off(&text, sp.start as usize);
@@ -298,10 +322,18 @@ fn render(d: &Diagnostic, cache: &SourceCache) {
         .with_config(Config::default())
         .with_code(d.code)
         .with_message(&d.message)
-        .with_label(Label::new((pname, prange)).with_message(&d.primary.1).with_color(Color::Red));
+        .with_label(
+            Label::new((pname, prange))
+                .with_message(&d.primary.1)
+                .with_color(Color::Red),
+        );
     for (sp, msg) in &d.secondary {
         let (n, r) = resolve(*sp);
-        report = report.with_label(Label::new((n, r)).with_message(msg).with_color(Color::Yellow));
+        report = report.with_label(
+            Label::new((n, r))
+                .with_message(msg)
+                .with_color(Color::Yellow),
+        );
     }
     if let Some(h) = &d.help {
         report = report.with_help(h);

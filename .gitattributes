@@ -1,0 +1,3 @@
+# LF везде: integrity-хэши в aura.lock считаются от байтов файла,
+# CRLF-checkout на Windows ломал бы их (E0402), а также conformance-фикстуры.
+* text=auto eol=lf

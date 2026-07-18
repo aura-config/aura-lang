@@ -1,0 +1,54 @@
+{
+  "production-eu": {
+    "log_path": "/var/log/aura.log",
+    "replicas": 3,
+    "security": {
+      "tls_enabled": true,
+      "min_version": "1.3",
+      "certificates": {
+        "cert_path": "/etc/ssl/certs/server.crt",
+        "key_path": "/etc/ssl/certs/server.key"
+      }
+    },
+    "metrics": {
+      "port": 9090,
+      "path": "/metrics"
+    },
+    "meta": {
+      "name": "AUTH",
+      "port": 8001
+    },
+    "apps": [
+      {
+        "name": "auth",
+        "image": "company/auth:1.2.3",
+        "labels": {
+          "name": "auth",
+          "tier": "backend",
+          "managed_by": "aura-engine",
+          "team": "core"
+        }
+      },
+      {
+        "name": "billing",
+        "image": "company/billing:1.2.3",
+        "labels": {
+          "name": "billing",
+          "tier": "backend",
+          "managed_by": "aura-engine",
+          "team": "core"
+        }
+      },
+      {
+        "name": "frontend",
+        "image": "company/frontend:1.2.3",
+        "labels": {
+          "name": "frontend",
+          "tier": "backend",
+          "managed_by": "aura-engine",
+          "team": "core"
+        }
+      }
+    ]
+  }
+}

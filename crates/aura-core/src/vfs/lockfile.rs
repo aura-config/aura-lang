@@ -34,11 +34,17 @@ impl Lockfile {
                     .ok_or_else(|| format!("lock entry '{path}': missing integrity"))?;
                 entries.insert(
                     path.clone(),
-                    LockEntry { version: version.to_string(), integrity: integrity.to_string() },
+                    LockEntry {
+                        version: version.to_string(),
+                        integrity: integrity.to_string(),
+                    },
                 );
             }
         }
-        Ok(Lockfile { entries, dirty: false })
+        Ok(Lockfile {
+            entries,
+            dirty: false,
+        })
     }
 
     pub fn to_toml_string(&self) -> String {

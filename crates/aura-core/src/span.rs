@@ -10,6 +10,10 @@ pub struct Span {
 
 impl Span {
     pub fn new(source: SourceId, start: usize, end: usize) -> Self {
-        Span { source, start: start as u32, end: end as u32 }
+        Span {
+            source,
+            start: start as u32,
+            end: end as u32,
+        }
     }
 }

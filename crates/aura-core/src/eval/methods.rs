@@ -19,7 +19,9 @@ pub struct MethodRegistry<'a> {
 
 impl<'a> MethodRegistry<'a> {
     pub fn new() -> Self {
-        MethodRegistry { table: HashMap::new() }
+        MethodRegistry {
+            table: HashMap::new(),
+        }
     }
 
     pub fn register(&mut self, tag: TypeTag, name: &'static str, f: MethodFn<'a>) {
@@ -110,8 +112,15 @@ fn m_list_compact<'a>(
     _args: &[Value<'a>],
     _sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
-    let Value::List(xs) = recv else { unreachable!() };
-    Ok(Value::list(xs.iter().filter(|v| !matches!(v, Value::Null)).cloned().collect()))
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    Ok(Value::list(
+        xs.iter()
+            .filter(|v| !matches!(v, Value::Null))
+            .cloned()
+            .collect(),
+    ))
 }
 
 /// `.uniq()` — дедупликация с сохранением первого вхождения.
@@ -121,7 +130,9 @@ fn m_list_uniq<'a>(
     _args: &[Value<'a>],
     _sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
-    let Value::List(xs) = recv else { unreachable!() };
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
     let mut out: Vec<Value<'a>> = Vec::with_capacity(xs.len());
     for v in xs.iter() {
         if !out.contains(v) {
@@ -131,10 +142,18 @@ fn m_list_uniq<'a>(
     Ok(Value::list(out))
 }
 
-fn expect_lambda<'a, 'b>(args: &'b [Value<'a>], name: &str, sp: Span) -> Result<&'b Value<'a>, Diagnostic> {
+fn expect_lambda<'a, 'b>(
+    args: &'b [Value<'a>],
+    name: &str,
+    sp: Span,
+) -> Result<&'b Value<'a>, Diagnostic> {
     match args.last() {
         Some(f @ Value::Function(_)) => Ok(f),
-        _ => Err(rt("E0315", format!("`{name}` requires a lambda argument"), sp)),
+        _ => Err(rt(
+            "E0315",
+            format!("`{name}` requires a lambda argument"),
+            sp,
+        )),
     }
 }
 
@@ -145,7 +164,9 @@ fn m_list_map<'a>(
     args: &[Value<'a>],
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
-    let Value::List(xs) = recv else { unreachable!() };
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
     let f = expect_lambda(args, "map", sp)?.clone();
     let mut out = Vec::with_capacity(xs.len());
     for (i, v) in xs.iter().enumerate() {
@@ -160,7 +181,9 @@ fn m_list_filter<'a>(
     args: &[Value<'a>],
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
-    let Value::List(xs) = recv else { unreachable!() };
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
     let f = expect_lambda(args, "filter", sp)?.clone();
     let mut out = Vec::new();
     for (i, v) in xs.iter().enumerate() {
@@ -168,7 +191,11 @@ fn m_list_filter<'a>(
             Value::Bool(true) => out.push(v.clone()),
             Value::Bool(false) => {}
             other => {
-                return Err(rt("E0306", format!("filter lambda must return Bool, got {}", other.type_name()), sp))
+                return Err(rt(
+                    "E0306",
+                    format!("filter lambda must return Bool, got {}", other.type_name()),
+                    sp,
+                ))
             }
         }
     }
@@ -182,7 +209,9 @@ fn m_obj_merge<'a>(
     args: &[Value<'a>],
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
-    let Value::Object(base) = recv else { unreachable!() };
+    let Value::Object(base) = recv else {
+        unreachable!()
+    };
     let Some(Value::Object(other)) = args.first() else {
         return Err(rt("E0306", "merge expects an Object argument", sp));
     };
@@ -215,10 +244,14 @@ fn m_get<'a>(
 ) -> Result<Value<'a>, Diagnostic> {
     let default = || args.get(1).cloned().unwrap_or(Value::Null);
     match (recv, args.first()) {
-        (Value::List(xs), Some(Value::Int(i))) => {
-            Ok(usize::try_from(*i).ok().and_then(|i| xs.get(i)).cloned().unwrap_or_else(default))
+        (Value::List(xs), Some(Value::Int(i))) => Ok(usize::try_from(*i)
+            .ok()
+            .and_then(|i| xs.get(i))
+            .cloned()
+            .unwrap_or_else(default)),
+        (Value::Object(m), Some(Value::Str(k))) => {
+            Ok(m.get(k.as_ref()).cloned().unwrap_or_else(default))
         }
-        (Value::Object(m), Some(Value::Str(k))) => Ok(m.get(k.as_ref()).cloned().unwrap_or_else(default)),
         (Value::List(_), _) => Err(rt("E0306", "List.get expects an Int index", sp)),
         _ => Err(rt("E0306", "Object.get expects a String key", sp)),
     }
@@ -230,8 +263,12 @@ fn m_list_first<'a>(
     _args: &[Value<'a>],
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
-    let Value::List(xs) = recv else { unreachable!() };
-    xs.first().cloned().ok_or_else(|| rt("E0317", "first() on an empty list", sp))
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    xs.first()
+        .cloned()
+        .ok_or_else(|| rt("E0317", "first() on an empty list", sp))
 }
 
 fn m_list_last<'a>(
@@ -240,8 +277,12 @@ fn m_list_last<'a>(
     _args: &[Value<'a>],
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
-    let Value::List(xs) = recv else { unreachable!() };
-    xs.last().cloned().ok_or_else(|| rt("E0317", "last() on an empty list", sp))
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    xs.last()
+        .cloned()
+        .ok_or_else(|| rt("E0317", "last() on an empty list", sp))
 }
 
 fn m_parse_json<'a>(
@@ -276,7 +317,9 @@ fn m_to_json<'a>(
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
     let json = crate::serialize::to_json(recv).map_err(|d| rt(d.code, d.message, sp))?;
-    Ok(Value::str(serde_json::to_string(&json).expect("valid json")))
+    Ok(Value::str(
+        serde_json::to_string(&json).expect("valid json"),
+    ))
 }
 
 fn m_to_yaml<'a>(
@@ -285,7 +328,9 @@ fn m_to_yaml<'a>(
     _args: &[Value<'a>],
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
-    crate::serialize::to_yaml_string(recv).map(Value::str).map_err(|d| rt(d.code, d.message, sp))
+    crate::serialize::to_yaml_string(recv)
+        .map(Value::str)
+        .map_err(|d| rt(d.code, d.message, sp))
 }
 
 fn m_to_toml<'a>(
@@ -294,7 +339,9 @@ fn m_to_toml<'a>(
     _args: &[Value<'a>],
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
-    crate::serialize::to_toml_string(recv).map(Value::str).map_err(|d| rt(d.code, d.message, sp))
+    crate::serialize::to_toml_string(recv)
+        .map(Value::str)
+        .map_err(|d| rt(d.code, d.message, sp))
 }
 
 fn json_to_value<'a>(j: serde_json::Value) -> Value<'a> {
@@ -307,9 +354,9 @@ fn json_to_value<'a>(j: serde_json::Value) -> Value<'a> {
         },
         serde_json::Value::String(s) => Value::str(s),
         serde_json::Value::Array(xs) => Value::list(xs.into_iter().map(json_to_value).collect()),
-        serde_json::Value::Object(m) => {
-            Value::Object(Arc::new(m.into_iter().map(|(k, v)| (k, json_to_value(v))).collect()))
-        }
+        serde_json::Value::Object(m) => Value::Object(Arc::new(
+            m.into_iter().map(|(k, v)| (k, json_to_value(v))).collect(),
+        )),
     }
 }
 
@@ -321,8 +368,8 @@ fn toml_to_value<'a>(t: toml::Value) -> Value<'a> {
         toml::Value::Boolean(b) => Value::Bool(b),
         toml::Value::Datetime(d) => Value::str(d.to_string()),
         toml::Value::Array(xs) => Value::list(xs.into_iter().map(toml_to_value).collect()),
-        toml::Value::Table(t) => {
-            Value::Object(Arc::new(t.into_iter().map(|(k, v)| (k, toml_to_value(v))).collect()))
-        }
+        toml::Value::Table(t) => Value::Object(Arc::new(
+            t.into_iter().map(|(k, v)| (k, toml_to_value(v))).collect(),
+        )),
     }
 }

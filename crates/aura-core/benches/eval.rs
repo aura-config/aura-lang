@@ -16,7 +16,8 @@ fn interp<'a>() -> Interpreter<'a> {
         "[package]\nname = \"app\"\nversion = \"1.2.3\"\n".to_string(),
     )])));
     it.env_cap = EnvCap::AllowAll;
-    it.env_overrides.insert("APP_ENV".to_string(), "production".to_string());
+    it.env_overrides
+        .insert("APP_ENV".to_string(), "production".to_string());
     it.provide_module("rust", Value::object(IndexMap::new()));
     let mut labels = IndexMap::new();
     labels.insert("team".to_string(), Value::str("core"));
@@ -29,7 +30,9 @@ fn interp<'a>() -> Interpreter<'a> {
 fn bench_eval(c: &mut Criterion) {
     c.bench_function("eval/full_pipeline_manifest", |b| {
         b.iter(|| {
-            let toks = aura_core::lexer::Lexer::new(black_box(MANIFEST), 0).tokenize().unwrap();
+            let toks = aura_core::lexer::Lexer::new(black_box(MANIFEST), 0)
+                .tokenize()
+                .unwrap();
             let module = aura_core::parser::Parser::new(toks).parse_module().unwrap();
             black_box(interp().eval_module(&module).unwrap());
         })

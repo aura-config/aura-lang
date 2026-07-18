@@ -15,13 +15,20 @@ fn manifest_dead_code() {
     let diags = analyze(&module, true);
 
     // Ни одной ошибки — только предупреждения о мёртвом коде
-    assert!(diags.iter().all(|d| d.severity == Severity::Warning), "unexpected errors: {diags:#?}");
     assert!(
-        diags.iter().any(|d| d.code == "W0501" && d.message.contains("unused_config_version")),
+        diags.iter().all(|d| d.severity == Severity::Warning),
+        "unexpected errors: {diags:#?}"
+    );
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.code == "W0501" && d.message.contains("unused_config_version")),
         "must detect unused_config_version: {diags:#?}"
     );
     assert!(
-        diags.iter().any(|d| d.code == "W0502" && d.message.contains("rust")),
+        diags
+            .iter()
+            .any(|d| d.code == "W0502" && d.message.contains("rust")),
         "must detect unused import rust: {diags:#?}"
     );
 

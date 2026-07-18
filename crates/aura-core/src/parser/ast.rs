@@ -20,20 +20,41 @@ pub struct Import<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImportSource<'a> {
     /// github/actions/rust-cache@v1.2 (версия обязательна, D8)
-    Registry { path: &'a str, version: &'a str },
+    Registry {
+        path: &'a str,
+        version: &'a str,
+    },
     File(&'a str),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt<'a> {
     /// `[shadow] name = expr` (D7)
-    Assign { name: &'a str, shadow: bool, value: Expr<'a>, span: Span },
+    Assign {
+        name: &'a str,
+        shadow: bool,
+        value: Expr<'a>,
+        span: Span,
+    },
     /// `key: expr` | `key:` + объектный блок — внутри domain/component
-    Property { key: &'a str, value: Expr<'a>, span: Span },
+    Property {
+        key: &'a str,
+        value: Expr<'a>,
+        span: Span,
+    },
     /// `assert cond[, "msg"]` (D5)
-    Assert { cond: Expr<'a>, message: Option<Expr<'a>>, span: Span },
+    Assert {
+        cond: Expr<'a>,
+        message: Option<Expr<'a>>,
+        span: Span,
+    },
     TypeDecl(SchemaDeclaration<'a>),
-    FuncDecl { name: &'a str, params: Vec<&'a str>, body: ObjectBody<'a>, span: Span },
+    FuncDecl {
+        name: &'a str,
+        params: Vec<&'a str>,
+        body: ObjectBody<'a>,
+        span: Span,
+    },
     Block(BlockDeclaration<'a>),
     Expr(Expr<'a>),
 }
@@ -109,10 +130,28 @@ pub enum BinOp {
 pub enum Expr<'a> {
     Literal(LitValue<'a>, Span),
     Variable(&'a str, Span),
-    Unary { op: UnaryOp, rhs: Box<Expr<'a>>, span: Span },
-    Binary { op: BinOp, lhs: Box<Expr<'a>>, rhs: Box<Expr<'a>>, span: Span },
-    Ternary { cond: Box<Expr<'a>>, then: Box<Expr<'a>>, otherwise: Box<Expr<'a>>, span: Span },
-    Call { callee: Box<Expr<'a>>, args: Vec<Expr<'a>>, span: Span },
+    Unary {
+        op: UnaryOp,
+        rhs: Box<Expr<'a>>,
+        span: Span,
+    },
+    Binary {
+        op: BinOp,
+        lhs: Box<Expr<'a>>,
+        rhs: Box<Expr<'a>>,
+        span: Span,
+    },
+    Ternary {
+        cond: Box<Expr<'a>>,
+        then: Box<Expr<'a>>,
+        otherwise: Box<Expr<'a>>,
+        span: Span,
+    },
+    Call {
+        callee: Box<Expr<'a>>,
+        args: Vec<Expr<'a>>,
+        span: Span,
+    },
     MethodCall {
         recv: Box<Expr<'a>>,
         method: &'a str,
@@ -121,15 +160,32 @@ pub enum Expr<'a> {
         lambda: Option<Box<Expr<'a>>>,
         span: Span,
     },
-    FieldAccess { recv: Box<Expr<'a>>, field: &'a str, span: Span },
+    FieldAccess {
+        recv: Box<Expr<'a>>,
+        field: &'a str,
+        span: Span,
+    },
     /// Индексация списка `xs[0]` (bracket=true) либо динамический ключ объекта
     /// `obj."#{name}"` (bracket=false, D11). На объектах скобки запрещены (E0318).
-    Index { recv: Box<Expr<'a>>, key: Box<Expr<'a>>, bracket: bool, span: Span },
+    Index {
+        recv: Box<Expr<'a>>,
+        key: Box<Expr<'a>>,
+        bracket: bool,
+        span: Span,
+    },
     ObjectLiteral(ObjectBody<'a>),
     ListLiteral(Vec<Expr<'a>>, Span),
-    Lambda { params: Vec<&'a str>, body: LambdaBody<'a>, span: Span },
+    Lambda {
+        params: Vec<&'a str>,
+        body: LambdaBody<'a>,
+        span: Span,
+    },
     /// Только через `new` (D4)
-    SchemaInstance { schema: &'a str, body: ObjectBody<'a>, span: Span },
+    SchemaInstance {
+        schema: &'a str,
+        body: ObjectBody<'a>,
+        span: Span,
+    },
     /// `component name ... end` в позиции выражения (внутри map)
     Block(Box<BlockDeclaration<'a>>),
 }

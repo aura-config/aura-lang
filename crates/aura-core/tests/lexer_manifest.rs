@@ -7,8 +7,14 @@ const MANIFEST: &str = include_str!("fixtures/production_deploy.aura");
 
 #[test]
 fn reference_manifest_tokenizes() {
-    let tokens = Lexer::new(MANIFEST, 0).tokenize().expect("manifest must lex cleanly");
-    assert!(tokens.len() > 100, "suspiciously few tokens: {}", tokens.len());
+    let tokens = Lexer::new(MANIFEST, 0)
+        .tokenize()
+        .expect("manifest must lex cleanly");
+    assert!(
+        tokens.len() > 100,
+        "suspiciously few tokens: {}",
+        tokens.len()
+    );
     assert_eq!(tokens.last().map(|t| &t.kind), Some(&TokenKind::Eof));
     // v1.2-конструкции присутствуют
     assert!(tokens.iter().any(|t| t.kind == TokenKind::New));
@@ -16,7 +22,10 @@ fn reference_manifest_tokenizes() {
     assert!(tokens.iter().any(|t| t.kind == TokenKind::Shadow));
     assert!(tokens.iter().any(|t| matches!(
         t.kind,
-        TokenKind::ImportPath { path: "github/actions/rust-cache", version: "v1.2" }
+        TokenKind::ImportPath {
+            path: "github/actions/rust-cache",
+            version: "v1.2"
+        }
     )));
 }
 

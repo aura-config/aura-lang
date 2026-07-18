@@ -40,7 +40,11 @@ pub struct Parser<'a> {
 impl<'a> Parser<'a> {
     pub fn new(toks: Vec<Token<'a>>) -> Self {
         debug_assert!(matches!(toks.last().map(|t| &t.kind), Some(TokenKind::Eof)));
-        Parser { toks, pos: 0, diags: Vec::new() }
+        Parser {
+            toks,
+            pos: 0,
+            diags: Vec::new(),
+        }
     }
 
     // ---- Навигация по токенам ----
@@ -50,7 +54,10 @@ impl<'a> Parser<'a> {
     }
 
     fn peek_at(&self, off: usize) -> &TokenKind<'a> {
-        self.toks.get(self.pos + off).map(|t| &t.kind).unwrap_or(&TokenKind::Eof)
+        self.toks
+            .get(self.pos + off)
+            .map(|t| &t.kind)
+            .unwrap_or(&TokenKind::Eof)
     }
 
     fn span(&self) -> Span {
@@ -77,10 +84,19 @@ impl<'a> Parser<'a> {
     }
 
     fn join(&self, from: Span) -> Span {
-        Span { source: from.source, start: from.start, end: self.prev_end_span().end }
+        Span {
+            source: from.source,
+            start: from.start,
+            end: self.prev_end_span().end,
+        }
     }
 
-    fn err(&self, code: &'static str, msg: impl Into<String>, label: impl Into<String>) -> Diagnostic {
+    fn err(
+        &self,
+        code: &'static str,
+        msg: impl Into<String>,
+        label: impl Into<String>,
+    ) -> Diagnostic {
         Diagnostic::error(code, msg, self.span(), label)
     }
 
@@ -88,7 +104,11 @@ impl<'a> Parser<'a> {
         if self.eat(kind) {
             Ok(())
         } else {
-            Err(self.err("E0200", format!("expected {what}"), format!("found {:?}", self.peek())))
+            Err(self.err(
+                "E0200",
+                format!("expected {what}"),
+                format!("found {:?}", self.peek()),
+            ))
         }
     }
 
@@ -98,7 +118,11 @@ impl<'a> Parser<'a> {
             self.bump();
             Ok((s, sp))
         } else {
-            Err(self.err("E0200", format!("expected {what}"), format!("found {:?}", self.peek())))
+            Err(self.err(
+                "E0200",
+                format!("expected {what}"),
+                format!("found {:?}", self.peek()),
+            ))
         }
     }
 
@@ -110,7 +134,11 @@ impl<'a> Parser<'a> {
                 self.bump();
                 Ok((s, sp))
             }
-            _ => Err(self.err("E0200", "expected property key", format!("found {:?}", self.peek()))),
+            _ => Err(self.err(
+                "E0200",
+                "expected property key",
+                format!("found {:?}", self.peek()),
+            )),
         }
     }
 
@@ -128,13 +156,20 @@ impl<'a> Parser<'a> {
                 Ok(())
             }
             TokenKind::End | TokenKind::Eof => Ok(()),
-            _ => Err(self.err("E0205", "expected end of statement", "statements are separated by newlines")),
+            _ => Err(self.err(
+                "E0205",
+                "expected end of statement",
+                "statements are separated by newlines",
+            )),
         }
     }
 
     /// Синхронизация после ошибки: до следующего Newline / `end` / Eof (SPEC §3.4).
     fn recover(&mut self) {
-        while !matches!(self.peek(), TokenKind::Newline | TokenKind::End | TokenKind::Eof) {
+        while !matches!(
+            self.peek(),
+            TokenKind::Newline | TokenKind::End | TokenKind::Eof
+        ) {
             self.bump();
         }
         self.skip_newlines();
@@ -145,7 +180,11 @@ impl<'a> Parser<'a> {
         let e = self.parse_expr(0)?;
         self.skip_newlines();
         if !matches!(self.peek(), TokenKind::Eof) {
-            return Err(self.err("E0204", "unexpected trailing tokens after expression", "expected end of expression"));
+            return Err(self.err(
+                "E0204",
+                "unexpected trailing tokens after expression",
+                "expected end of expression",
+            ));
         }
         Ok(e)
     }
@@ -185,7 +224,11 @@ impl<'a> Parser<'a> {
             }
         }
         if self.diags.is_empty() {
-            Ok(Module { imports, stmts, span: self.join(start) })
+            Ok(Module {
+                imports,
+                stmts,
+                span: self.join(start),
+            })
         } else {
             Err(self.diags)
         }
@@ -205,11 +248,21 @@ impl<'a> Parser<'a> {
                 self.bump();
                 s
             }
-            _ => return Err(self.err("E0200", "expected import path or \"file.aura\"", "invalid import source")),
+            _ => {
+                return Err(self.err(
+                    "E0200",
+                    "expected import path or \"file.aura\"",
+                    "invalid import source",
+                ))
+            }
         };
         self.expect(&TokenKind::As, "`as` after import source")?;
         let (alias, _) = self.expect_ident("import alias")?;
-        Ok(Import { source, alias, span: self.join(start) })
+        Ok(Import {
+            source,
+            alias,
+            span: self.join(start),
+        })
     }
 
     // ---- Statements ----
@@ -227,7 +280,12 @@ impl<'a> Parser<'a> {
                 let (name, _) = self.expect_ident("variable name after `shadow`")?;
                 self.expect(&TokenKind::Assign, "`=` in shadow assignment")?;
                 let value = self.parse_expr(0)?;
-                Ok(Stmt::Assign { name, shadow: true, value, span: self.join(start) })
+                Ok(Stmt::Assign {
+                    name,
+                    shadow: true,
+                    value,
+                    span: self.join(start),
+                })
             }
             // D11: свойство со строковым ключом — `"app.io/name": value`
             TokenKind::Str(_) if matches!(self.peek_at(1), TokenKind::Colon) => {
@@ -235,7 +293,11 @@ impl<'a> Parser<'a> {
                 let (key, _) = self.expect_key()?;
                 self.bump(); // :
                 let value = self.parse_property_value()?;
-                Ok(Stmt::Property { key, value, span: self.join(start) })
+                Ok(Stmt::Property {
+                    key,
+                    value,
+                    span: self.join(start),
+                })
             }
             TokenKind::Ident(_) => {
                 let start = self.span();
@@ -244,13 +306,22 @@ impl<'a> Parser<'a> {
                         let (name, _) = self.expect_ident("name")?;
                         self.bump(); // =
                         let value = self.parse_expr(0)?;
-                        Ok(Stmt::Assign { name, shadow: false, value, span: self.join(start) })
+                        Ok(Stmt::Assign {
+                            name,
+                            shadow: false,
+                            value,
+                            span: self.join(start),
+                        })
                     }
                     (TokenKind::Colon, _) => {
                         let (key, _) = self.expect_ident("key")?;
                         self.bump(); // :
                         let value = self.parse_property_value()?;
-                        Ok(Stmt::Property { key, value, span: self.join(start) })
+                        Ok(Stmt::Property {
+                            key,
+                            value,
+                            span: self.join(start),
+                        })
                     }
                     // Инлайн-блок v1.1 удалён (D3): `metrics port: 9090 ...`
                     (TokenKind::Ident(_), TokenKind::Colon) => {
@@ -260,7 +331,9 @@ impl<'a> Parser<'a> {
                             "this looks like an inline block",
                         );
                         if let TokenKind::Ident(name) = self.peek() {
-                            d.help = Some(format!("write it as an object block:\n{name}:\n  key: value\nend"));
+                            d.help = Some(format!(
+                                "write it as an object block:\n{name}:\n  key: value\nend"
+                            ));
                         }
                         Err(d)
                     }
@@ -297,7 +370,11 @@ impl<'a> Parser<'a> {
             let value = self.parse_property_value()?;
             props.push((key, value, kspan));
             if !matches!(self.peek(), TokenKind::Newline | TokenKind::End) {
-                return Err(self.err("E0205", "expected end of property", "properties are separated by newlines"));
+                return Err(self.err(
+                    "E0205",
+                    "expected end of property",
+                    "properties are separated by newlines",
+                ));
             }
         }
     }
@@ -327,7 +404,11 @@ impl<'a> Parser<'a> {
             };
             fields.push((field, ty));
         }
-        Ok(Stmt::TypeDecl(SchemaDeclaration { name, fields, span: self.join(start) }))
+        Ok(Stmt::TypeDecl(SchemaDeclaration {
+            name,
+            fields,
+            span: self.join(start),
+        }))
     }
 
     fn parse_func_decl(&mut self) -> Result<Stmt<'a>, Diagnostic> {
@@ -338,7 +419,12 @@ impl<'a> Parser<'a> {
         let params = self.parse_param_list()?;
         self.expect(&TokenKind::Newline, "newline after function signature")?;
         let body = self.parse_object_body()?;
-        Ok(Stmt::FuncDecl { name, params, body, span: self.join(start) })
+        Ok(Stmt::FuncDecl {
+            name,
+            params,
+            body,
+            span: self.join(start),
+        })
     }
 
     fn parse_param_list(&mut self) -> Result<Vec<&'a str>, Diagnostic> {
@@ -360,8 +446,16 @@ impl<'a> Parser<'a> {
         let start = self.span();
         self.bump(); // assert
         let cond = self.parse_expr(0)?;
-        let message = if self.eat(&TokenKind::Comma) { Some(self.parse_expr(0)?) } else { None };
-        Ok(Stmt::Assert { cond, message, span: self.join(start) })
+        let message = if self.eat(&TokenKind::Comma) {
+            Some(self.parse_expr(0)?)
+        } else {
+            None
+        };
+        Ok(Stmt::Assert {
+            cond,
+            message,
+            span: self.join(start),
+        })
     }
 
     fn parse_block(&mut self, kind: BlockKind) -> Result<BlockDeclaration<'a>, Diagnostic> {
@@ -382,7 +476,12 @@ impl<'a> Parser<'a> {
             self.eat_separator()?;
             body.push(stmt);
         }
-        Ok(BlockDeclaration { kind, label, body, span: self.join(start) })
+        Ok(BlockDeclaration {
+            kind,
+            label,
+            body,
+            span: self.join(start),
+        })
     }
 
     // ---- Выражения (Pratt, SPEC §3.3) ----
@@ -397,7 +496,11 @@ impl<'a> Parser<'a> {
                 }
                 TokenKind::LParen => {
                     let args = self.parse_args()?;
-                    lhs = Expr::Call { callee: Box::new(lhs), args, span: self.join(start) };
+                    lhs = Expr::Call {
+                        callee: Box::new(lhs),
+                        args,
+                        span: self.join(start),
+                    };
                 }
                 // Индексация списков `xs[0]` (D11)
                 TokenKind::LBracket => {
@@ -418,7 +521,12 @@ impl<'a> Parser<'a> {
                     }
                     let key = self.parse_expr(0)?;
                     self.expect(&TokenKind::RBracket, "closing `]` in index")?;
-                    lhs = Expr::Index { recv: Box::new(lhs), key: Box::new(key), bracket: true, span: self.join(start) };
+                    lhs = Expr::Index {
+                        recv: Box::new(lhs),
+                        key: Box::new(key),
+                        bracket: true,
+                        span: self.join(start),
+                    };
                 }
                 TokenKind::Question if TERNARY_LBP >= min_bp => {
                     self.bump();
@@ -433,13 +541,20 @@ impl<'a> Parser<'a> {
                     };
                 }
                 k => {
-                    let Some((lbp, rbp, op)) = infix_bp(k) else { break };
+                    let Some((lbp, rbp, op)) = infix_bp(k) else {
+                        break;
+                    };
                     if lbp < min_bp {
                         break;
                     }
                     self.bump();
                     let rhs = self.parse_expr(rbp)?;
-                    lhs = Expr::Binary { op, lhs: Box::new(lhs), rhs: Box::new(rhs), span: self.join(start) };
+                    lhs = Expr::Binary {
+                        op,
+                        lhs: Box::new(lhs),
+                        rhs: Box::new(rhs),
+                        span: self.join(start),
+                    };
                 }
             }
         }
@@ -489,12 +604,20 @@ impl<'a> Parser<'a> {
             TokenKind::Minus => {
                 self.bump();
                 let rhs = self.parse_expr(UNARY_RBP)?;
-                Ok(Expr::Unary { op: UnaryOp::Neg, rhs: Box::new(rhs), span: self.join(sp) })
+                Ok(Expr::Unary {
+                    op: UnaryOp::Neg,
+                    rhs: Box::new(rhs),
+                    span: self.join(sp),
+                })
             }
             TokenKind::Not => {
                 self.bump();
                 let rhs = self.parse_expr(UNARY_RBP)?;
-                Ok(Expr::Unary { op: UnaryOp::Not, rhs: Box::new(rhs), span: self.join(sp) })
+                Ok(Expr::Unary {
+                    op: UnaryOp::Not,
+                    rhs: Box::new(rhs),
+                    span: self.join(sp),
+                })
             }
             TokenKind::LParen => {
                 if self.lambda_ahead() {
@@ -512,11 +635,21 @@ impl<'a> Parser<'a> {
                 let (schema, _) = self.expect_ident("schema name after `new`")?;
                 self.expect(&TokenKind::Newline, "newline after `new SchemaName`")?;
                 let body = self.parse_object_body()?;
-                Ok(Expr::SchemaInstance { schema, body, span: self.join(sp) })
+                Ok(Expr::SchemaInstance {
+                    schema,
+                    body,
+                    span: self.join(sp),
+                })
             }
             TokenKind::Domain => Ok(Expr::Block(Box::new(self.parse_block(BlockKind::Domain)?))),
-            TokenKind::Component => Ok(Expr::Block(Box::new(self.parse_block(BlockKind::Component)?))),
-            _ => Err(self.err("E0204", "expected expression", format!("found {:?}", self.peek()))),
+            TokenKind::Component => Ok(Expr::Block(Box::new(
+                self.parse_block(BlockKind::Component)?,
+            ))),
+            _ => Err(self.err(
+                "E0204",
+                "expected expression",
+                format!("found {:?}", self.peek()),
+            )),
         }
     }
 
@@ -526,12 +659,18 @@ impl<'a> Parser<'a> {
         loop {
             match self.toks.get(i).map(|t| &t.kind) {
                 Some(TokenKind::RParen) => {
-                    return matches!(self.toks.get(i + 1).map(|t| &t.kind), Some(TokenKind::Arrow))
+                    return matches!(
+                        self.toks.get(i + 1).map(|t| &t.kind),
+                        Some(TokenKind::Arrow)
+                    )
                 }
                 Some(TokenKind::Ident(_)) => match self.toks.get(i + 1).map(|t| &t.kind) {
                     Some(TokenKind::Comma) => i += 2,
                     Some(TokenKind::RParen) => {
-                        return matches!(self.toks.get(i + 2).map(|t| &t.kind), Some(TokenKind::Arrow))
+                        return matches!(
+                            self.toks.get(i + 2).map(|t| &t.kind),
+                            Some(TokenKind::Arrow)
+                        )
                     }
                     _ => return false,
                 },
@@ -547,7 +686,9 @@ impl<'a> Parser<'a> {
         let params = self.parse_param_list()?;
         self.expect(&TokenKind::Arrow, "`->` in lambda")?;
         // `(x) -> key: v ... end` — объектное тело; иначе одно выражение + `end`
-        let body = if matches!(self.peek(), TokenKind::Ident(_)) && matches!(self.peek_at(1), TokenKind::Colon) {
+        let body = if matches!(self.peek(), TokenKind::Ident(_))
+            && matches!(self.peek_at(1), TokenKind::Colon)
+        {
             LambdaBody::Object(self.parse_object_body()?)
         } else {
             let e = self.parse_expr(0)?;
@@ -555,7 +696,11 @@ impl<'a> Parser<'a> {
             self.expect(&TokenKind::End, "`end` closing lambda body")?;
             LambdaBody::Expr(Box::new(e))
         };
-        Ok(Expr::Lambda { params, body, span: self.join(start) })
+        Ok(Expr::Lambda {
+            params,
+            body,
+            span: self.join(start),
+        })
     }
 
     fn parse_list(&mut self) -> Result<Expr<'a>, Diagnostic> {
@@ -573,8 +718,15 @@ impl<'a> Parser<'a> {
                 return Err(self.err("E0203", "missing `]`", "list is not closed"));
             }
             items.push(self.parse_expr(0)?);
-            if !matches!(self.peek(), TokenKind::Newline | TokenKind::Comma | TokenKind::RBracket) {
-                return Err(self.err("E0205", "expected list separator", "elements are separated by newlines or commas"));
+            if !matches!(
+                self.peek(),
+                TokenKind::Newline | TokenKind::Comma | TokenKind::RBracket
+            ) {
+                return Err(self.err(
+                    "E0205",
+                    "expected list separator",
+                    "elements are separated by newlines or commas",
+                ));
             }
         }
     }
@@ -598,12 +750,16 @@ impl<'a> Parser<'a> {
     /// | `.method (params) -> ... end` (trailing lambda)
     fn parse_postfix_dot(&mut self, recv: Expr<'a>, start: Span) -> Result<Expr<'a>, Diagnostic> {
         self.bump(); // .
-        // D11: строковый ключ после точки — доступ к произвольному имени поля
+                     // D11: строковый ключ после точки — доступ к произвольному имени поля
         match self.peek() {
             TokenKind::Str(key) => {
                 let key = *key;
                 self.bump();
-                return Ok(Expr::FieldAccess { recv: Box::new(recv), field: key, span: self.join(start) });
+                return Ok(Expr::FieldAccess {
+                    recv: Box::new(recv),
+                    field: key,
+                    span: self.join(start),
+                });
             }
             TokenKind::InterpStr(parts) => {
                 let parts = parts.clone();
@@ -632,9 +788,19 @@ impl<'a> Parser<'a> {
                 };
                 (args, lambda)
             };
-            Ok(Expr::MethodCall { recv: Box::new(recv), method: name, args, lambda, span: self.join(start) })
+            Ok(Expr::MethodCall {
+                recv: Box::new(recv),
+                method: name,
+                args,
+                lambda,
+                span: self.join(start),
+            })
         } else {
-            Ok(Expr::FieldAccess { recv: Box::new(recv), field: name, span: self.join(start) })
+            Ok(Expr::FieldAccess {
+                recv: Box::new(recv),
+                field: name,
+                span: self.join(start),
+            })
         }
     }
 }
@@ -659,19 +825,37 @@ mod tests {
 
     fn first_err(src: &str) -> &'static str {
         let toks = Lexer::new(src, 0).tokenize().expect("lex ok");
-        Parser::new(toks).parse_module().expect_err("parse must fail")[0].code
+        Parser::new(toks)
+            .parse_module()
+            .expect_err("parse must fail")[0]
+            .code
     }
 
     #[test]
     fn mul_binds_tighter_than_add() {
-        let Expr::Binary { op: BinOp::Add, rhs, .. } = expr("1 + 2 * 3") else { panic!() };
+        let Expr::Binary {
+            op: BinOp::Add,
+            rhs,
+            ..
+        } = expr("1 + 2 * 3")
+        else {
+            panic!()
+        };
         assert!(matches!(*rhs, Expr::Binary { op: BinOp::Mul, .. }));
     }
 
     #[test]
     fn comparison_vs_logic_precedence() {
         // a == b && c < d  →  (a == b) && (c < d)
-        let Expr::Binary { op: BinOp::And, lhs, rhs, .. } = expr("a == b && c < d") else { panic!() };
+        let Expr::Binary {
+            op: BinOp::And,
+            lhs,
+            rhs,
+            ..
+        } = expr("a == b && c < d")
+        else {
+            panic!()
+        };
         assert!(matches!(*lhs, Expr::Binary { op: BinOp::Eq, .. }));
         assert!(matches!(*rhs, Expr::Binary { op: BinOp::Lt, .. }));
     }
@@ -679,37 +863,83 @@ mod tests {
     #[test]
     fn ternary_is_right_associative() {
         // a ? b : c ? d : e  →  a ? b : (c ? d : e)
-        let Expr::Ternary { otherwise, .. } = expr("a ? b : c ? d : e") else { panic!() };
+        let Expr::Ternary { otherwise, .. } = expr("a ? b : c ? d : e") else {
+            panic!()
+        };
         assert!(matches!(*otherwise, Expr::Ternary { .. }));
     }
 
     #[test]
     fn method_chains_are_left_associative() {
         // xs.compact().uniq() → MethodCall{ recv: MethodCall{ recv: xs, compact }, uniq }
-        let Expr::MethodCall { method: "uniq", recv, .. } = expr("xs.compact().uniq()") else { panic!() };
-        assert!(matches!(*recv, Expr::MethodCall { method: "compact", .. }));
+        let Expr::MethodCall {
+            method: "uniq",
+            recv,
+            ..
+        } = expr("xs.compact().uniq()")
+        else {
+            panic!()
+        };
+        assert!(matches!(
+            *recv,
+            Expr::MethodCall {
+                method: "compact",
+                ..
+            }
+        ));
     }
 
     #[test]
     fn field_access_chain() {
-        let Expr::FieldAccess { field: "version", recv, .. } = expr("cargo_data.package.version") else { panic!() };
-        assert!(matches!(*recv, Expr::FieldAccess { field: "package", .. }));
+        let Expr::FieldAccess {
+            field: "version",
+            recv,
+            ..
+        } = expr("cargo_data.package.version")
+        else {
+            panic!()
+        };
+        assert!(matches!(
+            *recv,
+            Expr::FieldAccess {
+                field: "package",
+                ..
+            }
+        ));
     }
 
     #[test]
     fn trailing_lambda_on_map() {
         let src = "xs.map (name, index) -> name end";
-        let Expr::MethodCall { method: "map", args, lambda: Some(l), .. } = expr(src) else { panic!() };
+        let Expr::MethodCall {
+            method: "map",
+            args,
+            lambda: Some(l),
+            ..
+        } = expr(src)
+        else {
+            panic!()
+        };
         assert!(args.is_empty());
-        let Expr::Lambda { params, .. } = *l else { panic!() };
+        let Expr::Lambda { params, .. } = *l else {
+            panic!()
+        };
         assert_eq!(params, vec!["name", "index"]);
     }
 
     #[test]
     fn list_with_unary_minus_element_d2() {
-        let Expr::ListLiteral(items, _) = expr("[a\n-b]") else { panic!() };
+        let Expr::ListLiteral(items, _) = expr("[a\n-b]") else {
+            panic!()
+        };
         assert_eq!(items.len(), 2);
-        assert!(matches!(items[1], Expr::Unary { op: UnaryOp::Neg, .. }));
+        assert!(matches!(
+            items[1],
+            Expr::Unary {
+                op: UnaryOp::Neg,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -720,13 +950,28 @@ mod tests {
     #[test]
     fn shadow_assignment_d7() {
         let m = module("shadow x = 1");
-        assert!(matches!(m.stmts[0], Stmt::Assign { name: "x", shadow: true, .. }));
+        assert!(matches!(
+            m.stmts[0],
+            Stmt::Assign {
+                name: "x",
+                shadow: true,
+                ..
+            }
+        ));
     }
 
     #[test]
     fn new_schema_instance_d4() {
         let m = module("m = new ServiceMeta\n  name: \"auth\"\n  port: 8001\nend");
-        let Stmt::Assign { value: Expr::SchemaInstance { schema: "ServiceMeta", body, .. }, .. } = &m.stmts[0]
+        let Stmt::Assign {
+            value:
+                Expr::SchemaInstance {
+                    schema: "ServiceMeta",
+                    body,
+                    ..
+                },
+            ..
+        } = &m.stmts[0]
         else {
             panic!()
         };
@@ -736,34 +981,79 @@ mod tests {
     #[test]
     fn assert_with_message_d5() {
         let m = module("assert xs.len() >= 1, \"too few\"");
-        assert!(matches!(m.stmts[0], Stmt::Assert { message: Some(_), .. }));
+        assert!(matches!(
+            m.stmts[0],
+            Stmt::Assert {
+                message: Some(_),
+                ..
+            }
+        ));
     }
 
     #[test]
     fn nested_object_blocks() {
         let m = module("domain \"d\"\n  security:\n    tls: true\n    certs:\n      path: \"/x\"\n    end\n  end\nend");
-        let Stmt::Block(b) = &m.stmts[0] else { panic!() };
-        let Stmt::Property { key: "security", value: Expr::ObjectLiteral(body), .. } = &b.body[0] else { panic!() };
-        assert!(matches!(body.props[1], ("certs", Expr::ObjectLiteral(_), _)));
+        let Stmt::Block(b) = &m.stmts[0] else {
+            panic!()
+        };
+        let Stmt::Property {
+            key: "security",
+            value: Expr::ObjectLiteral(body),
+            ..
+        } = &b.body[0]
+        else {
+            panic!()
+        };
+        assert!(matches!(
+            body.props[1],
+            ("certs", Expr::ObjectLiteral(_), _)
+        ));
     }
 
     #[test]
     fn dot_string_field_access_d11() {
         // a."eu west".port → FieldAccess(FieldAccess(a, "eu west"), "port")
-        let Expr::FieldAccess { field: "port", recv, .. } = expr("a.\"eu west\".port") else { panic!() };
-        assert!(matches!(*recv, Expr::FieldAccess { field: "eu west", .. }));
+        let Expr::FieldAccess {
+            field: "port",
+            recv,
+            ..
+        } = expr("a.\"eu west\".port")
+        else {
+            panic!()
+        };
+        assert!(matches!(
+            *recv,
+            Expr::FieldAccess {
+                field: "eu west",
+                ..
+            }
+        ));
     }
 
     #[test]
     fn dynamic_key_desugars_to_index_d11() {
-        let Expr::Index { bracket: false, key, .. } = expr("a.\"#{r}\"") else { panic!() };
+        let Expr::Index {
+            bracket: false,
+            key,
+            ..
+        } = expr("a.\"#{r}\"")
+        else {
+            panic!()
+        };
         assert!(matches!(*key, Expr::Literal(LitValue::InterpStr(_), _)));
     }
 
     #[test]
     fn list_indexing_d11() {
         // xs[0][1] — цепочка индексов
-        let Expr::Index { bracket: true, recv, .. } = expr("xs[0][1]") else { panic!() };
+        let Expr::Index {
+            bracket: true,
+            recv,
+            ..
+        } = expr("xs[0][1]")
+        else {
+            panic!()
+        };
         assert!(matches!(*recv, Expr::Index { bracket: true, .. }));
     }
 
@@ -775,8 +1065,16 @@ mod tests {
     #[test]
     fn string_property_keys_d11() {
         let m = module("domain \"d\"\n  \"app.kubernetes.io/name\": \"auth\"\nend");
-        let Stmt::Block(b) = &m.stmts[0] else { panic!() };
-        assert!(matches!(b.body[0], Stmt::Property { key: "app.kubernetes.io/name", .. }));
+        let Stmt::Block(b) = &m.stmts[0] else {
+            panic!()
+        };
+        assert!(matches!(
+            b.body[0],
+            Stmt::Property {
+                key: "app.kubernetes.io/name",
+                ..
+            }
+        ));
     }
 
     #[test]

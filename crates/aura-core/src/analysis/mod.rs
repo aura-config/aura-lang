@@ -42,7 +42,11 @@ pub struct SemanticAnalyzer<'a> {
 
 /// `is_root = false` — анализ импортированного модуля (включает W0512).
 pub fn analyze<'a>(module: &Module<'a>, is_root: bool) -> Vec<Diagnostic> {
-    let mut a = SemanticAnalyzer { scopes: Vec::new(), diags: Vec::new(), is_root };
+    let mut a = SemanticAnalyzer {
+        scopes: Vec::new(),
+        diags: Vec::new(),
+        is_root,
+    };
     a.push_scope();
     for imp in &module.imports {
         a.declare(imp.alias, imp.span, DeclKind::Import, false);
@@ -56,7 +60,9 @@ pub fn analyze<'a>(module: &Module<'a>, is_root: bool) -> Vec<Diagnostic> {
 
 /// Есть ли блокирующие диагностики: ошибки всегда, в strict — и предупреждения (SPEC §6.1).
 pub fn has_blocking(diags: &[Diagnostic], strict: bool) -> bool {
-    diags.iter().any(|d| strict || d.severity == Severity::Error)
+    diags
+        .iter()
+        .any(|d| strict || d.severity == Severity::Error)
 }
 
 impl<'a> SemanticAnalyzer<'a> {
@@ -78,12 +84,17 @@ impl<'a> SemanticAnalyzer<'a> {
                 DeclKind::Type => ("W0503", "type"),
                 DeclKind::Param => continue,
             };
-            self.diags.push(Diagnostic::warning(code, format!("unused {what} '{name}'"), decl.span, "never used"));
+            self.diags.push(Diagnostic::warning(
+                code,
+                format!("unused {what} '{name}'"),
+                decl.span,
+                "never used",
+            ));
         }
     }
 
     fn declare(&mut self, name: &'a str, span: Span, kind: DeclKind, shadow: bool) {
-        let in_current = self.scopes.last().map_or(false, |s| s.contains_key(name));
+        let in_current = self.scopes.last().is_some_and(|s| s.contains_key(name));
         if in_current {
             self.diags.push(Diagnostic::error(
                 "E0301",
@@ -96,21 +107,45 @@ impl<'a> SemanticAnalyzer<'a> {
         let outer = self.lookup_span(name);
         match (shadow, outer) {
             (false, Some(orig)) if kind == DeclKind::Var => {
-                let mut d = Diagnostic::error("E0302", format!("'{name}' shadows an outer variable"), span, "add `shadow`");
-                d.secondary.push((orig, "outer variable declared here".to_string()));
-                d.help = Some(format!("write `shadow {name} = ...` to make the shadowing explicit"));
+                let mut d = Diagnostic::error(
+                    "E0302",
+                    format!("'{name}' shadows an outer variable"),
+                    span,
+                    "add `shadow`",
+                );
+                d.secondary
+                    .push((orig, "outer variable declared here".to_string()));
+                d.help = Some(format!(
+                    "write `shadow {name} = ...` to make the shadowing explicit"
+                ));
                 self.diags.push(d);
             }
             (true, None) => {
-                self.diags.push(Diagnostic::warning("W0303", format!("`shadow` on '{name}' shadows nothing"), span, "remove `shadow`"));
+                self.diags.push(Diagnostic::warning(
+                    "W0303",
+                    format!("`shadow` on '{name}' shadows nothing"),
+                    span,
+                    "remove `shadow`",
+                ));
             }
             _ => {}
         }
-        self.scopes.last_mut().unwrap().insert(name, Decl { span, used: false, kind });
+        self.scopes.last_mut().unwrap().insert(
+            name,
+            Decl {
+                span,
+                used: false,
+                kind,
+            },
+        );
     }
 
     fn lookup_span(&self, name: &str) -> Option<Span> {
-        self.scopes.iter().rev().skip(1).find_map(|s| s.get(name).map(|d| d.span))
+        self.scopes
+            .iter()
+            .rev()
+            .skip(1)
+            .find_map(|s| s.get(name).map(|d| d.span))
     }
 
     /// Шаг 2 SPEC §6.1: пометка ближайшего объявления (учитывает shadowing).
@@ -122,13 +157,23 @@ impl<'a> SemanticAnalyzer<'a> {
             }
         }
         if !BUILTINS.contains(&name) {
-            self.diags.push(Diagnostic::error("E0504", format!("use of undefined variable '{name}'"), span, "not found in any scope"));
+            self.diags.push(Diagnostic::error(
+                "E0504",
+                format!("use of undefined variable '{name}'"),
+                span,
+                "not found in any scope",
+            ));
         }
     }
 
     fn walk_stmt(&mut self, stmt: &Stmt<'a>) {
         match stmt {
-            Stmt::Assign { name, shadow, value, span } => {
+            Stmt::Assign {
+                name,
+                shadow,
+                value,
+                span,
+            } => {
                 self.walk_expr(value); // значение не видит собственное имя
                 self.declare(name, *span, DeclKind::Var, *shadow);
             }
@@ -147,7 +192,12 @@ impl<'a> SemanticAnalyzer<'a> {
                 }
                 self.declare(schema.name, schema.span, DeclKind::Type, false);
             }
-            Stmt::FuncDecl { name, params, body, span } => {
+            Stmt::FuncDecl {
+                name,
+                params,
+                body,
+                span,
+            } => {
                 self.declare(name, *span, DeclKind::Func, false);
                 self.push_scope();
                 for p in params {
@@ -192,7 +242,12 @@ impl<'a> SemanticAnalyzer<'a> {
                 self.walk_expr(lhs);
                 self.walk_expr(rhs);
             }
-            Expr::Ternary { cond, then, otherwise, .. } => {
+            Expr::Ternary {
+                cond,
+                then,
+                otherwise,
+                ..
+            } => {
                 self.walk_expr(cond);
                 self.walk_expr(then);
                 self.walk_expr(otherwise);
@@ -214,7 +269,9 @@ impl<'a> SemanticAnalyzer<'a> {
                     self.walk_expr(a);
                 }
             }
-            Expr::MethodCall { recv, args, lambda, .. } => {
+            Expr::MethodCall {
+                recv, args, lambda, ..
+            } => {
                 self.walk_expr(recv);
                 for a in args {
                     self.walk_expr(a);
@@ -261,9 +318,12 @@ impl<'a> SemanticAnalyzer<'a> {
             .and_then(|toks| Parser::new(toks).parse_expression());
         match parsed {
             Ok(expr) => self.walk_expr(&expr),
-            Err(d) => self
-                .diags
-                .push(Diagnostic::error("E0316", format!("invalid interpolation: {}", d.message), span, "in #{...}")),
+            Err(d) => self.diags.push(Diagnostic::error(
+                "E0316",
+                format!("invalid interpolation: {}", d.message),
+                span,
+                "in #{...}",
+            )),
         }
     }
 }
@@ -289,7 +349,10 @@ mod tests {
     #[test]
     fn dead_code_detection() {
         assert_eq!(codes("x = 1"), vec!["W0501"]);
-        assert_eq!(codes("import \"a.aura\" as a\nx = 1\ny = x"), vec!["W0502", "W0501"]); // a, y
+        assert_eq!(
+            codes("import \"a.aura\" as a\nx = 1\ny = x"),
+            vec!["W0502", "W0501"]
+        ); // a, y
         assert_eq!(codes("type T\n  a: Int\nend"), vec!["W0503"]);
         assert_eq!(codes("def f(x)\n  a: x\nend"), vec!["W0503"]);
         // используемое — не мёртвое

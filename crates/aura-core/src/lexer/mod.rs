@@ -13,7 +13,12 @@ pub struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     pub fn new(src: &'a str, source: SourceId) -> Self {
-        Lexer { src, pos: 0, source, expect_import_path: false }
+        Lexer {
+            src,
+            pos: 0,
+            source,
+            expect_import_path: false,
+        }
     }
 
     /// Fail-fast на первой лексической ошибке (SPEC §2.6).
@@ -23,7 +28,10 @@ impl<'a> Lexer<'a> {
             self.skip_trivia(&mut raw);
             let start = self.pos;
             let Some(c) = self.peek() else {
-                raw.push(Token { kind: TokenKind::Eof, span: self.span(start) });
+                raw.push(Token {
+                    kind: TokenKind::Eof,
+                    span: self.span(start),
+                });
                 break;
             };
             let kind = match c {
@@ -40,7 +48,10 @@ impl<'a> Lexer<'a> {
             };
             // Контекстный режим путей импорта действует ровно на один следующий токен (SPEC §2.4).
             self.expect_import_path = matches!(kind, TokenKind::Import);
-            raw.push(Token { kind, span: self.span(start) });
+            raw.push(Token {
+                kind,
+                span: self.span(start),
+            });
         }
         Ok(normalize(raw))
     }
@@ -59,7 +70,10 @@ impl<'a> Lexer<'a> {
 
     fn bump(&mut self) {
         // Продвижение на целый UTF-8 символ; ASCII-путь — на байт.
-        let step = self.src[self.pos..].chars().next().map_or(1, |c| c.len_utf8());
+        let step = self.src[self.pos..]
+            .chars()
+            .next()
+            .map_or(1, |c| c.len_utf8());
         self.pos += step;
     }
 
@@ -77,7 +91,10 @@ impl<'a> Lexer<'a> {
                     let start = self.pos;
                     self.pos += 1;
                     if !matches!(out.last().map(|t| &t.kind), Some(TokenKind::Newline)) {
-                        out.push(Token { kind: TokenKind::Newline, span: self.span(start) });
+                        out.push(Token {
+                            kind: TokenKind::Newline,
+                            span: self.span(start),
+                        });
                     }
                 }
                 _ => break,
@@ -99,7 +116,9 @@ impl<'a> Lexer<'a> {
                         self.pos += 1;
                     }
                     let text = &self.src[start..self.pos];
-                    return Ok(TokenKind::Float(text.parse().expect("DFA guarantees valid float")));
+                    return Ok(TokenKind::Float(
+                        text.parse().expect("DFA guarantees valid float"),
+                    ));
                 }
                 Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => {} // откат: Int, затем Dot, Ident
                 _ => {
@@ -114,7 +133,12 @@ impl<'a> Lexer<'a> {
         }
         let text = &self.src[start..self.pos];
         text.parse::<i64>().map(TokenKind::Int).map_err(|_| {
-            Diagnostic::error("E0103", "integer literal overflows i64", self.span(start), "does not fit in i64")
+            Diagnostic::error(
+                "E0103",
+                "integer literal overflows i64",
+                self.span(start),
+                "does not fit in i64",
+            )
         })
     }
 
@@ -198,7 +222,10 @@ impl<'a> Lexer<'a> {
 
     fn lex_ident_or_keyword(&mut self) -> TokenKind<'a> {
         let start = self.pos;
-        while matches!(self.peek(), Some(b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_')) {
+        while matches!(
+            self.peek(),
+            Some(b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_')
+        ) {
             self.pos += 1;
         }
         let text = &self.src[start..self.pos];
@@ -208,7 +235,10 @@ impl<'a> Lexer<'a> {
     /// SPEC §2.4 (D8): `path("/" path)* "@" "v" digits ("." digits){0,2}`; без версии — E0104.
     fn lex_import_path(&mut self) -> Result<TokenKind<'a>, Diagnostic> {
         let start = self.pos;
-        while matches!(self.peek(), Some(b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'-' | b'/')) {
+        while matches!(
+            self.peek(),
+            Some(b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' | b'-' | b'/')
+        ) {
             self.pos += 1;
         }
         let path = &self.src[start..self.pos];
@@ -250,7 +280,10 @@ impl<'a> Lexer<'a> {
                 "expected `@vX`, `@vX.Y` or `@vX.Y.Z`",
             ));
         }
-        Ok(TokenKind::ImportPath { path, version: &self.src[ver_start..self.pos] })
+        Ok(TokenKind::ImportPath {
+            path,
+            version: &self.src[ver_start..self.pos],
+        })
     }
 
     fn lex_operator(&mut self) -> Result<TokenKind<'a>, Diagnostic> {
@@ -373,11 +406,19 @@ mod tests {
     use super::*;
 
     fn kinds(src: &str) -> Vec<TokenKind<'_>> {
-        Lexer::new(src, 0).tokenize().expect("lex ok").into_iter().map(|t| t.kind).collect()
+        Lexer::new(src, 0)
+            .tokenize()
+            .expect("lex ok")
+            .into_iter()
+            .map(|t| t.kind)
+            .collect()
     }
 
     fn err(src: &str) -> &'static str {
-        Lexer::new(src, 0).tokenize().expect_err("lex must fail").code
+        Lexer::new(src, 0)
+            .tokenize()
+            .expect_err("lex must fail")
+            .code
     }
 
     use TokenKind::*;
@@ -387,38 +428,75 @@ mod tests {
         // [a \n -b] — однозначно два элемента (SPEC D2)
         assert_eq!(
             kinds("[a\n-b\n]"),
-            vec![LBracket, Ident("a"), Newline, Minus, Ident("b"), RBracket, Eof]
+            vec![
+                LBracket,
+                Ident("a"),
+                Newline,
+                Minus,
+                Ident("b"),
+                RBracket,
+                Eof
+            ]
         );
     }
 
     #[test]
     fn newline_suppressed_after_binary_op_at_top_level() {
-        assert_eq!(kinds("x = 1 +\n2"), vec![Ident("x"), Assign, Int(1), Plus, Int(2), Eof]);
+        assert_eq!(
+            kinds("x = 1 +\n2"),
+            vec![Ident("x"), Assign, Int(1), Plus, Int(2), Eof]
+        );
     }
 
     #[test]
     fn newline_kept_after_colon_for_object_blocks() {
         // Перенос после `key:` значим — открывает объектный блок (SPEC §3.2)
-        assert_eq!(kinds("security:\nx: 1\nend"), vec![
-            Ident("security"), Colon, Newline, Ident("x"), Colon, Int(1), Newline, End, Eof
-        ]);
+        assert_eq!(
+            kinds("security:\nx: 1\nend"),
+            vec![
+                Ident("security"),
+                Colon,
+                Newline,
+                Ident("x"),
+                Colon,
+                Int(1),
+                Newline,
+                End,
+                Eof
+            ]
+        );
     }
 
     #[test]
     fn newlines_inside_parens_fully_suppressed() {
-        assert_eq!(kinds("f(\n1,\n2\n)"), vec![Ident("f"), LParen, Int(1), Comma, Int(2), RParen, Eof]);
+        assert_eq!(
+            kinds("f(\n1,\n2\n)"),
+            vec![Ident("f"), LParen, Int(1), Comma, Int(2), RParen, Eof]
+        );
     }
 
     #[test]
     fn newline_suppressed_before_dot_chain() {
-        assert_eq!(kinds("a\n.b()"), vec![Ident("a"), Dot, Ident("b"), LParen, RParen, Eof]);
+        assert_eq!(
+            kinds("a\n.b()"),
+            vec![Ident("a"), Dot, Ident("b"), LParen, RParen, Eof]
+        );
     }
 
     #[test]
     fn import_path_with_version_d8() {
         assert_eq!(
             kinds("import github/actions/rust-cache@v1.2 as rust"),
-            vec![Import, ImportPath { path: "github/actions/rust-cache", version: "v1.2" }, As, Ident("rust"), Eof]
+            vec![
+                Import,
+                ImportPath {
+                    path: "github/actions/rust-cache",
+                    version: "v1.2"
+                },
+                As,
+                Ident("rust"),
+                Eof
+            ]
         );
     }
 
@@ -464,9 +542,19 @@ mod tests {
 
     #[test]
     fn comments_and_blank_lines_collapse_to_one_newline() {
-        assert_eq!(kinds("a = 1\n# comment\n\n\nb = 2"), vec![
-            Ident("a"), Assign, Int(1), Newline, Ident("b"), Assign, Int(2), Eof
-        ]);
+        assert_eq!(
+            kinds("a = 1\n# comment\n\n\nb = 2"),
+            vec![
+                Ident("a"),
+                Assign,
+                Int(1),
+                Newline,
+                Ident("b"),
+                Assign,
+                Int(2),
+                Eof
+            ]
+        );
     }
 
     #[test]

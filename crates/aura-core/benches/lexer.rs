@@ -10,7 +10,11 @@ fn bench_lexer(c: &mut Criterion) {
     let mut group = c.benchmark_group("lexer");
     group.throughput(Throughput::Bytes(big.len() as u64));
     group.bench_function("tokenize_manifest_x64", |b| {
-        b.iter(|| aura_core::lexer::Lexer::new(black_box(&big), 0).tokenize().unwrap())
+        b.iter(|| {
+            aura_core::lexer::Lexer::new(black_box(&big), 0)
+                .tokenize()
+                .unwrap()
+        })
     });
     group.finish();
 }

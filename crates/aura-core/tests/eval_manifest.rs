@@ -13,8 +13,12 @@ use indexmap::IndexMap;
 const MANIFEST: &str = include_str!("fixtures/production_deploy.aura");
 
 fn get<'a>(v: &Value<'a>, key: &str) -> Value<'a> {
-    let Value::Object(m) = v else { panic!("not an object") };
-    m.get(key).unwrap_or_else(|| panic!("no key '{key}'")).clone()
+    let Value::Object(m) = v else {
+        panic!("not an object")
+    };
+    m.get(key)
+        .unwrap_or_else(|| panic!("no key '{key}'"))
+        .clone()
 }
 
 fn eval_manifest() -> Value<'static> {
@@ -23,13 +27,17 @@ fn eval_manifest() -> Value<'static> {
     // Box::leak: в тесте модуль должен пережить возврат значения ('static)
     let module = Box::leak(Box::new(module));
 
-    let mut it = Interpreter::new(Options { strict: true, dry_run: false });
+    let mut it = Interpreter::new(Options {
+        strict: true,
+        dry_run: false,
+    });
     it.fs = Box::new(MemFs(HashMap::from([(
         "./Cargo.toml".to_string(),
         "[package]\nname = \"app\"\nversion = \"1.2.3\"\n".to_string(),
     )])));
     it.env_cap = EnvCap::Allow(vec!["APP_ENV".to_string()]);
-    it.env_overrides.insert("APP_ENV".to_string(), "production".to_string());
+    it.env_overrides
+        .insert("APP_ENV".to_string(), "production".to_string());
 
     // Импорты: rust — пустой модуль, defaults — объект с global_labels
     it.provide_module("rust", Value::object(IndexMap::new()));
@@ -39,7 +47,8 @@ fn eval_manifest() -> Value<'static> {
     defaults.insert("global_labels".to_string(), Value::object(labels));
     it.provide_module("defaults", Value::object(defaults));
 
-    it.eval_module(module).unwrap_or_else(|d| panic!("eval failed: {d:#?}"))
+    it.eval_module(module)
+        .unwrap_or_else(|d| panic!("eval failed: {d:#?}"))
 }
 
 #[test]
@@ -64,10 +73,15 @@ fn manifest_evaluates_end_to_end() {
     // Вложенные объектные блоки
     let security = get(&domain, "security");
     assert_eq!(get(&security, "tls_enabled"), Value::Bool(true));
-    assert_eq!(get(&get(&security, "certificates"), "cert_path"), Value::str("/etc/ssl/certs/server.crt"));
+    assert_eq!(
+        get(&get(&security, "certificates"), "cert_path"),
+        Value::str("/etc/ssl/certs/server.crt")
+    );
 
     // apps: map + component + интерполяция + merge импортированных labels
-    let Value::List(apps) = get(&domain, "apps") else { panic!() };
+    let Value::List(apps) = get(&domain, "apps") else {
+        panic!()
+    };
     assert_eq!(apps.len(), 3);
     assert_eq!(get(&apps[0], "name"), Value::str("auth"));
     assert_eq!(get(&apps[0], "image"), Value::str("company/auth:1.2.3"));

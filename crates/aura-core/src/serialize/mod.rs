@@ -20,9 +20,10 @@ fn go(v: &Value<'_>, path: &mut Vec<String>) -> Result<serde_json::Value, Diagno
         Value::Null => J::Null,
         Value::Bool(b) => J::Bool(*b),
         Value::Int(n) => J::Number((*n).into()),
-        Value::Float(n) => J::Number(serde_json::Number::from_f64(*n).ok_or_else(|| {
-            err("E0602", format!("non-finite float at '{}'", path.join(".")))
-        })?),
+        Value::Float(n) => J::Number(
+            serde_json::Number::from_f64(*n)
+                .ok_or_else(|| err("E0602", format!("non-finite float at '{}'", path.join("."))))?,
+        ),
         Value::Str(s) => J::String(s.to_string()),
         Value::List(xs) => {
             let mut out = Vec::with_capacity(xs.len());
@@ -46,7 +47,11 @@ fn go(v: &Value<'_>, path: &mut Vec<String>) -> Result<serde_json::Value, Diagno
         Value::Schema(_) | Value::Function(_) => {
             return Err(err(
                 "E0601",
-                format!("{} is not serializable (at '{}')", v.type_name(), path.join(".")),
+                format!(
+                    "{} is not serializable (at '{}')",
+                    v.type_name(),
+                    path.join(".")
+                ),
             ))
         }
     })
@@ -62,26 +67,43 @@ pub fn to_yaml_string(v: &Value<'_>) -> Result<String, Diagnostic> {
 pub fn to_toml_string(v: &Value<'_>) -> Result<String, Diagnostic> {
     let json = to_json(v)?;
     if !json.is_object() {
-        return Err(err("E0603", "TOML requires an object at the top level".to_string()));
+        return Err(err(
+            "E0603",
+            "TOML requires an object at the top level".to_string(),
+        ));
     }
-    toml::to_string_pretty(&json)
-        .map_err(|e| err("E0603", format!("cannot emit TOML (note: TOML has no null): {e}")))
+    toml::to_string_pretty(&json).map_err(|e| {
+        err(
+            "E0603",
+            format!("cannot emit TOML (note: TOML has no null): {e}"),
+        )
+    })
 }
 
 /// `--format json-flat`: вложенные объекты уплощаются в `a.b.c`; списки и скаляры — листья.
 pub fn to_json_flat(v: &Value<'_>) -> Result<serde_json::Value, Diagnostic> {
     let json = to_json(v)?;
-    let serde_json::Value::Object(map) = json else { return Ok(json) };
+    let serde_json::Value::Object(map) = json else {
+        return Ok(json);
+    };
     let mut out = serde_json::Map::new();
     flatten("", &serde_json::Value::Object(map), &mut out);
     Ok(serde_json::Value::Object(out))
 }
 
-fn flatten(prefix: &str, v: &serde_json::Value, out: &mut serde_json::Map<String, serde_json::Value>) {
+fn flatten(
+    prefix: &str,
+    v: &serde_json::Value,
+    out: &mut serde_json::Map<String, serde_json::Value>,
+) {
     match v {
         serde_json::Value::Object(m) => {
             for (k, inner) in m {
-                let key = if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") };
+                let key = if prefix.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{prefix}.{k}")
+                };
                 flatten(&key, inner, out);
             }
         }

@@ -38,7 +38,15 @@ fn rt(code: &'static str, msg: impl Into<String>, span: Span) -> Diagnostic {
 
 impl<'a, 'r> Loader<'a, 'r> {
     pub fn new(cache: &'a SourceCache, resolver: &'r dyn FileResolver) -> Self {
-        Loader { cache, resolver, lock: Lockfile::default(), frozen: false, state: HashMap::new(), values: HashMap::new(), chain: Vec::new() }
+        Loader {
+            cache,
+            resolver,
+            lock: Lockfile::default(),
+            frozen: false,
+            state: HashMap::new(),
+            values: HashMap::new(),
+            chain: Vec::new(),
+        }
     }
 
     /// Точка входа: корневой модуль получает I/O-capabilities интерпретатора.
@@ -67,7 +75,11 @@ impl<'a, 'r> Loader<'a, 'r> {
             Some(LoadState::Loading) => {
                 let mut chain: Vec<String> = self.chain.iter().map(ModuleId::to_string).collect();
                 chain.push(id.to_string());
-                return Err(rt("E0401", format!("cyclic import: {}", chain.join(" -> ")), err_span));
+                return Err(rt(
+                    "E0401",
+                    format!("cyclic import: {}", chain.join(" -> ")),
+                    err_span,
+                ));
             }
             None => {}
         }
@@ -104,7 +116,9 @@ impl<'a, 'r> Loader<'a, 'r> {
 
         let (source_id, src) = self.cache.add(id.to_string(), text);
         let toks = Lexer::new(src, source_id).tokenize()?;
-        let module = Parser::new(toks).parse_module().map_err(|mut ds| ds.remove(0))?;
+        let module = Parser::new(toks)
+            .parse_module()
+            .map_err(|mut ds| ds.remove(0))?;
 
         // Сначала рекурсивно вычисляем все импорты, затем публикуем алиасы:
         // дочерние модули перезаписывают глобальную карту алиасов во время своего eval.
@@ -142,8 +156,13 @@ impl<'a, 'r> Loader<'a, 'r> {
             let request = parse_version(version)
                 .ok_or_else(|| rt("E0404", format!("malformed version '{version}'"), span))?;
             if let Some(entry) = self.lock.entries.get(*path) {
-                if parse_version(&entry.version).is_some_and(|locked| version_satisfies(&request, &locked)) {
-                    return Ok(ModuleId::Registry { path: path.to_string(), version: entry.version.clone() });
+                if parse_version(&entry.version)
+                    .is_some_and(|locked| version_satisfies(&request, &locked))
+                {
+                    return Ok(ModuleId::Registry {
+                        path: path.to_string(),
+                        version: entry.version.clone(),
+                    });
                 }
             }
             if self.frozen {
@@ -154,28 +173,45 @@ impl<'a, 'r> Loader<'a, 'r> {
                 ));
             }
         }
-        self.resolver.resolve(spec, importer).map_err(|e| rt("E0404", e, span))
+        self.resolver
+            .resolve(spec, importer)
+            .map_err(|e| rt("E0404", e, span))
     }
 
     /// Integrity-проверка registry-модулей (E0402) и дозапись лока.
     fn verify_lock(&mut self, id: &ModuleId, text: &str, span: Span) -> Result<(), Diagnostic> {
-        let ModuleId::Registry { path, version } = id else { return Ok(()) };
+        let ModuleId::Registry { path, version } = id else {
+            return Ok(());
+        };
         let hash = integrity_of(text);
         match self.lock.entries.get(path) {
             Some(entry) if entry.version == *version => {
                 if entry.integrity != hash {
                     return Err(rt(
                         "E0402",
-                        format!("integrity mismatch for '{path}@v{version}': lock has {}, got {hash}", entry.integrity),
+                        format!(
+                            "integrity mismatch for '{path}@v{version}': lock has {}, got {hash}",
+                            entry.integrity
+                        ),
                         span,
                     ));
                 }
             }
             _ => {
                 if self.frozen {
-                    return Err(rt("E0403", format!("--frozen: '{path}@v{version}' is not in aura.lock"), span));
+                    return Err(rt(
+                        "E0403",
+                        format!("--frozen: '{path}@v{version}' is not in aura.lock"),
+                        span,
+                    ));
                 }
-                self.lock.entries.insert(path.clone(), LockEntry { version: version.clone(), integrity: hash });
+                self.lock.entries.insert(
+                    path.clone(),
+                    LockEntry {
+                        version: version.clone(),
+                        integrity: hash,
+                    },
+                );
                 self.lock.dirty = true;
             }
         }
