@@ -13,20 +13,41 @@ jobs:
     name: Test (${{ matrix.os }})
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       # Юниты, интеграционные тесты и conformance-suite (examples/*/expected.*)
       - run: cargo test --workspace
 
+  # Переносимость ядра: aura-core — чистый Rust без C-зависимостей,
+  # cargo check ловит несовместимые зависимости и платформенные дыры.
+  # CLI (ureq/rustls) проверяется нативными сборками в test-матрице.
+  cross-check:
+    name: Cross-check core (${{ matrix.target }})
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-freebsd
+          - aarch64-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
+          - wasm32-unknown-unknown
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check -p aura-core --target ${{ matrix.target }}
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -43,7 +64,7 @@ jobs:
     name: Reference manifest (--strict analysis is intentionally red-tested in conformance)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build -p aura-cli
