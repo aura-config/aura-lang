@@ -195,16 +195,19 @@ fn security_demo_denies_import_io() {
         run.stderr.contains("evil_dependency.aura"),
         "error must point into the module"
     );
-    // --allow-imports-io снимает запрет ровно до следующего барьера: самого файла нет прав читать?
-    // Нет: с флагом чтение /etc/passwd на Windows упадёт по I/O — проверяем только смену кода ошибки.
+    // --allow-imports-io снимает именно запрет "импорт без прав"; дальше срабатывает
+    // следующий барьер, и он платформенно-зависим: на Linux /etc/passwd существует,
+    // но лежит вне --allow-read=. (E0310 про путь), на Windows файла нет (E0313 I/O).
+    // Инвариант один: ошибки "imported module has no capability" больше нет.
     let run2 = aura(
         &dir,
         &["eval", "main.aura", "--allow-read=.", "--allow-imports-io"],
         &[],
     );
     assert!(
-        !run2.stderr.contains("E0310"),
-        "with --allow-imports-io the capability error must go away"
+        !run2.stderr.contains("imported module has no capability"),
+        "with --allow-imports-io the import-capability error must go away, got:\n{}",
+        run2.stderr
     );
 }
 
