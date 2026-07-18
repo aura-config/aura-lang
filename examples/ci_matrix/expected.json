@@ -1,0 +1,31 @@
+{
+  "jobs": [
+    {
+      "name": "rust-1.75",
+      "order": 0,
+      "toolchain": "1.75",
+      "targets": [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-apple-darwin"
+      ]
+    },
+    {
+      "name": "rust-stable",
+      "order": 1,
+      "toolchain": "stable",
+      "targets": [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-apple-darwin"
+      ]
+    },
+    {
+      "name": "rust-beta",
+      "order": 2,
+      "toolchain": "beta",
+      "targets": [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-apple-darwin"
+      ]
+    }
+  ]
+}

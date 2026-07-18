@@ -294,6 +294,8 @@ $ cargo bench         # бенчмарки лексера, парсера, по�
 
 Полная спецификация языка и архитектуры — [SPEC.md](SPEC.md). Эталонный манифест,
 который обязан проходить весь пайплайн, — [examples/production_deploy.aura](examples/production_deploy.aura).
+Шесть тематических примеров (k8s, CI-матрица, feature-флаги, каталог сервисов,
+демонстрация capability-модели) — в [examples/](examples/README.md).
 
 ## Статус и дорожная карта
 

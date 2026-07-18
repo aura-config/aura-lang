@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/version: 2.4.1
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+      - name: gateway
+        image: company/gateway:2.4.1
+        port: 8080
+

@@ -1,0 +1,14 @@
+# Мульти-окружение без копипасты: одна функция вместо трёх YAML-файлов.
+# Запуск: aura eval environments.aura
+
+def make_env(name, replicas, debug)
+  replicas: replicas
+  log_level: debug ? "debug" : "warn"
+  db_url: "postgres://db.#{name}.internal:5432/app"
+end
+
+environments:
+  dev:     make_env("dev", 1, true)
+  staging: make_env("staging", 2, false)
+  prod:    make_env("prod", 6, false)
+end

@@ -1,0 +1,19 @@
+{
+  "environments": {
+    "dev": {
+      "replicas": 1,
+      "log_level": "debug",
+      "db_url": "postgres://db.dev.internal:5432/app"
+    },
+    "staging": {
+      "replicas": 2,
+      "log_level": "warn",
+      "db_url": "postgres://db.staging.internal:5432/app"
+    },
+    "prod": {
+      "replicas": 6,
+      "log_level": "warn",
+      "db_url": "postgres://db.prod.internal:5432/app"
+    }
+  }
+}

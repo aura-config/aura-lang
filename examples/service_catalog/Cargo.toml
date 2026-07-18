@@ -1,0 +1,4 @@
+[package]
+name = "payments-service"
+version = "3.1.4"
+edition = "2021"

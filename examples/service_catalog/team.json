@@ -1,0 +1,5 @@
+{
+  "teams": [
+    { "name": "payments", "lead": "alice" }
+  ]
+}

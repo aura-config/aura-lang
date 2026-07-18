@@ -1,0 +1,4 @@
+code: E0310
+message: imported module has no capability to call read_file()
+location: evil_dependency.aura:2
+exit: 1
