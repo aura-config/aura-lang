@@ -1,0 +1,333 @@
+//! Статический анализ (SPEC §6.1): один проход по AST со стеком областей,
+//! зеркалирующим Environment. Работает до рантайма.
+//!
+//! Ошибки (всегда): E0504 undefined variable, статические E0301/E0302.
+//! Предупреждения (в --strict повышаются до ошибок вызывающей стороной):
+//! W0501 unused variable, W0502 unused import, W0503 unused function/type,
+//! W0303 useless shadow, W0512 effectful call in imported module.
+
+use indexmap::IndexMap;
+
+use crate::error::{Diagnostic, Severity};
+use crate::lexer::token::StrPart;
+use crate::lexer::Lexer;
+use crate::parser::ast::*;
+use crate::parser::Parser;
+use crate::span::Span;
+
+const BUILTINS: &[&str] = &["env", "read_file", "fail"];
+const EFFECTFUL: &[&str] = &["env", "read_file"];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeclKind {
+    Var,
+    /// Параметры функций/лямбд не считаются мёртвым кодом (сигнатура может требовать их).
+    Param,
+    Import,
+    Func,
+    Type,
+}
+
+struct Decl {
+    span: Span,
+    used: bool,
+    kind: DeclKind,
+}
+
+pub struct SemanticAnalyzer<'a> {
+    scopes: Vec<IndexMap<&'a str, Decl>>,
+    diags: Vec<Diagnostic>,
+    is_root: bool,
+}
+
+/// `is_root = false` — анализ импортированного модуля (включает W0512).
+pub fn analyze<'a>(module: &Module<'a>, is_root: bool) -> Vec<Diagnostic> {
+    let mut a = SemanticAnalyzer { scopes: Vec::new(), diags: Vec::new(), is_root };
+    a.push_scope();
+    for imp in &module.imports {
+        a.declare(imp.alias, imp.span, DeclKind::Import, false);
+    }
+    for stmt in &module.stmts {
+        a.walk_stmt(stmt);
+    }
+    a.pop_scope();
+    a.diags
+}
+
+/// Есть ли блокирующие диагностики: ошибки всегда, в strict — и предупреждения (SPEC §6.1).
+pub fn has_blocking(diags: &[Diagnostic], strict: bool) -> bool {
+    diags.iter().any(|d| strict || d.severity == Severity::Error)
+}
+
+impl<'a> SemanticAnalyzer<'a> {
+    fn push_scope(&mut self) {
+        self.scopes.push(IndexMap::new());
+    }
+
+    /// На выходе из области — отчёт о мёртвом коде (SPEC §6.1, шаг 3).
+    fn pop_scope(&mut self) {
+        let scope = self.scopes.pop().expect("scope stack underflow");
+        for (name, decl) in scope {
+            if decl.used {
+                continue;
+            }
+            let (code, what) = match decl.kind {
+                DeclKind::Var => ("W0501", "variable"),
+                DeclKind::Import => ("W0502", "import"),
+                DeclKind::Func => ("W0503", "function"),
+                DeclKind::Type => ("W0503", "type"),
+                DeclKind::Param => continue,
+            };
+            self.diags.push(Diagnostic::warning(code, format!("unused {what} '{name}'"), decl.span, "never used"));
+        }
+    }
+
+    fn declare(&mut self, name: &'a str, span: Span, kind: DeclKind, shadow: bool) {
+        let in_current = self.scopes.last().map_or(false, |s| s.contains_key(name));
+        if in_current {
+            self.diags.push(Diagnostic::error(
+                "E0301",
+                format!("'{name}' is already defined in this scope"),
+                span,
+                "duplicate definition",
+            ));
+            return;
+        }
+        let outer = self.lookup_span(name);
+        match (shadow, outer) {
+            (false, Some(orig)) if kind == DeclKind::Var => {
+                let mut d = Diagnostic::error("E0302", format!("'{name}' shadows an outer variable"), span, "add `shadow`");
+                d.secondary.push((orig, "outer variable declared here".to_string()));
+                d.help = Some(format!("write `shadow {name} = ...` to make the shadowing explicit"));
+                self.diags.push(d);
+            }
+            (true, None) => {
+                self.diags.push(Diagnostic::warning("W0303", format!("`shadow` on '{name}' shadows nothing"), span, "remove `shadow`"));
+            }
+            _ => {}
+        }
+        self.scopes.last_mut().unwrap().insert(name, Decl { span, used: false, kind });
+    }
+
+    fn lookup_span(&self, name: &str) -> Option<Span> {
+        self.scopes.iter().rev().skip(1).find_map(|s| s.get(name).map(|d| d.span))
+    }
+
+    /// Шаг 2 SPEC §6.1: пометка ближайшего объявления (учитывает shadowing).
+    fn mark_used(&mut self, name: &str, span: Span) {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(decl) = scope.get_mut(name) {
+                decl.used = true;
+                return;
+            }
+        }
+        if !BUILTINS.contains(&name) {
+            self.diags.push(Diagnostic::error("E0504", format!("use of undefined variable '{name}'"), span, "not found in any scope"));
+        }
+    }
+
+    fn walk_stmt(&mut self, stmt: &Stmt<'a>) {
+        match stmt {
+            Stmt::Assign { name, shadow, value, span } => {
+                self.walk_expr(value); // значение не видит собственное имя
+                self.declare(name, *span, DeclKind::Var, *shadow);
+            }
+            Stmt::Property { value, .. } => self.walk_expr(value),
+            Stmt::Assert { cond, message, .. } => {
+                self.walk_expr(cond);
+                if let Some(m) = message {
+                    self.walk_expr(m);
+                }
+            }
+            Stmt::TypeDecl(schema) => {
+                for (_, ty) in &schema.fields {
+                    if let TypeName::Custom(name) = ty {
+                        self.mark_used(name, schema.span);
+                    }
+                }
+                self.declare(schema.name, schema.span, DeclKind::Type, false);
+            }
+            Stmt::FuncDecl { name, params, body, span } => {
+                self.declare(name, *span, DeclKind::Func, false);
+                self.push_scope();
+                for p in params {
+                    self.declare(p, *span, DeclKind::Param, false);
+                }
+                self.walk_object_body(body);
+                self.pop_scope();
+            }
+            Stmt::Block(block) => self.walk_block(block),
+            Stmt::Expr(e) => self.walk_expr(e),
+        }
+    }
+
+    fn walk_block(&mut self, block: &BlockDeclaration<'a>) {
+        self.walk_expr(&block.label);
+        self.push_scope();
+        for stmt in &block.body {
+            self.walk_stmt(stmt);
+        }
+        self.pop_scope();
+    }
+
+    fn walk_object_body(&mut self, body: &ObjectBody<'a>) {
+        for (_, value, _) in &body.props {
+            self.walk_expr(value);
+        }
+    }
+
+    fn walk_expr(&mut self, e: &Expr<'a>) {
+        match e {
+            Expr::Literal(LitValue::InterpStr(parts), span) => {
+                for part in parts {
+                    if let StrPart::Interp(src) = part {
+                        self.walk_interp(src, *span);
+                    }
+                }
+            }
+            Expr::Literal(..) => {}
+            Expr::Variable(name, span) => self.mark_used(name, *span),
+            Expr::Unary { rhs, .. } => self.walk_expr(rhs),
+            Expr::Binary { lhs, rhs, .. } => {
+                self.walk_expr(lhs);
+                self.walk_expr(rhs);
+            }
+            Expr::Ternary { cond, then, otherwise, .. } => {
+                self.walk_expr(cond);
+                self.walk_expr(then);
+                self.walk_expr(otherwise);
+            }
+            Expr::Call { callee, args, span } => {
+                // W0512: эффектный вызов в импортированном модуле (SPEC §6.1, D1)
+                if let Expr::Variable(name, _) = callee.as_ref() {
+                    if !self.is_root && EFFECTFUL.contains(name) {
+                        self.diags.push(Diagnostic::warning(
+                            "W0512",
+                            format!("effectful call {name}() in imported module"),
+                            *span,
+                            "imports have no I/O capability by default",
+                        ));
+                    }
+                }
+                self.walk_expr(callee);
+                for a in args {
+                    self.walk_expr(a);
+                }
+            }
+            Expr::MethodCall { recv, args, lambda, .. } => {
+                self.walk_expr(recv);
+                for a in args {
+                    self.walk_expr(a);
+                }
+                if let Some(l) = lambda {
+                    self.walk_expr(l);
+                }
+            }
+            Expr::FieldAccess { recv, .. } => self.walk_expr(recv),
+            Expr::ObjectLiteral(body) => self.walk_object_body(body),
+            Expr::ListLiteral(items, _) => {
+                for i in items {
+                    self.walk_expr(i);
+                }
+            }
+            Expr::Lambda { params, body, span } => {
+                self.push_scope();
+                for p in params {
+                    self.declare(p, *span, DeclKind::Param, false);
+                }
+                match body {
+                    LambdaBody::Expr(e) => self.walk_expr(e),
+                    LambdaBody::Object(b) => self.walk_object_body(b),
+                }
+                self.pop_scope();
+            }
+            Expr::SchemaInstance { schema, body, span } => {
+                self.mark_used(schema, *span);
+                self.walk_object_body(body);
+            }
+            Expr::Block(b) => self.walk_block(b),
+        }
+    }
+
+    /// `#{expr}` парсится и анализируется как обычное выражение — переменные,
+    /// используемые только в интерполяции, не считаются мёртвыми.
+    fn walk_interp(&mut self, src: &'a str, span: Span) {
+        let parsed = Lexer::new(src, span.source)
+            .tokenize()
+            .and_then(|toks| Parser::new(toks).parse_expression());
+        match parsed {
+            Ok(expr) => self.walk_expr(&expr),
+            Err(d) => self
+                .diags
+                .push(Diagnostic::error("E0316", format!("invalid interpolation: {}", d.message), span, "in #{...}")),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn diags(src: &str) -> Vec<Diagnostic> {
+        diags_as(src, true)
+    }
+
+    fn diags_as(src: &str, is_root: bool) -> Vec<Diagnostic> {
+        let toks = Lexer::new(src, 0).tokenize().expect("lex ok");
+        let module = Parser::new(toks).parse_module().expect("parse ok");
+        analyze(&module, is_root)
+    }
+
+    fn codes(src: &str) -> Vec<&'static str> {
+        diags(src).into_iter().map(|d| d.code).collect()
+    }
+
+    #[test]
+    fn dead_code_detection() {
+        assert_eq!(codes("x = 1"), vec!["W0501"]);
+        assert_eq!(codes("import \"a.aura\" as a\nx = 1\ny = x"), vec!["W0502", "W0501"]); // a, y
+        assert_eq!(codes("type T\n  a: Int\nend"), vec!["W0503"]);
+        assert_eq!(codes("def f(x)\n  a: x\nend"), vec!["W0503"]);
+        // используемое — не мёртвое
+        assert!(codes("x = 1\ny = x + 1\nassert y > 0").is_empty());
+    }
+
+    #[test]
+    fn undefined_variable_is_e0504() {
+        assert!(codes("x = nope + 1").contains(&"E0504"));
+        // builtin'ы не считаются неопределёнными
+        assert!(!codes("assert fail == fail").contains(&"E0504"));
+    }
+
+    #[test]
+    fn static_shadow_rules() {
+        assert!(codes("x = 1\ndomain \"d\"\n  x = 2\nend").contains(&"E0302"));
+        assert!(codes("x = 1\nx = 2").contains(&"E0301"));
+        assert!(codes("shadow x = 1\nassert x == 1").contains(&"W0303"));
+        // корректный shadow — чисто
+        let src = "x = 1\ndomain \"d\"\n  shadow x = 2\n  assert x == 2\nend\nassert x == 1";
+        assert!(codes(src).is_empty());
+    }
+
+    #[test]
+    fn interpolation_uses_are_counted() {
+        // x используется только внутри #{} — не мёртвый
+        assert!(codes("x = 1\ns = \"v#{x}\"\nassert s == \"v1\"").is_empty());
+        // неопределённая переменная внутри #{} ловится
+        assert!(codes("s = \"v#{nope}\"\nassert s == \"\"").contains(&"E0504"));
+    }
+
+    #[test]
+    fn effectful_call_in_import_is_w0512() {
+        let src = "x = env(\"A\", \"b\")\nassert x == x";
+        assert!(!diags_as(src, true).iter().any(|d| d.code == "W0512"));
+        assert!(diags_as(src, false).iter().any(|d| d.code == "W0512"));
+    }
+
+    #[test]
+    fn strict_upgrades_warnings_to_blocking() {
+        let ds = diags("x = 1");
+        assert!(!has_blocking(&ds, false));
+        assert!(has_blocking(&ds, true));
+    }
+}
