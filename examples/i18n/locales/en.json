@@ -1,0 +1,5 @@
+{
+  "start.greeting": "Hello, {user}!",
+  "errors.not_found": "Not found",
+  "menu.settings": "Settings"
+}

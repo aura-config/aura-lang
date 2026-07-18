@@ -1,0 +1,4 @@
+{
+  "start.greeting": "Привет, {user}!",
+  "errors.not_found": "Не найдено"
+}

@@ -1,0 +1,18 @@
+{
+  "locales": {
+    "en": {
+      "start.greeting": "Hello, {user}!",
+      "errors.not_found": "Not found",
+      "menu.settings": "Settings"
+    },
+    "ru": {
+      "start.greeting": "Привет, {user}!",
+      "errors.not_found": "Не найдено",
+      "menu.settings": "Settings"
+    }
+  },
+  "stats": {
+    "total_keys": 3,
+    "translated_ru": 2
+  }
+}

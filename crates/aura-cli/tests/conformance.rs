@@ -146,6 +146,17 @@ fn telegram_bot_prod_switches_mode() {
 }
 
 #[test]
+fn i18n_fallback_merge() {
+    check_ok(
+        "i18n",
+        "i18n.aura",
+        &["--allow-read=."],
+        &[],
+        "expected.json",
+    );
+}
+
+#[test]
 fn service_catalog() {
     check_ok(
         "service_catalog",

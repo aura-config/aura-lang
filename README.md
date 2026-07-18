@@ -162,8 +162,8 @@ end
 ```
 
 Встроенные методы: `upper` `lower` `len` `compact` `uniq` `map` `filter` `merge`
-`first` `last` `get` `parse_toml` `parse_json` `parse_yaml` `to_json` `to_yaml`
-`to_toml`. Реестр расширяем без изменений парсера.
+`first` `last` `get` `keys` `values` `contains` `join` `parse_toml` `parse_json`
+`parse_yaml` `to_json` `to_yaml` `to_toml`. Реестр расширяем без изменений парсера.
 
 ### Доступ к данным
 
@@ -180,6 +180,22 @@ optional: loaded.get("maybe", "fallback")  # безопасный доступ �
 ```
 
 Опечатка в ключе — ошибка `E0308` с позицией, а не молчаливый `null`.
+
+### Aura как конвертер форматов
+
+Поскольку язык читает TOML/JSON/YAML и пишет во все три, конвертация — однострочник:
+
+```ruby
+# convert.aura
+config: read_file("./legacy.toml").parse_toml()
+```
+
+```console
+aura eval convert.aura --allow-read=. --format yaml   # TOML → YAML
+```
+
+В отличие от `yq`/`jq`, по пути можно валидировать схемой, мержить несколько
+источников и добавлять `assert`-проверки — конвертация с гарантиями.
 
 ### Модули
 

@@ -505,8 +505,8 @@ impl<'a> Interpreter<'a> {
         self.eval_expr(env, &expr)
     }
 
-    /// Только скаляры допустимы в интерполяции (E0307).
-    fn display(&self, v: &Value<'a>, span: Span) -> Result<String, Diagnostic> {
+    /// Только скаляры допустимы в интерполяции и join (E0307).
+    pub(crate) fn display(&self, v: &Value<'a>, span: Span) -> Result<String, Diagnostic> {
         Ok(match v {
             Value::Str(s) => s.to_string(),
             Value::Int(n) => n.to_string(),
@@ -991,6 +991,20 @@ mod tests {
         // динамический ключ через скобки на объекте запрещён
         let bad = "def mk()\n  a: 1\nend\nk = \"a\"\nx: mk()[k]";
         assert_eq!(eval(bad).unwrap_err().code, "E0318");
+    }
+
+    #[test]
+    fn keys_values_contains_join() {
+        let src = "def mk()\n  a: 1\n  b: 2\nend\nks: mk().keys().join(\",\")\nvs: mk().values()\nhk: mk().contains(\"a\")\nhe: [1, 2].contains(3)\nhs: \"hello\".contains(\"ell\")";
+        let v = eval(src).unwrap();
+        assert_eq!(get(&v, "ks"), Value::str("a,b"));
+        assert_eq!(
+            get(&v, "vs"),
+            Value::list(vec![Value::Int(1), Value::Int(2)])
+        );
+        assert_eq!(get(&v, "hk"), Value::Bool(true));
+        assert_eq!(get(&v, "he"), Value::Bool(false));
+        assert_eq!(get(&v, "hs"), Value::Bool(true));
     }
 
     #[test]

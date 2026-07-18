@@ -46,6 +46,12 @@ impl<'a> MethodRegistry<'a> {
         r.register(TypeTag::List, "map", m_list_map);
         r.register(TypeTag::List, "filter", m_list_filter);
         r.register(TypeTag::List, "get", m_get);
+        r.register(TypeTag::List, "contains", m_contains);
+        r.register(TypeTag::List, "join", m_list_join);
+        r.register(TypeTag::Str, "contains", m_contains);
+        r.register(TypeTag::Object, "keys", m_obj_keys);
+        r.register(TypeTag::Object, "values", m_obj_values);
+        r.register(TypeTag::Object, "contains", m_contains);
         r.register(TypeTag::List, "first", m_list_first);
         r.register(TypeTag::List, "last", m_list_last);
         r.register(TypeTag::Object, "len", m_len);
@@ -342,6 +348,98 @@ fn m_to_toml<'a>(
     crate::serialize::to_toml_string(recv)
         .map(Value::str)
         .map_err(|d| rt(d.code, d.message, sp))
+}
+
+/// `.keys()` — ключи объекта в порядке объявления.
+fn m_obj_keys<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    _sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Object(m) = recv else {
+        unreachable!()
+    };
+    Ok(Value::list(m.keys().map(Value::str).collect()))
+}
+
+fn m_obj_values<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    _sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Object(m) = recv else {
+        unreachable!()
+    };
+    Ok(Value::list(m.values().cloned().collect()))
+}
+
+/// `.contains(x)`: List — элемент; Object — ключ; Str — подстрока.
+fn m_contains<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Some(needle) = args.first() else {
+        return Err(rt("E0306", "contains() expects an argument", sp));
+    };
+    let found = match (recv, needle) {
+        (Value::List(xs), n) => xs.contains(n),
+        (Value::Object(m), Value::Str(k)) => m.contains_key(k.as_ref()),
+        (Value::Str(s), Value::Str(sub)) => s.contains(sub.as_ref()),
+        (Value::Object(_), n) => {
+            return Err(rt(
+                "E0306",
+                format!(
+                    "Object.contains expects a String key, got {}",
+                    n.type_name()
+                ),
+                sp,
+            ))
+        }
+        (Value::Str(_), n) => {
+            return Err(rt(
+                "E0306",
+                format!("String.contains expects a String, got {}", n.type_name()),
+                sp,
+            ))
+        }
+        _ => unreachable!(),
+    };
+    Ok(Value::Bool(found))
+}
+
+/// `.join(sep)` — скалярные элементы через разделитель (без аргумента — пустой).
+fn m_list_join<'a>(
+    it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    let sep = match args.first() {
+        Some(Value::Str(s)) => s.to_string(),
+        None => String::new(),
+        Some(other) => {
+            return Err(rt(
+                "E0306",
+                format!(
+                    "join() expects a String separator, got {}",
+                    other.type_name()
+                ),
+                sp,
+            ))
+        }
+    };
+    let parts: Vec<String> = xs
+        .iter()
+        .map(|v| it.display(v, sp))
+        .collect::<Result<_, _>>()?;
+    Ok(Value::str(parts.join(&sep)))
 }
 
 fn json_to_value<'a>(j: serde_json::Value) -> Value<'a> {

@@ -18,7 +18,11 @@ use aura_core::vfs::lockfile::Lockfile;
 use aura_core::vfs::{ImportSpec, LocalFsResolver};
 
 fn version_string() -> String {
-    format!("{} (Aura language v{})", env!("CARGO_PKG_VERSION"), aura_core::LANGUAGE_VERSION)
+    format!(
+        "{} (Aura language v{})",
+        env!("CARGO_PKG_VERSION"),
+        aura_core::LANGUAGE_VERSION
+    )
 }
 
 #[derive(ClapParser)]

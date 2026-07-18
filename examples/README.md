@@ -11,6 +11,7 @@
 | [feature_flags/](feature_flags/) | `assert` как защита прода: опасная комбинация флагов останавливает деплой (E0530) | `aura eval feature_flags.aura --allow-env=APP_ENV` |
 | [service_catalog/](service_catalog/) | Данные из существующих файлов проекта: `parse_toml`/`parse_json`, индексация `teams[0]`, `.get` с fallback | `aura eval service_catalog.aura --allow-read=.` |
 | [security_demo/](security_demo/) | Capability-модель: импортированный модуль пытается читать `/etc/passwd` и получает **E0310** — права корня на импорт не распространяются | `aura eval main.aura --allow-read=.` *(ожидаемо падает!)* |
+| [i18n/](i18n/) | Сборка локализаций: переводчики работают с плоскими JSON, Aura валидирует (ключи-сироты через `keys`/`contains`/`filter`) и мержит с fallback на базовую локаль | `aura eval i18n.aura --allow-read=.` |
 | [telegram_bot/](telegram_bot/) | Конфиг телеграм-бота: секреты вне конфига (`token_env_var`), команды со схемой, dev/prod-переключение режима и лимитов, анти-дубль админов через `assert`, локализация со строковыми ключами | `aura eval bot.aura --allow-env=BOT_ENV` |
 
 Корневой [production_deploy.aura](production_deploy.aura) — эталонный манифест из [SPEC.md](../SPEC.md):
