@@ -17,8 +17,12 @@ use aura_core::vfs::loader::Loader;
 use aura_core::vfs::lockfile::Lockfile;
 use aura_core::vfs::{ImportSpec, LocalFsResolver};
 
+fn version_string() -> String {
+    format!("{} (Aura language v{})", env!("CARGO_PKG_VERSION"), aura_core::LANGUAGE_VERSION)
+}
+
 #[derive(ClapParser)]
-#[command(name = "aura", version, about = "Aura v1.2 configuration language")]
+#[command(name = "aura", version = version_string(), about = "Aura configuration language")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
