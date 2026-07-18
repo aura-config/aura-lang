@@ -1,0 +1,77 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Aura",
+  "scopeName": "source.aura",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#keyword" },
+    { "include": "#constant" },
+    { "include": "#builtin" },
+    { "include": "#number" },
+    { "include": "#schema-type" },
+    { "include": "#property" },
+    { "include": "#operator" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.number-sign.aura",
+      "match": "#(?!\\{).*$"
+    },
+    "string": {
+      "name": "string.quoted.double.aura",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        { "name": "constant.character.escape.aura", "match": "\\\\[nt\"\\\\#]" },
+        {
+          "name": "meta.embedded.interpolation.aura",
+          "begin": "#\\{",
+          "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.aura" } },
+          "end": "\\}",
+          "endCaptures": { "0": { "name": "punctuation.section.interpolation.end.aura" } },
+          "patterns": [
+            { "include": "#number" },
+            { "include": "#operator" },
+            { "name": "variable.other.aura", "match": "[a-zA-Z_][a-zA-Z0-9_]*" }
+          ]
+        }
+      ]
+    },
+    "keyword": {
+      "patterns": [
+        {
+          "name": "keyword.control.aura",
+          "match": "\\b(import|as|type|def|end|domain|component|new|assert|shadow|pub)\\b"
+        }
+      ]
+    },
+    "constant": {
+      "name": "constant.language.aura",
+      "match": "\\b(true|false|null)\\b"
+    },
+    "builtin": {
+      "name": "support.function.builtin.aura",
+      "match": "\\b(env|read_file|fail)(?=\\()"
+    },
+    "number": {
+      "name": "constant.numeric.aura",
+      "match": "\\b[0-9]+(\\.[0-9]+)?\\b"
+    },
+    "schema-type": {
+      "name": "entity.name.type.aura",
+      "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+    },
+    "property": {
+      "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*|\"[^\"]+\")\\s*(:)",
+      "captures": {
+        "1": { "name": "variable.other.property.aura" },
+        "2": { "name": "punctuation.separator.key-value.aura" }
+      }
+    },
+    "operator": {
+      "name": "keyword.operator.aura",
+      "match": "(->|==|!=|<=|>=|&&|\\|\\||[+\\-*/%<>!?])"
+    }
+  }
+}

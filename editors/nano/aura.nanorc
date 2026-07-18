@@ -1,0 +1,32 @@
+# Подсветка Aura для nano.
+# Установка: включите в ~/.nanorc строку
+#   include "/путь/до/aura-lang/editors/nano/aura.nanorc"
+
+syntax aura "\.aura$"
+comment "#"
+
+# Числа
+color brightmagenta "\<[0-9]+(\.[0-9]+)?\>"
+
+# Ключевые слова
+color brightblue "\<(import|as|type|def|end|domain|component|new|assert|shadow|pub)\>"
+color brightcyan "\<(true|false|null)\>"
+
+# Встроенные функции
+color cyan "\<(env|read_file|fail)\("
+
+# Типы схем (Заглавные идентификаторы)
+color yellow "\<[A-Z][A-Za-z0-9_]*\>"
+
+# Свойства (ключ до двоеточия)
+color green "^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:"
+
+# Операторы
+color brightyellow "(\+|-|\*|/|%|==|!=|<=|>=|<|>|&&|\|\||!|\?|->)"
+
+# Строки и интерполяция
+color brightgreen ""([^"\]|\\.)*""
+color brightred "#\{[^}]*\}"
+
+# Комментарии — последними, чтобы перекрывали всё внутри
+color brightblack "(^|[[:space:]])#([^{].*)?$"

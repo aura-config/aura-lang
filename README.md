@@ -352,6 +352,22 @@ Aura находится в стадии рабочего превью (v0.1): в
 - [ ] Расширение стандартной библиотеки методов (`sort`, `split`, `trim`, …)
 - [ ] LSP-сервер
 
+**Экосистема и дистрибуция**:
+
+- [ ] Публикация: GitHub (живой CI) → crates.io → release-процесс
+      (`cargo-release`, бинарники под Linux/macOS/Windows на тег)
+- [ ] Официальный GitHub Action `setup-aura`: установка бинарника из релизов +
+      готовые рецепты `check --strict` / `eval --frozen --dry-run` на PR
+- [x] Подсветка синтаксиса: VS Code (TextMate + автоотступы), Vim/Neovim,
+      nano — [editors/](editors/README.md)
+- [ ] tree-sitter-грамматика (Helix, Zed, Neovim, GitHub Linguist)
+- [ ] Книга документации (mdBook на GitHub Pages): учебник по главам, справочник
+      методов, каталог кодов ошибок E/W с объяснениями, рецепты (k8s, CI, i18n)
+- [ ] Использование из других языков: раздел subprocess-паттерна (Python/Node/Go),
+      далее WASM/npm → PyO3 → C ABI по спросу
+- [ ] Кросс-платформенность: `cargo check` матрица (freebsd, aarch64-linux,
+      musl, wasm32) в CI; macOS в тестовую матрицу
+
 **v1.3 — пакетная экосистема**:
 
 - [x] D12: `pub def` / `pub type` — экспорт функций и схем из модулей
