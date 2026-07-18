@@ -52,6 +52,22 @@ fn go(v: &Value<'_>, path: &mut Vec<String>) -> Result<serde_json::Value, Diagno
     })
 }
 
+/// YAML-эмиттер (используется методом `.to_yaml()` и `--format yaml`).
+pub fn to_yaml_string(v: &Value<'_>) -> Result<String, Diagnostic> {
+    let json = to_json(v)?;
+    serde_yaml::to_string(&json).map_err(|e| err("E0603", format!("cannot emit YAML: {e}")))
+}
+
+/// TOML-эмиттер: требует объект на верхнем уровне; null в TOML не существует.
+pub fn to_toml_string(v: &Value<'_>) -> Result<String, Diagnostic> {
+    let json = to_json(v)?;
+    if !json.is_object() {
+        return Err(err("E0603", "TOML requires an object at the top level".to_string()));
+    }
+    toml::to_string_pretty(&json)
+        .map_err(|e| err("E0603", format!("cannot emit TOML (note: TOML has no null): {e}")))
+}
+
 /// `--format json-flat`: вложенные объекты уплощаются в `a.b.c`; списки и скаляры — листья.
 pub fn to_json_flat(v: &Value<'_>) -> Result<serde_json::Value, Diagnostic> {
     let json = to_json(v)?;

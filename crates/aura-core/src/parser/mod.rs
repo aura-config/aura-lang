@@ -102,6 +102,18 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Ключ свойства: идентификатор либо строка (D11: `"app.kubernetes.io/name": ...`).
+    fn expect_key(&mut self) -> Result<(&'a str, Span), Diagnostic> {
+        match self.peek() {
+            TokenKind::Ident(s) | TokenKind::Str(s) => {
+                let (s, sp) = (*s, self.span());
+                self.bump();
+                Ok((s, sp))
+            }
+            _ => Err(self.err("E0200", "expected property key", format!("found {:?}", self.peek()))),
+        }
+    }
+
     fn skip_newlines(&mut self) {
         while matches!(self.peek(), TokenKind::Newline) {
             self.bump();
@@ -217,6 +229,14 @@ impl<'a> Parser<'a> {
                 let value = self.parse_expr(0)?;
                 Ok(Stmt::Assign { name, shadow: true, value, span: self.join(start) })
             }
+            // D11: свойство со строковым ключом — `"app.io/name": value`
+            TokenKind::Str(_) if matches!(self.peek_at(1), TokenKind::Colon) => {
+                let start = self.span();
+                let (key, _) = self.expect_key()?;
+                self.bump(); // :
+                let value = self.parse_property_value()?;
+                Ok(Stmt::Property { key, value, span: self.join(start) })
+            }
             TokenKind::Ident(_) => {
                 let start = self.span();
                 match (self.peek_at(1), self.peek_at(2)) {
@@ -272,7 +292,7 @@ impl<'a> Parser<'a> {
             if matches!(self.peek(), TokenKind::Eof) {
                 return Err(self.err("E0203", "missing `end`", "object block is not closed"));
             }
-            let (key, kspan) = self.expect_ident("property key")?;
+            let (key, kspan) = self.expect_key()?;
             self.expect(&TokenKind::Colon, "`:` after property key")?;
             let value = self.parse_property_value()?;
             props.push((key, value, kspan));
@@ -378,6 +398,27 @@ impl<'a> Parser<'a> {
                 TokenKind::LParen => {
                     let args = self.parse_args()?;
                     lhs = Expr::Call { callee: Box::new(lhs), args, span: self.join(start) };
+                }
+                // Индексация списков `xs[0]` (D11)
+                TokenKind::LBracket => {
+                    self.bump();
+                    // obj["key"] — подсказываем точечную форму (E0318)
+                    if matches!(self.peek(), TokenKind::Str(_))
+                        && matches!(self.peek_at(1), TokenKind::RBracket)
+                    {
+                        let mut d = self.err(
+                            "E0318",
+                            "bracket access on objects is not supported",
+                            "string key in brackets",
+                        );
+                        if let TokenKind::Str(k) = self.peek() {
+                            d.help = Some(format!("use dot access instead: `.\"{k}\"`"));
+                        }
+                        return Err(d);
+                    }
+                    let key = self.parse_expr(0)?;
+                    self.expect(&TokenKind::RBracket, "closing `]` in index")?;
+                    lhs = Expr::Index { recv: Box::new(lhs), key: Box::new(key), bracket: true, span: self.join(start) };
                 }
                 TokenKind::Question if TERNARY_LBP >= min_bp => {
                     self.bump();
@@ -553,9 +594,31 @@ impl<'a> Parser<'a> {
         Ok(args)
     }
 
-    /// `.field` | `.method(args)` | `.method (params) -> ... end` (trailing lambda)
+    /// `.field` | `."строковый ключ"` | `."#{динамический}"` | `.method(args)`
+    /// | `.method (params) -> ... end` (trailing lambda)
     fn parse_postfix_dot(&mut self, recv: Expr<'a>, start: Span) -> Result<Expr<'a>, Diagnostic> {
         self.bump(); // .
+        // D11: строковый ключ после точки — доступ к произвольному имени поля
+        match self.peek() {
+            TokenKind::Str(key) => {
+                let key = *key;
+                self.bump();
+                return Ok(Expr::FieldAccess { recv: Box::new(recv), field: key, span: self.join(start) });
+            }
+            TokenKind::InterpStr(parts) => {
+                let parts = parts.clone();
+                let ksp = self.span();
+                self.bump();
+                let key = Expr::Literal(LitValue::InterpStr(parts), ksp);
+                return Ok(Expr::Index {
+                    recv: Box::new(recv),
+                    key: Box::new(key),
+                    bracket: false,
+                    span: self.join(start),
+                });
+            }
+            _ => {}
+        }
         let (name, _) = self.expect_ident("field or method name after `.`")?;
         if matches!(self.peek(), TokenKind::LParen) {
             let (args, lambda) = if self.lambda_ahead() {
@@ -682,6 +745,38 @@ mod tests {
         let Stmt::Block(b) = &m.stmts[0] else { panic!() };
         let Stmt::Property { key: "security", value: Expr::ObjectLiteral(body), .. } = &b.body[0] else { panic!() };
         assert!(matches!(body.props[1], ("certs", Expr::ObjectLiteral(_), _)));
+    }
+
+    #[test]
+    fn dot_string_field_access_d11() {
+        // a."eu west".port → FieldAccess(FieldAccess(a, "eu west"), "port")
+        let Expr::FieldAccess { field: "port", recv, .. } = expr("a.\"eu west\".port") else { panic!() };
+        assert!(matches!(*recv, Expr::FieldAccess { field: "eu west", .. }));
+    }
+
+    #[test]
+    fn dynamic_key_desugars_to_index_d11() {
+        let Expr::Index { bracket: false, key, .. } = expr("a.\"#{r}\"") else { panic!() };
+        assert!(matches!(*key, Expr::Literal(LitValue::InterpStr(_), _)));
+    }
+
+    #[test]
+    fn list_indexing_d11() {
+        // xs[0][1] — цепочка индексов
+        let Expr::Index { bracket: true, recv, .. } = expr("xs[0][1]") else { panic!() };
+        assert!(matches!(*recv, Expr::Index { bracket: true, .. }));
+    }
+
+    #[test]
+    fn bracket_string_key_is_e0318() {
+        assert_eq!(first_err("x = a[\"key\"]"), "E0318");
+    }
+
+    #[test]
+    fn string_property_keys_d11() {
+        let m = module("domain \"d\"\n  \"app.kubernetes.io/name\": \"auth\"\nend");
+        let Stmt::Block(b) = &m.stmts[0] else { panic!() };
+        assert!(matches!(b.body[0], Stmt::Property { key: "app.kubernetes.io/name", .. }));
     }
 
     #[test]

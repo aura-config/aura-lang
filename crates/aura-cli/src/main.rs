@@ -10,7 +10,7 @@ use aura_core::error::{Diagnostic, Severity};
 use aura_core::eval::{DenyFs, EnvCap, Interpreter, Options, RealFs};
 use aura_core::lexer::Lexer;
 use aura_core::parser::Parser;
-use aura_core::serialize::{to_json, to_json_flat};
+use aura_core::serialize::{to_json, to_json_flat, to_toml_string, to_yaml_string};
 use aura_core::source::SourceCache;
 use aura_core::span::Span;
 use aura_core::vfs::loader::Loader;
@@ -28,6 +28,8 @@ struct Cli {
 enum OutFormat {
     Json,
     JsonFlat,
+    Yaml,
+    Toml,
 }
 
 #[derive(Subcommand)]
@@ -229,18 +231,21 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
         }
     }
 
-    let json = match cfg.format {
-        OutFormat::Json => to_json(&value),
-        OutFormat::JsonFlat => to_json_flat(&value),
+    let rendered = match cfg.format {
+        OutFormat::Json => to_json(&value).map(|j| serde_json::to_string_pretty(&j).expect("valid json")),
+        OutFormat::JsonFlat => {
+            to_json_flat(&value).map(|j| serde_json::to_string_pretty(&j).expect("valid json"))
+        }
+        OutFormat::Yaml => to_yaml_string(&value),
+        OutFormat::Toml => to_toml_string(&value),
     };
-    let json = match json {
-        Ok(j) => j,
+    let pretty = match rendered {
+        Ok(s) => s,
         Err(d) => {
             render(&d, &cache);
             return ExitCode::from(1);
         }
     };
-    let pretty = serde_json::to_string_pretty(&json).expect("valid json");
 
     match &cfg.output {
         Some(path) if !cfg.dry_run => {

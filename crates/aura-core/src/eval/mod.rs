@@ -282,6 +282,35 @@ impl<'a> Interpreter<'a> {
                     other => Err(rt("E0306", format!("cannot access field '{}' on {}", field, other.type_name()), *span)),
                 }
             }
+            // D11: `xs[int]` для списков; `obj."#{key}"` (bracket=false) для объектов
+            Expr::Index { recv, key, bracket, span } => {
+                let r = self.eval_expr(env, recv)?;
+                let k = self.eval_expr(env, key)?;
+                match (&r, &k) {
+                    (Value::List(xs), Value::Int(i)) => {
+                        let i = *i;
+                        if i < 0 || i as usize >= xs.len() {
+                            return Err(rt("E0317", format!("index {i} out of bounds (list has {} elements)", xs.len()), *span));
+                        }
+                        Ok(xs[i as usize].clone())
+                    }
+                    (Value::Object(m), Value::Str(s)) => {
+                        if *bracket {
+                            let mut d = rt("E0318", "bracket access on objects is not supported", *span);
+                            d.help = Some(format!("use dot access instead: `.\"{s}\"` or `.get(\"{s}\", default)`"));
+                            return Err(d);
+                        }
+                        m.get(s.as_ref())
+                            .cloned()
+                            .ok_or_else(|| rt("E0308", format!("unknown field '{s}'"), *span))
+                    }
+                    _ => Err(rt(
+                        "E0306",
+                        format!("cannot index {} with {}", r.type_name(), k.type_name()),
+                        *span,
+                    )),
+                }
+            }
             Expr::ObjectLiteral(body) => self.eval_object_body(env, body),
             Expr::ListLiteral(items, _) => {
                 let vs: Vec<Value<'a>> =
@@ -713,6 +742,42 @@ mod tests {
         let v = eval("name = \"auth\"\nport = 8000\ns: \"svc-#{name}:#{port + 1}\"\nt: port > 100 ? \"big\" : \"small\"").unwrap();
         assert_eq!(get(&v, "s"), Value::str("svc-auth:8001"));
         assert_eq!(get(&v, "t"), Value::str("big"));
+    }
+
+    #[test]
+    fn indexing_and_get_d11() {
+        let v = eval("xs = [10, 20, 30]\na: xs[1]\nb: xs.get(9, 99)\nc: xs.first()\nd: xs.last()").unwrap();
+        assert_eq!(get(&v, "a"), Value::Int(20));
+        assert_eq!(get(&v, "b"), Value::Int(99));
+        assert_eq!(get(&v, "c"), Value::Int(10));
+        assert_eq!(get(&v, "d"), Value::Int(30));
+        assert_eq!(eval("x: [1][5]").unwrap_err().code, "E0317");
+    }
+
+    #[test]
+    fn string_keys_and_dynamic_access_d11() {
+        let src = "def mk()\n  \"eu west\": 8080\nend\nregion = \"eu west\"\np: mk().\"eu west\"\nq: mk().\"#{region}\"\ng: mk().get(\"nope\", 0)";
+        let v = eval(src).unwrap();
+        assert_eq!(get(&v, "p"), Value::Int(8080));
+        assert_eq!(get(&v, "q"), Value::Int(8080));
+        assert_eq!(get(&v, "g"), Value::Int(0));
+        // динамический ключ через скобки на объекте запрещён
+        let bad = "def mk()\n  a: 1\nend\nk = \"a\"\nx: mk()[k]";
+        assert_eq!(eval(bad).unwrap_err().code, "E0318");
+    }
+
+    #[test]
+    fn format_parsing_and_emitting() {
+        let v = eval("d = \"{\\\"a\\\": [1, 2]}\".parse_json()\nx: d.a[1]").unwrap();
+        assert_eq!(get(&v, "x"), Value::Int(2));
+
+        let v = eval("d = \"a: 1\\nb:\\n  - x\\n\".parse_yaml()\nfirst_b: d.b[0]").unwrap();
+        assert_eq!(get(&v, "first_b"), Value::str("x"));
+
+        let v = eval("def mk()\n  a: 1\nend\nj: mk().to_json()\ny: mk().to_yaml()\nt: mk().to_toml()").unwrap();
+        assert_eq!(get(&v, "j"), Value::str("{\"a\":1}"));
+        assert_eq!(get(&v, "y"), Value::str("a: 1\n"));
+        assert_eq!(get(&v, "t"), Value::str("a = 1\n"));
     }
 
     #[test]

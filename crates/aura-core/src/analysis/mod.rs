@@ -224,6 +224,10 @@ impl<'a> SemanticAnalyzer<'a> {
                 }
             }
             Expr::FieldAccess { recv, .. } => self.walk_expr(recv),
+            Expr::Index { recv, key, .. } => {
+                self.walk_expr(recv);
+                self.walk_expr(key);
+            }
             Expr::ObjectLiteral(body) => self.walk_object_body(body),
             Expr::ListLiteral(items, _) => {
                 for i in items {

@@ -122,6 +122,9 @@ pub enum Expr<'a> {
         span: Span,
     },
     FieldAccess { recv: Box<Expr<'a>>, field: &'a str, span: Span },
+    /// Индексация списка `xs[0]` (bracket=true) либо динамический ключ объекта
+    /// `obj."#{name}"` (bracket=false, D11). На объектах скобки запрещены (E0318).
+    Index { recv: Box<Expr<'a>>, key: Box<Expr<'a>>, bracket: bool, span: Span },
     ObjectLiteral(ObjectBody<'a>),
     ListLiteral(Vec<Expr<'a>>, Span),
     Lambda { params: Vec<&'a str>, body: LambdaBody<'a>, span: Span },
