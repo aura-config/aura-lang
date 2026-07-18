@@ -38,6 +38,11 @@ fn go(v: &Value<'_>, path: &mut Vec<String>) -> Result<serde_json::Value, Diagno
             // Порядок ключей сохраняется: IndexMap → serde_json::Map (preserve_order)
             let mut out = serde_json::Map::with_capacity(m.len());
             for (k, item) in m.iter() {
+                // D12: pub def/type верхнего уровня — API для импортёров,
+                // из JSON корня молча исключаются; глубже — E0601 как ошибка
+                if path.is_empty() && matches!(item, Value::Schema(_) | Value::Function(_)) {
+                    continue;
+                }
                 path.push(k.clone());
                 out.insert(k.clone(), go(item, path)?);
                 path.pop();

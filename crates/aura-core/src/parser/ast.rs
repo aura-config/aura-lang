@@ -49,10 +49,12 @@ pub enum Stmt<'a> {
         span: Span,
     },
     TypeDecl(SchemaDeclaration<'a>),
+    /// `[pub] def ...` — public экспортируется импортёрам модуля (D12)
     FuncDecl {
         name: &'a str,
         params: Vec<&'a str>,
         body: ObjectBody<'a>,
+        public: bool,
         span: Span,
     },
     Block(BlockDeclaration<'a>),
@@ -63,6 +65,8 @@ pub enum Stmt<'a> {
 pub struct SchemaDeclaration<'a> {
     pub name: &'a str,
     pub fields: Vec<(&'a str, TypeName<'a>)>,
+    /// `pub type` — схема видима импортёрам модуля (D12)
+    pub public: bool,
     pub span: Span,
 }
 
@@ -181,8 +185,10 @@ pub enum Expr<'a> {
         span: Span,
     },
     /// Только через `new` (D4)
+    /// `schema_alias` — импортированная схема `new mod.Name` (D12)
     SchemaInstance {
         schema: &'a str,
+        schema_alias: Option<&'a str>,
         body: ObjectBody<'a>,
         span: Span,
     },

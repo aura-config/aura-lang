@@ -191,14 +191,23 @@ impl<'a> SemanticAnalyzer<'a> {
                     }
                 }
                 self.declare(schema.name, schema.span, DeclKind::Type, false);
+                // D12: pub — это API модуля, не мёртвый код
+                if schema.public {
+                    self.mark_used(schema.name, schema.span);
+                }
             }
             Stmt::FuncDecl {
                 name,
                 params,
                 body,
+                public,
                 span,
             } => {
                 self.declare(name, *span, DeclKind::Func, false);
+                // D12: pub — это API модуля, не мёртвый код
+                if *public {
+                    self.mark_used(name, *span);
+                }
                 self.push_scope();
                 for p in params {
                     self.declare(p, *span, DeclKind::Param, false);
@@ -302,8 +311,17 @@ impl<'a> SemanticAnalyzer<'a> {
                 }
                 self.pop_scope();
             }
-            Expr::SchemaInstance { schema, body, span } => {
-                self.mark_used(schema, *span);
+            Expr::SchemaInstance {
+                schema,
+                schema_alias,
+                body,
+                span,
+            } => {
+                // `new alias.Schema` использует алиас импорта; сама схема — в чужом модуле
+                match schema_alias {
+                    Some(alias) => self.mark_used(alias, *span),
+                    None => self.mark_used(schema, *span),
+                }
                 self.walk_object_body(body);
             }
             Expr::Block(b) => self.walk_block(b),

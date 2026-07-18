@@ -152,6 +152,72 @@ fn loader_analyzes_imported_modules() {
 }
 
 #[test]
+fn d12_pub_functions_and_schemas_cross_module() {
+    let resolver = mem(&[
+        (
+            "root.aura",
+            "import \"pkg.aura\" as pkg\nl: pkg.labels(\"auth\")\nm: new pkg.Meta\n  name: \"a\"\n  port: 1\nend\nvia_field: pkg.version",
+        ),
+        (
+            "pkg.aura",
+            "pub def labels(app)\n  app: app\n  managed_by: \"pkg\"\nend\npub type Meta\n  name: String\n  port: Int\nend\ndef private_helper()\n  x: 1\nend\nversion: \"1.0\"\nassert private_helper().x == 1",
+        ),
+    ]);
+    let cache = SourceCache::new();
+    let mut loader = Loader::new(&cache, &resolver);
+    let mut it = Interpreter::new(Options::default());
+    let v = loader
+        .eval_entry(&mut it, &ImportSpec::File("root.aura"))
+        .unwrap();
+    // pub def вызывается через алиас
+    assert_eq!(get(&get(&v, "l"), "managed_by"), Value::str("pkg"));
+    // pub type инстанцируется через new pkg.Meta (с валидацией)
+    assert_eq!(get(&get(&v, "m"), "port"), Value::Int(1));
+    assert_eq!(get(&v, "via_field"), Value::str("1.0"));
+    // приватный def недоступен импортёру
+    let bad = mem(&[
+        (
+            "root.aura",
+            "import \"pkg.aura\" as pkg\nx: pkg.private_helper()",
+        ),
+        (
+            "pkg.aura",
+            "def private_helper()\n  x: 1\nend\nassert private_helper().x == 1",
+        ),
+    ]);
+    let cache2 = SourceCache::new();
+    let mut loader2 = Loader::new(&cache2, &bad);
+    let mut it2 = Interpreter::new(Options::default());
+    let err = loader2
+        .eval_entry(&mut it2, &ImportSpec::File("root.aura"))
+        .unwrap_err();
+    assert_eq!(err.code, "E0309");
+}
+
+#[test]
+fn d12_exported_functions_keep_module_capabilities() {
+    // Экспортированная функция пакета НЕ наследует I/O-права корня (D1×D12)
+    let resolver = mem(&[
+        ("root.aura", "import \"pkg.aura\" as pkg\nx: pkg.leak()"),
+        (
+            "pkg.aura",
+            "pub def leak()\n  home: env(\"HOME\", \"?\")\nend",
+        ),
+    ]);
+    let cache = SourceCache::new();
+    let mut loader = Loader::new(&cache, &resolver);
+    let mut it = Interpreter::new(Options::default());
+    it.env_cap = EnvCap::AllowAll; // права есть у корня
+    let err = loader
+        .eval_entry(&mut it, &ImportSpec::File("root.aura"))
+        .unwrap_err();
+    assert_eq!(
+        err.code, "E0310",
+        "package function must not inherit root capabilities"
+    );
+}
+
+#[test]
 fn lockfile_integrity_and_frozen() {
     let resolver = mem(&[
         ("root.aura", "import pkg/lib@v1.2 as lib\nx: lib.n"),

@@ -35,6 +35,7 @@ pub enum TokenKind<'a> {
     New,
     Assert,
     Shadow,
+    Pub,
     // Разделители
     Newline,
     LParen,
@@ -85,6 +86,7 @@ impl TokenKind<'_> {
             "new" => TokenKind::New,
             "assert" => TokenKind::Assert,
             "shadow" => TokenKind::Shadow,
+            "pub" => TokenKind::Pub,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
             "null" => TokenKind::Null,

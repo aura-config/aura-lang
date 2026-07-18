@@ -33,6 +33,9 @@ pub struct FunctionDef<'a> {
     pub body: FuncBody<'a>,
     /// Лексическое замыкание (SPEC §4.2).
     pub closure: Env<'a>,
+    /// D1×D12: функция выполняется с capability своего модуля-происхождения,
+    /// а не вызывающего — экспортированная функция пакета не получает права корня.
+    pub defined_in_root: bool,
 }
 
 #[derive(Clone)]

@@ -189,20 +189,30 @@ impl<'a> Interpreter<'a> {
                     name: schema.name,
                     fields: schema.fields.clone(),
                 }));
-                self.define(env, schema.name, v, false, schema.span)?;
+                self.define(env, schema.name, v.clone(), false, schema.span)?;
+                // D12: pub type виден импортёрам через объект модуля
+                if schema.public {
+                    exports.insert(schema.name.to_string(), v);
+                }
             }
             Stmt::FuncDecl {
                 name,
                 params,
                 body,
+                public,
                 span,
             } => {
                 let v = Value::Function(Arc::new(FunctionDef {
                     params: params.clone(),
                     body: FuncBody::Object(body.clone()),
                     closure: env.clone(),
+                    defined_in_root: self.current_root,
                 }));
-                self.define(env, name, v, false, *span)?;
+                self.define(env, name, v.clone(), false, *span)?;
+                // D12: pub def виден импортёрам через объект модуля
+                if *public {
+                    exports.insert(name.to_string(), v);
+                }
             }
             Stmt::Block(block) => {
                 let label = self.eval_expr(env, &block.label)?;
@@ -364,14 +374,22 @@ impl<'a> Interpreter<'a> {
                 if let Some(l) = lambda {
                     argv.push(self.eval_expr(env, l)?);
                 }
-                let Some(f) = self.registry.get(recv_v.tag(), method) else {
-                    return Err(rt(
-                        "E0309",
-                        format!("unknown method '{}' on {}", method, recv_v.type_name()),
-                        *span,
-                    ));
-                };
-                f(self, &recv_v, &argv, *span)
+                if let Some(f) = self.registry.get(recv_v.tag(), method) {
+                    return f(self, &recv_v, &argv, *span);
+                }
+                // D12: вызов экспортированной функции модуля — obj.fn(args);
+                // встроенные методы имеют приоритет над одноимёнными полями
+                if let Value::Object(m) = &recv_v {
+                    if let Some(f @ Value::Function(_)) = m.get(*method) {
+                        let f = f.clone();
+                        return self.call_value(&f, &argv, *span);
+                    }
+                }
+                Err(rt(
+                    "E0309",
+                    format!("unknown method '{}' on {}", method, recv_v.type_name()),
+                    *span,
+                ))
             }
             Expr::FieldAccess { recv, field, span } => {
                 let v = self.eval_expr(env, recv)?;
@@ -440,9 +458,23 @@ impl<'a> Interpreter<'a> {
                 params: params.clone(),
                 body: FuncBody::Lambda(body.clone()),
                 closure: env.clone(),
+                defined_in_root: self.current_root,
             }))),
-            Expr::SchemaInstance { schema, body, span } => {
-                let Some(Value::Schema(def)) = env.get(schema) else {
+            Expr::SchemaInstance {
+                schema,
+                schema_alias,
+                body,
+                span,
+            } => {
+                // D12: `new alias.Schema` — схема из объекта импортированного модуля
+                let resolved = match schema_alias {
+                    Some(alias) => match env.get(alias) {
+                        Some(Value::Object(m)) => m.get(*schema).cloned(),
+                        _ => None,
+                    },
+                    None => env.get(schema),
+                };
+                let Some(Value::Schema(def)) = resolved else {
                     return Err(rt("E0504", format!("unknown schema '{schema}'"), *span));
                 };
                 let obj = self.eval_object_body(env, body)?;
@@ -668,11 +700,15 @@ impl<'a> Interpreter<'a> {
         for (p, a) in def.params.iter().zip(args) {
             env.insert(p, a.clone());
         }
+        // D1×D12: тело выполняется с capability модуля-происхождения функции
+        let saved_root = self.current_root;
+        self.current_root = def.defined_in_root;
         let result = match &def.body {
             FuncBody::Object(body) => self.eval_object_body(&env, body),
             FuncBody::Lambda(LambdaBody::Expr(e)) => self.eval_expr(&env, e),
             FuncBody::Lambda(LambdaBody::Object(body)) => self.eval_object_body(&env, body),
         };
+        self.current_root = saved_root;
         self.call_depth -= 1;
         result
     }

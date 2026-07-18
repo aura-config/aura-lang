@@ -6,7 +6,7 @@
 #![allow(clippy::arc_with_non_send_sync)]
 
 /// Версия ЯЗЫКА Aura (грамматика и семантика по SPEC.md); не совпадает с версией крейта.
-pub const LANGUAGE_VERSION: &str = "1.2";
+pub const LANGUAGE_VERSION: &str = "1.3";
 
 pub mod analysis;
 pub mod error;

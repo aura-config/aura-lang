@@ -269,8 +269,21 @@ impl<'a> Parser<'a> {
 
     fn parse_stmt(&mut self) -> Result<Stmt<'a>, Diagnostic> {
         match self.peek() {
-            TokenKind::Type => self.parse_type_decl(),
-            TokenKind::Def => self.parse_func_decl(),
+            TokenKind::Type => self.parse_type_decl(false),
+            TokenKind::Def => self.parse_func_decl(false),
+            // D12: `pub` допустим только перед def/type
+            TokenKind::Pub => {
+                self.bump();
+                match self.peek() {
+                    TokenKind::Def => self.parse_func_decl(true),
+                    TokenKind::Type => self.parse_type_decl(true),
+                    _ => Err(self.err(
+                        "E0206",
+                        "`pub` is only allowed before `def` or `type`",
+                        "properties are exported by default; `=` bindings are always private",
+                    )),
+                }
+            }
             TokenKind::Domain => Ok(Stmt::Block(self.parse_block(BlockKind::Domain)?)),
             TokenKind::Component => Ok(Stmt::Block(self.parse_block(BlockKind::Component)?)),
             TokenKind::Assert => self.parse_assert(),
@@ -379,7 +392,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_type_decl(&mut self) -> Result<Stmt<'a>, Diagnostic> {
+    fn parse_type_decl(&mut self, public: bool) -> Result<Stmt<'a>, Diagnostic> {
         let start = self.span();
         self.bump(); // type
         let (name, _) = self.expect_ident("schema name")?;
@@ -407,11 +420,12 @@ impl<'a> Parser<'a> {
         Ok(Stmt::TypeDecl(SchemaDeclaration {
             name,
             fields,
+            public,
             span: self.join(start),
         }))
     }
 
-    fn parse_func_decl(&mut self) -> Result<Stmt<'a>, Diagnostic> {
+    fn parse_func_decl(&mut self, public: bool) -> Result<Stmt<'a>, Diagnostic> {
         let start = self.span();
         self.bump(); // def
         let (name, _) = self.expect_ident("function name")?;
@@ -423,6 +437,7 @@ impl<'a> Parser<'a> {
             name,
             params,
             body,
+            public,
             span: self.join(start),
         })
     }
@@ -632,11 +647,19 @@ impl<'a> Parser<'a> {
             TokenKind::LBracket => self.parse_list(),
             TokenKind::New => {
                 self.bump();
-                let (schema, _) = self.expect_ident("schema name after `new`")?;
+                let (first, _) = self.expect_ident("schema name after `new`")?;
+                // D12: `new alias.Schema` — импортированная схема
+                let (schema, schema_alias) = if self.eat(&TokenKind::Dot) {
+                    let (name, _) = self.expect_ident("schema name after module alias")?;
+                    (name, Some(first))
+                } else {
+                    (first, None)
+                };
                 self.expect(&TokenKind::Newline, "newline after `new SchemaName`")?;
                 let body = self.parse_object_body()?;
                 Ok(Expr::SchemaInstance {
                     schema,
+                    schema_alias,
                     body,
                     span: self.join(sp),
                 })
@@ -1075,6 +1098,33 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn pub_def_and_type_d12() {
+        let m = module("pub def f(x)\n  a: x\nend\npub type T\n  a: Int\nend\ndef g()\n  b: 1\nend\nassert g().b == 1 && f == f && T == T");
+        assert!(matches!(m.stmts[0], Stmt::FuncDecl { public: true, .. }));
+        assert!(matches!(&m.stmts[1], Stmt::TypeDecl(s) if s.public));
+        assert!(matches!(m.stmts[2], Stmt::FuncDecl { public: false, .. }));
+        // pub не перед def/type — ошибка
+        assert_eq!(first_err("pub x = 1"), "E0206");
+    }
+
+    #[test]
+    fn new_with_module_alias_d12() {
+        let m = module("m: new pkg.Meta\n  a: 1\nend");
+        let Stmt::Property {
+            value:
+                Expr::SchemaInstance {
+                    schema: "Meta",
+                    schema_alias: Some("pkg"),
+                    ..
+                },
+            ..
+        } = &m.stmts[0]
+        else {
+            panic!()
+        };
     }
 
     #[test]
