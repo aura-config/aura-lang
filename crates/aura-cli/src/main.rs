@@ -160,13 +160,9 @@ fn run_check(file: &Path, strict: bool) -> ExitCode {
 }
 
 fn run_eval(cfg: EvalConfig) -> ExitCode {
+    // Анализ всех модулей (включая импортируемые) выполняет загрузчик VFS;
+    // его диагностики рендерятся после загрузки (SPEC §6.1).
     let cache = SourceCache::new();
-    match front_end(&cache, &cfg.file, cfg.strict) {
-        Err(code) => return code,
-        Ok(true) => return ExitCode::from(1),
-        Ok(false) => {}
-    }
-
     let entry = match std::fs::canonicalize(&cfg.file) {
         Ok(p) => p,
         Err(e) => {
@@ -224,13 +220,21 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
-    let value = match loader.eval_entry(&mut interp, &ImportSpec::File(&file_name)) {
+    let result = loader.eval_entry(&mut interp, &ImportSpec::File(&file_name));
+    for d in &loader.diags {
+        render(d, &cache);
+    }
+    let value = match result {
         Ok(v) => v,
         Err(d) => {
             render(&d, &cache);
             return ExitCode::from(1);
         }
     };
+    // --strict: предупреждения анализа (по всем модулям) блокируют вывод
+    if has_blocking(&loader.diags, cfg.strict) {
+        return ExitCode::from(1);
+    }
 
     // aura.lock: дозапись (SPEC §5.2); в dry-run — только отчёт (§6.3)
     if loader.lock.dirty && !cfg.frozen {

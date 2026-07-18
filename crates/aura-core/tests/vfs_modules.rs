@@ -129,6 +129,29 @@ fn imported_modules_have_no_io_capability_d1() {
 }
 
 #[test]
+fn loader_analyzes_imported_modules() {
+    // SPEC §6.1: анализ проходит по КАЖДОМУ загружаемому модулю, не только по корню
+    let resolver = mem(&[
+        ("root.aura", "import \"lib.aura\" as lib\nx: lib.v"),
+        ("lib.aura", "dead_var = 1\nv: env(\"A\", \"b\")"),
+    ]);
+    let cache = SourceCache::new();
+    let mut loader = Loader::new(&cache, &resolver);
+    let mut it = Interpreter::new(Options::default());
+    it.env_cap = EnvCap::AllowAll;
+    it.allow_imports_io = true;
+    loader
+        .eval_entry(&mut it, &ImportSpec::File("root.aura"))
+        .unwrap();
+    // мёртвый код и эффектный вызов найдены в ИМПОРТИРУЕМОМ модуле
+    assert!(loader
+        .diags
+        .iter()
+        .any(|d| d.code == "W0501" && d.message.contains("dead_var")));
+    assert!(loader.diags.iter().any(|d| d.code == "W0512"));
+}
+
+#[test]
 fn lockfile_integrity_and_frozen() {
     let resolver = mem(&[
         ("root.aura", "import pkg/lib@v1.2 as lib\nx: lib.n"),

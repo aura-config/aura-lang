@@ -27,6 +27,9 @@ pub struct Loader<'a, 'r> {
     pub lock: Lockfile,
     /// --frozen (CI): отсутствие подходящей записи в локе — ошибка E0403.
     pub frozen: bool,
+    /// Диагностики статического анализа ВСЕХ загруженных модулей (SPEC §6.1):
+    /// предупреждения копятся здесь; ошибки анализа прерывают загрузку модуля.
+    pub diags: Vec<Diagnostic>,
     state: HashMap<ModuleId, LoadState>,
     values: HashMap<ModuleId, Value<'a>>,
     chain: Vec<ModuleId>,
@@ -43,6 +46,7 @@ impl<'a, 'r> Loader<'a, 'r> {
             resolver,
             lock: Lockfile::default(),
             frozen: false,
+            diags: Vec::new(),
             state: HashMap::new(),
             values: HashMap::new(),
             chain: Vec::new(),
@@ -116,9 +120,28 @@ impl<'a, 'r> Loader<'a, 'r> {
 
         let (source_id, src) = self.cache.add(id.to_string(), text);
         let toks = Lexer::new(src, source_id).tokenize()?;
-        let module = Parser::new(toks)
-            .parse_module()
-            .map_err(|mut ds| ds.remove(0))?;
+        let module = match Parser::new(toks).parse_module() {
+            Ok(m) => m,
+            Err(mut ds) => {
+                let first = ds.remove(0);
+                self.diags.extend(ds);
+                return Err(first);
+            }
+        };
+
+        // Статический анализ каждого загружаемого модуля (SPEC §6.1): ошибки
+        // (E0504 и др.) блокируют модуль до вычисления; предупреждения (W0501,
+        // W0512 в импортах) копятся в self.diags — политику strict решает хост.
+        let mut analysis = crate::analysis::analyze(&module, is_root);
+        if let Some(pos) = analysis
+            .iter()
+            .position(|d| d.severity == crate::error::Severity::Error)
+        {
+            let first = analysis.remove(pos);
+            self.diags.extend(analysis);
+            return Err(first);
+        }
+        self.diags.extend(analysis);
 
         // Сначала рекурсивно вычисляем все импорты, затем публикуем алиасы:
         // дочерние модули перезаписывают глобальную карту алиасов во время своего eval.
