@@ -1,0 +1,14 @@
+[W0502] Warning: unused import 'rust'
+   ╭─[ production_deploy.aura:1:1 ]
+   │
+ 1 │ import github/actions/rust-cache@v1.2 as rust
+   │ ──────────────────────┬──────────────────────  
+   │                       ╰──────────────────────── never used
+───╯
+[W0501] Warning: unused variable 'unused_config_version'
+    ╭─[ production_deploy.aura:15:1 ]
+    │
+ 15 │ unused_config_version = "v1.2.0"
+    │ ────────────────┬───────────────  
+    │                 ╰───────────────── never used
+────╯

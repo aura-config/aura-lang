@@ -66,6 +66,21 @@ impl FileAccess for MemFs {
     }
 }
 
+/// Обёртка dry-run (SPEC §6.3): чтения выполняются, но факт логируется в отчёт.
+pub struct RecordingFs {
+    pub inner: Box<dyn FileAccess>,
+    pub log: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+}
+impl FileAccess for RecordingFs {
+    fn read(&self, path: &str) -> Result<String, FileError> {
+        let result = self.inner.read(path);
+        if result.is_ok() {
+            self.log.borrow_mut().push(path.to_string());
+        }
+        result
+    }
+}
+
 /// `--allow-read=<paths>`: канонизация + проверка префикса (E0311).
 pub struct RealFs {
     pub allowed: Vec<PathBuf>,

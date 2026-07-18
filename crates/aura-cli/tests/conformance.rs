@@ -221,6 +221,68 @@ fn check_command_strict_blocks_dead_code() {
     assert_eq!(run2.code, 0);
 }
 
+/// Удаляет ANSI escape-последовательности (цвета ariadne) для стабильного сравнения.
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' && chars.peek() == Some(&'[') {
+            chars.next();
+            for esc in chars.by_ref() {
+                if esc.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// SPEC §6.3 (RecordingResolver): dry-run отчитывается обо всех чтениях.
+#[test]
+fn dry_run_reports_reads() {
+    let dir = examples_dir().join("service_catalog");
+    let run = aura(
+        &dir,
+        &[
+            "eval",
+            "service_catalog.aura",
+            "--allow-read=.",
+            "--dry-run",
+        ],
+        &[],
+    );
+    assert_eq!(run.code, 0, "stderr:\n{}", run.stderr);
+    // модуль + оба файла данных попали в отчёт
+    assert!(
+        run.stderr.contains("[dry-run] read:"),
+        "no read report:\n{}",
+        run.stderr
+    );
+    assert!(run.stderr.contains("Cargo.toml"), "{}", run.stderr);
+    assert!(run.stderr.contains("team.json"), "{}", run.stderr);
+    // результат не отличается от обычного прогона
+    let normal = aura(
+        &dir,
+        &["eval", "service_catalog.aura", "--allow-read=."],
+        &[],
+    );
+    assert_eq!(run.stdout, normal.stdout);
+}
+
+/// SPEC §8 (Фаза 6): визуальные отчёты ariadne зафиксированы golden-снапшотом.
+#[test]
+fn diagnostics_render_golden() {
+    let dir = examples_dir();
+    let run = aura(&dir, &["check", "production_deploy.aura", "--strict"], &[]);
+    assert_eq!(run.code, 1);
+    let got = strip_ansi(&run.stderr).replace("\r\n", "\n");
+    let want = expected(&dir, "expected_check_strict_stderr.txt");
+    assert_eq!(got.trim_end(), want.trim_end(), "ariadne report changed");
+}
+
 #[test]
 fn dry_run_is_byte_identical_and_writes_nothing() {
     // Инвариант SPEC §6.3: dry-run не меняет результат; два прогона идентичны

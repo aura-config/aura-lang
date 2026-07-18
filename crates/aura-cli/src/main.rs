@@ -244,8 +244,21 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
         registry_dir,
     };
 
+    // Dry-run (SPEC §6.3): все чтения выполняются, но логируются в отчёт
+    let read_log = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
+    let recording;
+    let resolver_ref: &dyn aura_core::vfs::FileResolver = if cfg.dry_run {
+        recording = aura_core::vfs::RecordingResolver {
+            inner: &resolver,
+            log: read_log.clone(),
+        };
+        &recording
+    } else {
+        &resolver
+    };
+
     let lock_path = root.join("aura.lock");
-    let mut loader = Loader::new(&cache, &resolver);
+    let mut loader = Loader::new(&cache, resolver_ref);
     loader.frozen = cfg.frozen;
     if let Ok(text) = std::fs::read_to_string(&lock_path) {
         match Lockfile::parse(&text) {
@@ -268,6 +281,13 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
         });
     } else {
         interp.fs = Box::new(DenyFs);
+    }
+    if cfg.dry_run {
+        let inner = std::mem::replace(&mut interp.fs, Box::new(DenyFs));
+        interp.fs = Box::new(aura_core::eval::RecordingFs {
+            inner,
+            log: read_log.clone(),
+        });
     }
     interp.env_cap = match &cfg.allow_env {
         None => EnvCap::Deny,
@@ -294,6 +314,15 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
     // --strict: предупреждения анализа (по всем модулям) блокируют вывод
     if has_blocking(&loader.diags, cfg.strict) {
         return ExitCode::from(1);
+    }
+
+    // Отчёт dry-run о выполненных чтениях (модули + read_file)
+    if cfg.dry_run {
+        let mut reads = read_log.borrow().clone();
+        reads.dedup();
+        for r in reads {
+            eprintln!("[dry-run] read: {r}");
+        }
     }
 
     // aura.lock: дозапись (SPEC §5.2); в dry-run — только отчёт (§6.3)

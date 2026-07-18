@@ -136,6 +136,29 @@ impl FileResolver for LocalFsResolver {
     }
 }
 
+/// Обёртка dry-run (SPEC §6.3): загрузки модулей выполняются, но логируются в отчёт.
+pub struct RecordingResolver<'r> {
+    pub inner: &'r dyn FileResolver,
+    pub log: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+}
+
+impl FileResolver for RecordingResolver<'_> {
+    fn resolve(
+        &self,
+        spec: &ImportSpec<'_>,
+        importer: Option<&ModuleId>,
+    ) -> Result<ModuleId, String> {
+        self.inner.resolve(spec, importer)
+    }
+    fn load(&self, id: &ModuleId) -> Result<String, String> {
+        let result = self.inner.load(id);
+        if result.is_ok() {
+            self.log.borrow_mut().push(id.to_string());
+        }
+        result
+    }
+}
+
 /// In-memory резолвер для тестов и dry-run снапшотов. Ключи: путь файла как есть,
 /// registry — `"<path>@v<version>"` (точное совпадение, без диапазонов).
 pub struct MemoryResolver {
