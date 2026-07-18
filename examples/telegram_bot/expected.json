@@ -1,0 +1,41 @@
+{
+  "bot": {
+    "username": "aura_demo_bot",
+    "token_env_var": "BOT_TOKEN",
+    "mode": "long_polling",
+    "webhook": {
+      "url": "https://bots.example.com/hooks/aura_demo_bot",
+      "secret_header": "X-Telegram-Bot-Api-Secret-Token"
+    },
+    "admins": [
+      187650342,
+      244179081
+    ],
+    "menu_button": {
+      "command": "help",
+      "description": "Список команд"
+    },
+    "commands": [
+      {
+        "command": "start",
+        "description": "Начать работу с ботом"
+      },
+      {
+        "command": "help",
+        "description": "Список команд"
+      },
+      {
+        "command": "subscribe",
+        "description": "Подписаться на уведомления"
+      }
+    ],
+    "limits": {
+      "messages_per_minute": 100,
+      "max_file_mb": 50
+    },
+    "messages": {
+      "start.greeting": "Привет! Я @aura_demo_bot. Наберите /help.",
+      "errors.rate_limited": "Слишком часто. Подождите минуту."
+    }
+  }
+}

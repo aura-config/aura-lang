@@ -122,6 +122,30 @@ fn feature_flags_prod_assert_fires() {
 }
 
 #[test]
+fn telegram_bot_dev_mode() {
+    check_ok(
+        "telegram_bot",
+        "bot.aura",
+        &["--allow-env=BOT_ENV"],
+        &[],
+        "expected.json",
+    );
+}
+
+#[test]
+fn telegram_bot_prod_switches_mode() {
+    let dir = examples_dir().join("telegram_bot");
+    let run = aura(
+        &dir,
+        &["eval", "bot.aura", "--allow-env=BOT_ENV"],
+        &[("BOT_ENV", "production")],
+    );
+    assert_eq!(run.code, 0, "stderr:\n{}", run.stderr);
+    assert!(run.stdout.contains("\"mode\": \"webhook\""));
+    assert!(run.stdout.contains("\"messages_per_minute\": 20"));
+}
+
+#[test]
 fn service_catalog() {
     check_ok(
         "service_catalog",
