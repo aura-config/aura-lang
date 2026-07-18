@@ -46,20 +46,15 @@ fn eval_manifest() -> Value<'static> {
 fn manifest_evaluates_end_to_end() {
     let root = eval_manifest();
 
-    assert_eq!(get(&root, "is_prod"), Value::Bool(true));
-    assert_eq!(get(&root, "base_port"), Value::Int(8000));
+    // D10: `=` приватно — в экспорте только свойства и блоки
+    let Value::Object(m) = &root else { panic!() };
+    assert_eq!(m.keys().collect::<Vec<_>>(), vec!["production-eu"]);
 
     let domain = get(&root, "production-eu");
-    // shadow-затенение видно только внутри домена
-    assert_eq!(get(&domain, "global_file_path"), Value::str("/var/log/aura.log"));
-    assert_eq!(get(&root, "global_file_path"), Value::str("/etc/aura/global.config"));
-
-    // read_file().parse_toml() → cargo_data.package.version
-    assert_eq!(get(&domain, "app_version"), Value::str("1.2.3"));
-
-    // services.compact().uniq()
-    let Value::List(active) = get(&domain, "active_services") else { panic!() };
-    assert_eq!(active.len(), 3);
+    // shadow-затенение: log_path читает затенённое значение
+    assert_eq!(get(&domain, "log_path"), Value::str("/var/log/aura.log"));
+    // is_prod == true → replicas 3
+    assert_eq!(get(&domain, "replicas"), Value::Int(3));
 
     // meta = new ServiceMeta: transform_name("auth") → "AUTH", port = 8000 + 1
     let meta = get(&domain, "meta");

@@ -34,15 +34,15 @@ fn manifest_structure() {
     // shadow-затенение (D7)
     assert!(domain.body.iter().any(|s| matches!(s, Stmt::Assign { name: "global_file_path", shadow: true, .. })));
 
-    // meta = new ServiceMeta ... end (D4)
+    // meta: new ServiceMeta ... end (D4, D10 — свойство)
     assert!(domain.body.iter().any(|s| matches!(
         s,
-        Stmt::Assign { name: "meta", value: Expr::SchemaInstance { schema: "ServiceMeta", .. }, .. }
+        Stmt::Property { key: "meta", value: Expr::SchemaInstance { schema: "ServiceMeta", .. }, .. }
     )));
 
-    // apps = active_services.map (name, index) -> component ... end end
+    // apps: active_services.map (name, index) -> component ... end end
     let apps = domain.body.iter().find_map(|s| match s {
-        Stmt::Assign { name: "apps", value, .. } => Some(value),
+        Stmt::Property { key: "apps", value, .. } => Some(value),
         _ => None,
     });
     let Some(Expr::MethodCall { method: "map", lambda: Some(l), .. }) = apps else {

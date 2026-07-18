@@ -5,6 +5,8 @@ global_file_path = "/etc/aura/global.config"
 base_port        = 8000
 is_prod          = env("APP_ENV", "production") == "production"
 
+assert global_file_path.len() > 0
+
 type ServiceMeta
   name: String
   port: Int
@@ -22,6 +24,8 @@ transform_name = (s) -> s.upper() end
 
 domain "production-eu"
   shadow global_file_path = "/var/log/aura.log"
+  log_path: global_file_path
+  replicas: is_prod ? 3 : 1
 
   security:
     tls_enabled: true
@@ -49,12 +53,12 @@ domain "production-eu"
 
   active_services = services.compact().uniq()
 
-  meta = new ServiceMeta
+  meta: new ServiceMeta
     name: transform_name("auth")
     port: base_port + 1
   end
 
-  apps = active_services.map (name, index) ->
+  apps: active_services.map (name, index) ->
     component name
       image: "company/#{name}:#{app_version}"
       labels: build_labels(name, "backend").merge(defaults.global_labels)

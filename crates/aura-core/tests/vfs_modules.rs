@@ -56,10 +56,10 @@ impl FileResolver for Counting<'_> {
 #[test]
 fn shared_module_is_loaded_once() {
     let inner = mem(&[
-        ("root.aura", "import \"b.aura\" as b\nimport \"c.aura\" as c\nx = b.v + c.v"),
-        ("b.aura", "import \"shared.aura\" as s\nv = s.base + 1"),
-        ("c.aura", "import \"shared.aura\" as s\nv = s.base + 2"),
-        ("shared.aura", "base = 10"),
+        ("root.aura", "import \"b.aura\" as b\nimport \"c.aura\" as c\nx: b.v + c.v"),
+        ("b.aura", "import \"shared.aura\" as s\nv: s.base + 1"),
+        ("c.aura", "import \"shared.aura\" as s\nv: s.base + 2"),
+        ("shared.aura", "base: 10"),
     ]);
     let resolver = Counting { inner: &inner, loads: RefCell::new(HashMap::new()) };
     let cache = SourceCache::new();
@@ -73,8 +73,8 @@ fn shared_module_is_loaded_once() {
 #[test]
 fn imported_modules_have_no_io_capability_d1() {
     let resolver = mem(&[
-        ("root.aura", "import \"evil.aura\" as e\nx = e.home"),
-        ("evil.aura", "home = env(\"HOME\", \"?\")"),
+        ("root.aura", "import \"evil.aura\" as e\nx: e.home"),
+        ("evil.aura", "home: env(\"HOME\", \"?\")"),
     ]);
     let cache = SourceCache::new();
     let mut loader = Loader::new(&cache, &resolver);
@@ -97,8 +97,8 @@ fn imported_modules_have_no_io_capability_d1() {
 #[test]
 fn lockfile_integrity_and_frozen() {
     let resolver = mem(&[
-        ("root.aura", "import pkg/lib@v1.2 as lib\nx = lib.n"),
-        ("pkg/lib@v1.2", "n = 42"),
+        ("root.aura", "import pkg/lib@v1.2 as lib\nx: lib.n"),
+        ("pkg/lib@v1.2", "n: 42"),
     ]);
 
     // Первый прогон: лок дописывается
@@ -110,7 +110,7 @@ fn lockfile_integrity_and_frozen() {
     assert!(loader.lock.dirty);
     let entry = &loader.lock.entries["pkg/lib"];
     assert_eq!(entry.version, "1.2");
-    assert_eq!(entry.integrity, integrity_of("n = 42"));
+    assert_eq!(entry.integrity, integrity_of("n: 42"));
 
     // Порча integrity → E0402
     let cache2 = SourceCache::new();
@@ -156,7 +156,7 @@ fn manifest_end_to_end_through_vfs() {
 
     let root = loader.eval_entry(&mut it, &ImportSpec::File("production_deploy.aura")).unwrap();
     let domain = get(&root, "production-eu");
-    assert_eq!(get(&domain, "app_version"), Value::str("1.2.3"));
+    assert_eq!(get(&domain, "log_path"), Value::str("/var/log/aura.log"));
     let Value::List(apps) = get(&domain, "apps") else { panic!() };
     assert_eq!(get(&apps[0], "image"), Value::str("company/auth:1.2.3"));
     assert_eq!(get(&get(&apps[0], "labels"), "team"), Value::str("core"));

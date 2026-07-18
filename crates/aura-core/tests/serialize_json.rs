@@ -48,12 +48,11 @@ fn manifest_to_json_golden() {
     assert_eq!(domain["apps"][0]["image"], serde_json::json!("company/auth:1.2.3"));
     assert_eq!(domain["apps"][0]["labels"]["team"], serde_json::json!("core"));
     assert_eq!(domain["security"]["certificates"]["key_path"], serde_json::json!("/etc/ssl/certs/server.key"));
-    // Функции/схемы исключены из экспорта
-    assert!(json.get("transform_name").is_none());
-    assert!(json.get("ServiceMeta").is_none());
-    // Порядок ключей = порядок объявления
+    // D10: приватные `=` биндинги, функции и схемы не экспортируются
     let keys: Vec<&String> = json.as_object().unwrap().keys().collect();
-    assert_eq!(keys[0], "global_file_path");
+    assert_eq!(keys, vec!["production-eu"]);
+    assert_eq!(domain["log_path"], serde_json::json!("/var/log/aura.log"));
+    assert_eq!(domain["replicas"], serde_json::json!(3));
 }
 
 #[test]

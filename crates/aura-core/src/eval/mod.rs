@@ -142,12 +142,11 @@ impl<'a> Interpreter<'a> {
         exports: &mut IndexMap<String, Value<'a>>,
     ) -> Result<(), Diagnostic> {
         match stmt {
+            // D10: `=` — приватное вычисление, в экспорт не попадает; экспортируются
+            // только свойства `key:` и блоки domain/component.
             Stmt::Assign { name, shadow, value, span } => {
                 let v = self.eval_expr(env, value)?;
-                self.define(env, name, v.clone(), *shadow, *span)?;
-                if serializable(&v) {
-                    exports.insert(name.to_string(), v);
-                }
+                self.define(env, name, v, *shadow, *span)?;
             }
             Stmt::Property { key, value, .. } => {
                 let v = self.eval_expr(env, value)?;
@@ -566,10 +565,6 @@ impl<'a> Interpreter<'a> {
     }
 }
 
-fn serializable(v: &Value<'_>) -> bool {
-    !matches!(v, Value::Schema(_) | Value::Function(_))
-}
-
 fn as_float(v: &Value<'_>, span: Span) -> Result<f64, Diagnostic> {
     match v {
         Value::Int(n) => Ok(*n as f64),
@@ -657,7 +652,8 @@ mod tests {
 
     #[test]
     fn arithmetic_int_float_d6() {
-        let v = eval("a = 7 / 2\nb = 7.0 / 2\nc = 2 + 3 * 4").unwrap();
+        // D10: экспортируются только свойства `key:`
+        let v = eval("a: 7 / 2\nb: 7.0 / 2\nc: 2 + 3 * 4").unwrap();
         assert_eq!(get(&v, "a"), Value::Int(3)); // целочисленное деление
         assert_eq!(get(&v, "b"), Value::Float(3.5));
         assert_eq!(get(&v, "c"), Value::Int(14));
@@ -678,7 +674,7 @@ mod tests {
     fn shadow_requires_keyword_d7() {
         let src_bad = "x = 1\ndomain \"d\"\n  x = 2\nend";
         assert_eq!(eval(src_bad).unwrap_err().code, "E0302");
-        let src_ok = "x = 1\ndomain \"d\"\n  shadow x = 2\n  y = x\nend";
+        let src_ok = "x = 1\ndomain \"d\"\n  shadow x = 2\n  y: x\nend";
         let v = eval(src_ok).unwrap();
         assert_eq!(get(&get(&v, "d"), "y"), Value::Int(2));
     }
@@ -705,7 +701,7 @@ mod tests {
 
     #[test]
     fn list_methods_and_lambda() {
-        let v = eval("xs = [\"b\"\n\"a\"\nnull\n\"b\"]\nys = xs.compact().uniq()\nn = ys.len()\nup = ys.map (s, i) -> s.upper() end").unwrap();
+        let v = eval("xs = [\"b\"\n\"a\"\nnull\n\"b\"]\nys = xs.compact().uniq()\nn: ys.len()\nup: ys.map (s, i) -> s.upper() end").unwrap();
         assert_eq!(get(&v, "n"), Value::Int(2));
         let Value::List(up) = get(&v, "up") else { panic!() };
         assert_eq!(up[0], Value::str("B"));
@@ -714,7 +710,7 @@ mod tests {
 
     #[test]
     fn interpolation_and_ternary() {
-        let v = eval("name = \"auth\"\nport = 8000\ns = \"svc-#{name}:#{port + 1}\"\nt = port > 100 ? \"big\" : \"small\"").unwrap();
+        let v = eval("name = \"auth\"\nport = 8000\ns: \"svc-#{name}:#{port + 1}\"\nt: port > 100 ? \"big\" : \"small\"").unwrap();
         assert_eq!(get(&v, "s"), Value::str("svc-auth:8001"));
         assert_eq!(get(&v, "t"), Value::str("big"));
     }
@@ -728,8 +724,8 @@ mod tests {
 
     #[test]
     fn def_call_and_object_merge() {
-        let v = eval("def labels(app)\n  app: app\n  managed_by: \"aura\"\nend\na = labels(\"x\")\nb = labels(\"y\")\nm = a.merge(b)").unwrap();
-        assert_eq!(get(&get(&v, "a"), "app"), Value::str("x"));
+        let v = eval("def labels(app)\n  app: app\n  managed_by: \"aura\"\nend\na = labels(\"x\")\nb = labels(\"y\")\norig: a\nm: a.merge(b)").unwrap();
+        assert_eq!(get(&get(&v, "orig"), "app"), Value::str("x"));
         assert_eq!(get(&get(&v, "m"), "app"), Value::str("y")); // правый перекрывает
         assert_eq!(get(&get(&v, "m"), "managed_by"), Value::str("aura"));
     }
