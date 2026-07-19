@@ -270,6 +270,41 @@ aura add <path>@vX.Y.Z [--from <file>] [--registry-dir=<dir>]
 
 Exit-коды: `0` — успех, `1` — диагностики, `2` — ошибки I/O и аргументов.
 
+## Использование из других языков
+
+Aura следует паттерну terraform/jq/pandoc: стабильный CLI-контракт — это API.
+JSON в stdout, диагностики со стабильными кодами (`E0xxx`) в stderr,
+exit-коды `0`/`1`/`2`. Из любого языка:
+
+```python
+# Python
+import json, subprocess
+r = subprocess.run(["aura", "eval", "app.aura", "--frozen"], capture_output=True, text=True)
+if r.returncode != 0:
+    raise RuntimeError(r.stderr)
+config = json.loads(r.stdout)
+```
+
+```javascript
+// Node.js
+const { execFileSync } = require("node:child_process");
+const config = JSON.parse(execFileSync("aura", ["eval", "app.aura", "--frozen"]));
+```
+
+```go
+// Go
+out, err := exec.Command("aura", "eval", "app.aura", "--frozen").Output()
+if err != nil { log.Fatal(err) }
+var config map[string]any
+json.Unmarshal(out, &config)
+```
+
+Рекомендации для прода: `--frozen` (лок-файл обязателен), права только явные,
+`--format yaml|toml` — если потребителю удобнее другой формат. Для Rust-проектов
+есть прямое встраивание без сабпроцесса — `aura_core::facade::eval_file()`.
+Мобильные приложения — потребители *результата*: сервер/CI вычисляет `.aura`,
+клиент читает готовый JSON. Нативные обёртки (WASM/npm, PyO3) — в роадмапе.
+
 ## Диагностика
 
 Ошибки указывают файл, строку, колонку, подсвечивают код и предлагают исправление:
@@ -361,10 +396,12 @@ Aura находится в стадии рабочего превью (v0.1): в
 - [x] Подсветка синтаксиса: VS Code (TextMate + автоотступы), Vim/Neovim,
       nano — [editors/](editors/README.md)
 - [ ] tree-sitter-грамматика (Helix, Zed, Neovim, GitHub Linguist)
-- [ ] Книга документации (mdBook на GitHub Pages): учебник по главам, справочник
-      методов, каталог кодов ошибок E/W с объяснениями, рецепты (k8s, CI, i18n)
-- [ ] Использование из других языков: раздел subprocess-паттерна (Python/Node/Go),
-      далее WASM/npm → PyO3 → C ABI по спросу
+- [x] Книга документации ([docs/book/](docs/book/)): учебник (6 глав),
+      руководства (безопасность, форматы, встраивание), справочник CLI/методов
+      и полный каталог кодов ошибок; сборка в CI, деплой на Pages — после
+      публикации репозитория
+- [x] Использование из других языков: subprocess-паттерн (Python/Node/Go) —
+      см. раздел выше; далее WASM/npm → PyO3 → C ABI по спросу
 - [ ] Кросс-платформенность: `cargo check` матрица (freebsd, aarch64-linux,
       musl, wasm32) в CI; macOS в тестовую матрицу
 

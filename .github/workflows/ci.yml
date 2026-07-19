@@ -60,6 +60,17 @@ jobs:
           cargo build -p aura-cli
           find examples -name '*.aura' -print0 | xargs -0 ./target/debug/aura fmt --check
 
+  docs:
+    name: Build docs book
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: latest
+      - run: mdbook build docs/book
+      # Деплой на GitHub Pages — после публикации репозитория
+
   strict-gate:
     name: Reference manifest (--strict analysis is intentionally red-tested in conformance)
     runs-on: ubuntu-latest
