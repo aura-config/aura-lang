@@ -15,7 +15,7 @@ pub enum ModuleId {
         path: String,
         version: String,
     },
-    /// Задел под Deno-style импорты; в v1.2 не резолвится.
+    /// Задел под прямые URL-импорты; пока не резолвится (пакеты — через `aura add`).
     Url(String),
 }
 
@@ -82,7 +82,8 @@ pub fn registry_url(path: &str, version: &str) -> Result<String, String> {
 }
 
 /// Локальный диск: файловые импорты относительно импортирующего файла,
-/// registry — локальный кэш-каталог `<registry_dir>/<path>/<version>.aura` (сети в v1.2 нет).
+/// registry — локальный кэш-каталог `<registry_dir>/<path>/<version>.aura`,
+/// наполняемый командой `aura add` (eval к сети не обращается).
 pub struct LocalFsResolver {
     pub root: PathBuf,
     pub registry_dir: PathBuf,

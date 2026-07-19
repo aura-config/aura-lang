@@ -1,4 +1,4 @@
-//! AST Aura v1.2 (SPEC §3.1). Zero-copy: имена и строки — срезы исходника.
+//! AST Aura (SPEC §3.1). Zero-copy: имена и строки — срезы исходника.
 
 use crate::lexer::token::StrPart;
 use crate::span::Span;
