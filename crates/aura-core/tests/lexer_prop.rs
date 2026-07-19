@@ -1,18 +1,18 @@
-//! Property-тесты лексера (SPEC §8, Фаза 1): на ПРОИЗВОЛЬНОМ входе лексер
-//! не паникует, а на успешном выходе инварианты span'ов держатся.
+//! Lexer property tests (SPEC §8, Phase 1): on ANY input the lexer
+//! never panics, and on a successful parse the span invariants hold.
 
 use aura_core::lexer::{Lexer, TokenKind};
 use proptest::prelude::*;
 
 proptest! {
-    /// Фаззинг: любой Unicode-вход → Ok(токены) либо Err(диагностика), но не паника.
+    /// Fuzzing: any Unicode input -> Ok(tokens) or Err(diagnostic), never a panic.
     #[test]
     fn never_panics_on_arbitrary_input(src in "\\PC*") {
         let _ = Lexer::new(&src, 0).tokenize();
     }
 
-    /// Инварианты span'ов: в границах исходника, не инвертированы, монотонны,
-    /// и каждый span лежит на границах UTF-8 символов.
+    /// Span invariants: within the source's bounds, never inverted, monotonic,
+    /// and every span lies on UTF-8 character boundaries.
     #[test]
     fn spans_are_sane(src in "\\PC{0,200}") {
         if let Ok(tokens) = Lexer::new(&src, 0).tokenize() {
@@ -29,12 +29,12 @@ proptest! {
         }
     }
 
-    /// Идемпотентность лексем: срез исходника по span идентификатора — это он сам.
+    /// Lexeme idempotence: slicing the source by an identifier's span yields the identifier itself.
     #[test]
     fn ident_lexemes_match_spans(name in "[a-zA-Z_][a-zA-Z0-9_]{0,20}") {
         let src = format!("{name} = 1");
         let tokens = Lexer::new(&src, 0).tokenize().unwrap();
-        // имя могло совпасть с ключевым словом — тогда проверять нечего
+        // the name may have matched a keyword - then there is nothing to check
         if let TokenKind::Ident(s) = &tokens[0].kind {
             prop_assert_eq!(*s, &src[tokens[0].span.start as usize..tokens[0].span.end as usize]);
         }

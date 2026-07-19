@@ -1,12 +1,12 @@
-//! Бенчмарк hot path Фазы 2: полный фронтенд (lex + parse) на эталонном манифесте.
+//! Phase 2 hot-path benchmark: the full front end (lex + parse) on the reference manifest.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 
 const MANIFEST: &str = include_str!("../tests/fixtures/production_deploy.aura");
 
 fn bench_parser(c: &mut Criterion) {
-    // Импорты обязаны идти в начале файла, поэтому конкатенировать манифест нельзя —
-    // прогоняем 64 независимых разбора за итерацию.
+    // Imports must come at the start of the file, so the manifest cannot be concatenated -
+    // run 64 independent parses per iteration instead.
     let mut group = c.benchmark_group("parser");
     group.throughput(Throughput::Bytes(MANIFEST.len() as u64 * 64));
     group.bench_function("lex_and_parse_manifest_x64", |b| {

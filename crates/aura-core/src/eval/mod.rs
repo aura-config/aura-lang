@@ -1,5 +1,5 @@
-//! Движок вычислений (SPEC §4). Детерминированный tree-walking интерпретатор
-//! с capability-моделью эффектов (D1).
+//! Evaluation engine (SPEC §4). Deterministic tree-walking interpreter
+//! with a capability model for effects (D1).
 
 pub mod env;
 pub mod methods;
@@ -28,7 +28,7 @@ pub struct Options {
     pub dry_run: bool,
 }
 
-/// Capability чтения переменных окружения (D1): по умолчанию запрещено.
+/// Capability for reading environment variables (D1): denied by default.
 #[derive(Debug, Clone, Default)]
 pub enum EnvCap {
     #[default]
@@ -43,12 +43,12 @@ pub enum FileError {
     Io(String),
 }
 
-/// Доступ к файлам за трейтом: Фаза 4 заменит на FileResolver/VFS, dry-run — на RecordingResolver.
+/// File access behind a trait: the VFS builds on this, dry-run wraps it in RecordingFs.
 pub trait FileAccess {
     fn read(&self, path: &str) -> Result<String, FileError>;
 }
 
-/// Дефолт D1: никакого I/O без явных прав.
+/// D1 default: no I/O without explicit grants.
 pub struct DenyFs;
 impl FileAccess for DenyFs {
     fn read(&self, _path: &str) -> Result<String, FileError> {
@@ -66,7 +66,7 @@ impl FileAccess for MemFs {
     }
 }
 
-/// Обёртка dry-run (SPEC §6.3): чтения выполняются, но факт логируется в отчёт.
+/// Dry-run wrapper (SPEC §6.3): reads are performed but recorded into a report.
 pub struct RecordingFs {
     pub inner: Box<dyn FileAccess>,
     pub log: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
@@ -81,7 +81,7 @@ impl FileAccess for RecordingFs {
     }
 }
 
-/// `--allow-read=<paths>`: канонизация + проверка префикса (E0311).
+/// `--allow-read=<paths>`: canonicalization + prefix check (E0311).
 pub struct RealFs {
     pub allowed: Vec<PathBuf>,
 }
@@ -104,14 +104,14 @@ pub struct Interpreter<'a> {
     pub registry: MethodRegistry<'a>,
     pub fs: Box<dyn FileAccess>,
     pub env_cap: EnvCap,
-    /// Переопределения окружения для тестов/dry-run снапшотов; приоритет над реальным env.
+    /// Environment overrides for tests/dry-run snapshots; take priority over the real env.
     pub env_overrides: HashMap<String, String>,
     pub options: Options,
-    /// --allow-imports-io: выдать импортированным модулям I/O-права корня (D1).
+    /// --allow-imports-io: grant imported modules the root's I/O capabilities (D1).
     pub allow_imports_io: bool,
-    /// Выставляется загрузчиком VFS: false во время eval импортированного модуля.
+    /// Set by the VFS loader: false while evaluating an imported module.
     pub current_root: bool,
-    /// Вычисленные модули по алиасу; заполняется загрузчиком VFS (или тестами напрямую).
+    /// Evaluated modules by alias; populated by the VFS loader (or by tests directly).
     modules: HashMap<String, Value<'a>>,
     call_depth: u32,
 }
@@ -139,7 +139,7 @@ impl<'a> Interpreter<'a> {
         self.modules.insert(alias.into(), value);
     }
 
-    /// Результат модуля — Object из сериализуемых топ-уровневых биндингов и domain-блоков.
+    /// A module evaluates to an Object of its exported properties and domain blocks.
     pub fn eval_module(&mut self, module: &Module<'a>) -> Result<Value<'a>, Diagnostic> {
         let env = Environment::root();
         for imp in &module.imports {
@@ -169,8 +169,8 @@ impl<'a> Interpreter<'a> {
         exports: &mut IndexMap<String, Value<'a>>,
     ) -> Result<(), Diagnostic> {
         match stmt {
-            // D10: `=` — приватное вычисление, в экспорт не попадает; экспортируются
-            // только свойства `key:` и блоки domain/component.
+            // D10: `=` is a private computation and is never exported; only
+            // `key:` properties and domain/component blocks are.
             Stmt::Assign {
                 name,
                 shadow,
@@ -190,7 +190,7 @@ impl<'a> Interpreter<'a> {
                     fields: schema.fields.clone(),
                 }));
                 self.define(env, schema.name, v.clone(), false, schema.span)?;
-                // D12: pub type виден импортёрам через объект модуля
+                // D12: pub type is visible to importers via the module object
                 if schema.public {
                     exports.insert(schema.name.to_string(), v);
                 }
@@ -209,7 +209,7 @@ impl<'a> Interpreter<'a> {
                     defined_in_root: self.current_root,
                 }));
                 self.define(env, name, v.clone(), false, *span)?;
-                // D12: pub def виден импортёрам через объект модуля
+                // D12: pub def is visible to importers via the module object
                 if *public {
                     exports.insert(name.to_string(), v);
                 }
@@ -260,7 +260,7 @@ impl<'a> Interpreter<'a> {
         Ok(())
     }
 
-    /// Правила биндинга D7/E0301 (SPEC §4.2).
+    /// Binding rules D7/E0301 (SPEC §4.2).
     fn define(
         &self,
         env: &Env<'a>,
@@ -287,7 +287,7 @@ impl<'a> Interpreter<'a> {
         Ok(())
     }
 
-    /// Тело domain/component → Object; component дополнительно получает ключ "name" = label.
+    /// domain/component body → Object; a component additionally gets "name" = label.
     fn eval_block(
         &mut self,
         outer: &Env<'a>,
@@ -377,8 +377,8 @@ impl<'a> Interpreter<'a> {
                 if let Some(f) = self.registry.get(recv_v.tag(), method) {
                     return f(self, &recv_v, &argv, *span);
                 }
-                // D12: вызов экспортированной функции модуля — obj.fn(args);
-                // встроенные методы имеют приоритет над одноимёнными полями
+                // D12: calling an exported module function — obj.fn(args);
+                // builtin methods take precedence over same-named fields
                 if let Value::Object(m) = &recv_v {
                     if let Some(f @ Value::Function(_)) = m.get(*method) {
                         let f = f.clone();
@@ -405,7 +405,7 @@ impl<'a> Interpreter<'a> {
                     )),
                 }
             }
-            // D11: `xs[int]` для списков; `obj."#{key}"` (bracket=false) для объектов
+            // D11: `xs[int]` for lists; `obj."#{key}"` (bracket=false) for objects
             Expr::Index {
                 recv,
                 key,
@@ -466,7 +466,7 @@ impl<'a> Interpreter<'a> {
                 body,
                 span,
             } => {
-                // D12: `new alias.Schema` — схема из объекта импортированного модуля
+                // D12: `new alias.Schema` — a schema from an imported module's object
                 let resolved = match schema_alias {
                     Some(alias) => match env.get(alias) {
                         Some(Value::Object(m)) => m.get(*schema).cloned(),
@@ -528,7 +528,7 @@ impl<'a> Interpreter<'a> {
         })
     }
 
-    /// `#{expr}` — ленивый разбор среза (SPEC §2.1) и вычисление в текущем окружении.
+    /// `#{expr}` — lazy parse of the raw slice (SPEC §2.1), evaluated in the current scope.
     fn eval_interp(
         &mut self,
         env: &Env<'a>,
@@ -552,7 +552,7 @@ impl<'a> Interpreter<'a> {
         self.eval_expr(env, &expr)
     }
 
-    /// Только скаляры допустимы в интерполяции и join (E0307).
+    /// Only scalars are allowed in interpolation and join (E0307).
     pub(crate) fn display(&self, v: &Value<'a>, span: Span) -> Result<String, Diagnostic> {
         Ok(match v {
             Value::Str(s) => s.to_string(),
@@ -578,7 +578,7 @@ impl<'a> Interpreter<'a> {
         rhs: &Expr<'a>,
         span: Span,
     ) -> Result<Value<'a>, Diagnostic> {
-        // Короткое замыкание логики
+        // Short-circuit logic
         if matches!(op, BinOp::And | BinOp::Or) {
             let Value::Bool(l) = self.eval_expr(env, lhs)? else {
                 return Err(rt("E0306", "logical operand must be Bool", span));
@@ -601,7 +601,7 @@ impl<'a> Interpreter<'a> {
             Ne => return Ok(Bool(l != r)),
             _ => {}
         }
-        // Арифметика и сравнения (SPEC §4.1, D6): Int⊕Int→Int (checked), Float заражает.
+        // Arithmetic and comparisons (SPEC §4.1, D6): Int⊕Int→Int (checked), Float is contagious.
         match (op, &l, &r) {
             (Add, Int(a), Int(b)) => a
                 .checked_add(*b)
@@ -665,8 +665,8 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    /// Вызов Value::Function (def / лямбда). Лишние аргументы игнорируются
-    /// (map передаёт elem+index, лямбда может объявить только elem); нехватка — E0312.
+    /// Calls a Value::Function (def / lambda). Extra arguments are ignored
+    /// (map passes elem+index, a lambda may declare only elem); too few — E0312.
     pub fn call_value(
         &mut self,
         f: &Value<'a>,
@@ -700,7 +700,7 @@ impl<'a> Interpreter<'a> {
         for (p, a) in def.params.iter().zip(args) {
             env.insert(p, a.clone());
         }
-        // D1×D12: тело выполняется с capability модуля-происхождения функции
+        // D1×D12: the body runs with the capabilities of the function's origin module
         let saved_root = self.current_root;
         self.current_root = def.defined_in_root;
         let result = match &def.body {
@@ -713,14 +713,14 @@ impl<'a> Interpreter<'a> {
         result
     }
 
-    /// Эффектные builtin'ы под capability-контролем (D1, SPEC §4.3).
+    /// Effectful builtins under capability control (D1, SPEC §4.3).
     fn try_builtin_call(
         &mut self,
         name: &str,
         args: &[Value<'a>],
         span: Span,
     ) -> Result<Option<Value<'a>>, Diagnostic> {
-        // D1: импортированным модулям I/O запрещён без --allow-imports-io (SPEC §4.3).
+        // D1: imported modules get no I/O without --allow-imports-io (SPEC §4.3).
         if matches!(name, "env" | "read_file") && !self.current_root && !self.allow_imports_io {
             let mut d = rt(
                 "E0310",
@@ -733,7 +733,7 @@ impl<'a> Interpreter<'a> {
             return Err(d);
         }
         match name {
-            // D13: текущего времени в Aura не существует — конфиг детерминирован
+            // D13: current time does not exist in Aura — configs are deterministic
             "now" | "timestamp" => {
                 let mut d = rt(
                     "E0533",
@@ -801,7 +801,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    /// Валидация схемы (SPEC §6.2): E0511 missing, E0512 type, E0513 extra (только strict).
+    /// Schema validation (SPEC §6.2): E0511 missing, E0512 type, E0513 extra (strict only).
     fn validate_schema(
         &self,
         def: &SchemaDef<'a>,
@@ -901,7 +901,7 @@ fn op_name(op: BinOp) -> &'static str {
     }
 }
 
-/// Ленивое разэкранирование (SPEC §2.3): без `\` — нулевая стоимость.
+/// Lazy unescaping (SPEC §2.3): zero cost when there is no `\`.
 fn unescape(s: &str) -> Arc<str> {
     if !s.contains('\\') {
         return Arc::from(s);
@@ -952,9 +952,9 @@ mod tests {
 
     #[test]
     fn arithmetic_int_float_d6() {
-        // D10: экспортируются только свойства `key:`
+        // D10: only `key:` properties are exported
         let v = eval("a: 7 / 2\nb: 7.0 / 2\nc: 2 + 3 * 4").unwrap();
-        assert_eq!(get(&v, "a"), Value::Int(3)); // целочисленное деление
+        assert_eq!(get(&v, "a"), Value::Int(3)); // integer division
         assert_eq!(get(&v, "b"), Value::Float(3.5));
         assert_eq!(get(&v, "c"), Value::Int(14));
     }
@@ -1001,7 +1001,7 @@ mod tests {
         let wrong_ty = format!("{base}m = new M\n  name: \"a\"\n  port: \"x\"\nend");
         assert_eq!(eval(&wrong_ty).unwrap_err().code, "E0512");
         let extra = format!("{base}m = new M\n  name: \"a\"\n  port: 1\n  zzz: 1\nend");
-        assert!(eval(&extra).is_ok()); // не strict: поле сохраняется
+        assert!(eval(&extra).is_ok()); // non-strict: the field is kept
         assert_eq!(
             eval_with(
                 &extra,
@@ -1052,7 +1052,7 @@ mod tests {
         assert_eq!(get(&v, "p"), Value::Int(8080));
         assert_eq!(get(&v, "q"), Value::Int(8080));
         assert_eq!(get(&v, "g"), Value::Int(0));
-        // динамический ключ через скобки на объекте запрещён
+        // dynamic key via brackets on an object is forbidden
         let bad = "def mk()\n  a: 1\nend\nk = \"a\"\nx: mk()[k]";
         assert_eq!(eval(bad).unwrap_err().code, "E0318");
     }
@@ -1097,9 +1097,9 @@ mod tests {
         assert_eq!(get(&v, "b"), Value::Int(172800));
         assert_eq!(get(&v, "c"), Value::str("1h30m"));
         assert_eq!(get(&v, "d"), Value::str("0s"));
-        // 2000-01-01 UTC — известный epoch
+        // 2000-01-01 UTC — a well-known epoch value
         assert_eq!(get(&v, "e"), Value::Int(946684800));
-        // смещение +02:00 указывает на тот же момент
+        // the +02:00 offset denotes the same instant
         assert_eq!(get(&v, "f"), Value::Int(946684800));
         assert_eq!(get(&v, "g"), Value::str("2000-01-01T00:00:00Z"));
         assert_eq!(get(&v, "h"), Value::str("2026-07-18T00:00:00Z"));
@@ -1132,7 +1132,7 @@ mod tests {
     fn def_call_and_object_merge() {
         let v = eval("def labels(app)\n  app: app\n  managed_by: \"aura\"\nend\na = labels(\"x\")\nb = labels(\"y\")\norig: a\nm: a.merge(b)").unwrap();
         assert_eq!(get(&get(&v, "orig"), "app"), Value::str("x"));
-        assert_eq!(get(&get(&v, "m"), "app"), Value::str("y")); // правый перекрывает
+        assert_eq!(get(&get(&v, "m"), "app"), Value::str("y")); // right side wins
         assert_eq!(get(&get(&v, "m"), "managed_by"), Value::str("aura"));
     }
 }

@@ -1,4 +1,4 @@
-//! AST Aura (SPEC §3.1). Zero-copy: имена и строки — срезы исходника.
+//! Aura AST (SPEC §3.1). Zero-copy: names and strings are slices of the source.
 
 use crate::lexer::token::StrPart;
 use crate::span::Span;
@@ -19,7 +19,7 @@ pub struct Import<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImportSource<'a> {
-    /// github/actions/rust-cache@v1.2 (версия обязательна, D8)
+    /// github/actions/rust-cache@v1.2 (version is mandatory, D8)
     Registry {
         path: &'a str,
         version: &'a str,
@@ -36,7 +36,7 @@ pub enum Stmt<'a> {
         value: Expr<'a>,
         span: Span,
     },
-    /// `key: expr` | `key:` + объектный блок — внутри domain/component
+    /// `key: expr` | `key:` + an object block - inside domain/component
     Property {
         key: &'a str,
         value: Expr<'a>,
@@ -49,7 +49,7 @@ pub enum Stmt<'a> {
         span: Span,
     },
     TypeDecl(SchemaDeclaration<'a>),
-    /// `[pub] def ...` — public экспортируется импортёрам модуля (D12)
+    /// `[pub] def ...` - public is exported to the module's importers (D12)
     FuncDecl {
         name: &'a str,
         params: Vec<&'a str>,
@@ -65,7 +65,7 @@ pub enum Stmt<'a> {
 pub struct SchemaDeclaration<'a> {
     pub name: &'a str,
     pub fields: Vec<(&'a str, TypeName<'a>)>,
-    /// `pub type` — схема видима импортёрам модуля (D12)
+    /// `pub type` - the schema is visible to the module's importers (D12)
     pub public: bool,
     pub span: Span,
 }
@@ -90,7 +90,7 @@ pub enum BlockKind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockDeclaration<'a> {
     pub kind: BlockKind,
-    /// `"production-eu"` | `name` — произвольное выражение
+    /// `"production-eu"` | `name` - an arbitrary expression
     pub label: Expr<'a>,
     pub body: Vec<Stmt<'a>>,
     pub span: Span,
@@ -101,7 +101,7 @@ pub enum LitValue<'a> {
     Int(i64),
     Float(f64),
     Str(&'a str),
-    /// Сырые части; под-выражения `#{...}` парсятся при вычислении (Фаза 3)
+    /// Raw parts; `#{...}` sub-expressions are parsed at evaluation time (Phase 3)
     InterpStr(Vec<StrPart<'a>>),
     Bool(bool),
     Null,
@@ -169,8 +169,8 @@ pub enum Expr<'a> {
         field: &'a str,
         span: Span,
     },
-    /// Индексация списка `xs[0]` (bracket=true) либо динамический ключ объекта
-    /// `obj."#{name}"` (bracket=false, D11). На объектах скобки запрещены (E0318).
+    /// List indexing `xs[0]` (bracket=true) or a dynamic object key
+    /// `obj."#{name}"` (bracket=false, D11). Brackets are forbidden on objects (E0318).
     Index {
         recv: Box<Expr<'a>>,
         key: Box<Expr<'a>>,
@@ -184,15 +184,15 @@ pub enum Expr<'a> {
         body: LambdaBody<'a>,
         span: Span,
     },
-    /// Только через `new` (D4)
-    /// `schema_alias` — импортированная схема `new mod.Name` (D12)
+    /// Only through `new` (D4)
+    /// `schema_alias` - an imported schema `new mod.Name` (D12)
     SchemaInstance {
         schema: &'a str,
         schema_alias: Option<&'a str>,
         body: ObjectBody<'a>,
         span: Span,
     },
-    /// `component name ... end` в позиции выражения (внутри map)
+    /// `component name ... end` in expression position (inside map)
     Block(Box<BlockDeclaration<'a>>),
 }
 

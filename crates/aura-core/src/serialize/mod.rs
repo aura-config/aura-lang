@@ -1,5 +1,5 @@
-//! Сериализация Value → serde_json (SPEC §7.1).
-//! Int → JSON integer без потери точности (D6); Schema/Function в глубине — E0601 с путём ключа.
+//! Value -> serde_json serialization (SPEC §7.1).
+//! Int -> JSON integer with no precision loss (D6); a Schema/Function deep in the tree is E0601 with a key path.
 
 use crate::error::Diagnostic;
 use crate::eval::value::Value;
@@ -35,11 +35,11 @@ fn go(v: &Value<'_>, path: &mut Vec<String>) -> Result<serde_json::Value, Diagno
             J::Array(out)
         }
         Value::Object(m) => {
-            // Порядок ключей сохраняется: IndexMap → serde_json::Map (preserve_order)
+            // Key order is preserved: IndexMap -> serde_json::Map (preserve_order)
             let mut out = serde_json::Map::with_capacity(m.len());
             for (k, item) in m.iter() {
-                // D12: pub def/type верхнего уровня — API для импортёров,
-                // из JSON корня молча исключаются; глубже — E0601 как ошибка
+                // D12: a top-level pub def/type is API for importers,
+                // silently excluded from the root JSON; deeper it is still an E0601 error
                 if path.is_empty() && matches!(item, Value::Schema(_) | Value::Function(_)) {
                     continue;
                 }
@@ -62,13 +62,13 @@ fn go(v: &Value<'_>, path: &mut Vec<String>) -> Result<serde_json::Value, Diagno
     })
 }
 
-/// YAML-эмиттер (используется методом `.to_yaml()` и `--format yaml`).
+/// The YAML emitter (used by the `.to_yaml()` method and `--format yaml`).
 pub fn to_yaml_string(v: &Value<'_>) -> Result<String, Diagnostic> {
     let json = to_json(v)?;
     serde_yaml::to_string(&json).map_err(|e| err("E0603", format!("cannot emit YAML: {e}")))
 }
 
-/// TOML-эмиттер: требует объект на верхнем уровне; null в TOML не существует.
+/// The TOML emitter: requires an object at the top level; TOML has no null.
 pub fn to_toml_string(v: &Value<'_>) -> Result<String, Diagnostic> {
     let json = to_json(v)?;
     if !json.is_object() {
@@ -85,7 +85,7 @@ pub fn to_toml_string(v: &Value<'_>) -> Result<String, Diagnostic> {
     })
 }
 
-/// `--format json-flat`: вложенные объекты уплощаются в `a.b.c`; списки и скаляры — листья.
+/// `--format json-flat`: nested objects are flattened into `a.b.c`; lists and scalars are leaves.
 pub fn to_json_flat(v: &Value<'_>) -> Result<serde_json::Value, Diagnostic> {
     let json = to_json(v)?;
     let serde_json::Value::Object(map) = json else {

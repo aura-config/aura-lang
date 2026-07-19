@@ -1,5 +1,5 @@
-//! Критерий приёмки Фазы 1 (SPEC §8): эталонный манифест токенизируется без ошибок,
-//! span'ы корректно покрывают исходник.
+//! Phase 1 acceptance criterion (SPEC §8): the reference manifest tokenizes without errors,
+//! and the spans correctly cover the source.
 
 use aura_core::lexer::{Lexer, TokenKind};
 
@@ -16,7 +16,7 @@ fn reference_manifest_tokenizes() {
         tokens.len()
     );
     assert_eq!(tokens.last().map(|t| &t.kind), Some(&TokenKind::Eof));
-    // v1.2-конструкции присутствуют
+    // v1.2 constructs are present
     assert!(tokens.iter().any(|t| t.kind == TokenKind::New));
     assert!(tokens.iter().any(|t| t.kind == TokenKind::Assert));
     assert!(tokens.iter().any(|t| t.kind == TokenKind::Shadow));
@@ -37,6 +37,6 @@ fn spans_are_monotonic_and_within_source() {
         assert!(t.span.start <= t.span.end, "inverted span {:?}", t);
         assert!(t.span.start >= prev_end, "overlapping spans at {:?}", t);
         assert!((t.span.end as usize) <= MANIFEST.len());
-        prev_end = t.span.start; // Newline может схлопывать; порядок начал монотонен
+        prev_end = t.span.start; // Newline may collapse; the order of starts is monotonic
     }
 }

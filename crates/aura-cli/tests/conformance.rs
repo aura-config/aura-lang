@@ -1,8 +1,8 @@
-//! Conformance-раннер: прогоняет examples/*/ через реальный бинарник `aura`
-//! и сверяет stdout с зафиксированными expected.*.
+//! Conformance runner: exercises examples/*/ through the real `aura` binary
+//! and diffs stdout against the pinned expected.*.
 //!
-//! Это языконезависимый корпус: любая будущая реализация Aura обязана давать
-//! те же выводы на тех же входах. Ошибочные кейсы проверяются по коду ошибки.
+//! This is a language-agnostic corpus: any future Aura implementation must
+//! produce the same outputs on the same inputs. Failure cases are checked by error code.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -23,7 +23,7 @@ struct Run {
 fn aura(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> Run {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_aura"));
     cmd.current_dir(dir).args(args);
-    // Детерминизм: окружение задаётся только явно
+    // Determinism: the environment is set only explicitly
     cmd.env_remove("APP_ENV");
     for (k, v) in env {
         cmd.env(k, v);
@@ -42,7 +42,7 @@ fn expected(dir: &Path, file: &str) -> String {
         .replace("\r\n", "\n")
 }
 
-/// Успешный кейс: stdout побайтно (по нормализованным переносам) равен expected.
+/// Success case: stdout is byte-identical (with normalized line endings) to expected.
 fn check_ok(
     subdir: &str,
     manifest: &str,
@@ -159,7 +159,7 @@ fn i18n_fallback_merge() {
 #[test]
 fn validators_package_d12() {
     check_ok("validators", "deploy.aura", &[], &[], "expected.json");
-    // валидатор пакета останавливает невозможный порт
+    // the package validator stops an impossible port
     let dir = examples_dir().join("validators");
     let run = aura(&dir, &["eval", "bad.aura"], &[]);
     assert_eq!(run.code, 1);
@@ -195,10 +195,11 @@ fn security_demo_denies_import_io() {
         run.stderr.contains("evil_dependency.aura"),
         "error must point into the module"
     );
-    // --allow-imports-io снимает именно запрет "импорт без прав"; дальше срабатывает
-    // следующий барьер, и он платформенно-зависим: на Linux /etc/passwd существует,
-    // но лежит вне --allow-read=. (E0310 про путь), на Windows файла нет (E0313 I/O).
-    // Инвариант один: ошибки "imported module has no capability" больше нет.
+    // --allow-imports-io lifts exactly the "import without capability" denial;
+    // the next barrier then fires, and it is platform-dependent: on Linux
+    // /etc/passwd exists but lies outside --allow-read=. (E0310 about the path),
+    // on Windows the file does not exist (E0313 I/O). The one invariant checked
+    // here: the "imported module has no capability" error is gone.
     let run2 = aura(
         &dir,
         &["eval", "main.aura", "--allow-read=.", "--allow-imports-io"],
@@ -228,17 +229,17 @@ fn reference_manifest() {
 
 #[test]
 fn check_command_strict_blocks_dead_code() {
-    // Эталонный манифест содержит намеренный мёртвый код → --strict блокирует
+    // The reference manifest contains intentional dead code → --strict blocks it
     let dir = examples_dir();
     let run = aura(&dir, &["check", "production_deploy.aura", "--strict"], &[]);
     assert_eq!(run.code, 1);
     assert!(run.stderr.contains("W0501") && run.stderr.contains("unused_config_version"));
-    // без --strict — проходит
+    // without --strict it passes
     let run2 = aura(&dir, &["check", "production_deploy.aura"], &[]);
     assert_eq!(run2.code, 0);
 }
 
-/// Удаляет ANSI escape-последовательности (цвета ariadne) для стабильного сравнения.
+/// Strips ANSI escape sequences (ariadne colors) for stable comparison.
 fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
@@ -257,7 +258,7 @@ fn strip_ansi(s: &str) -> String {
     out
 }
 
-/// SPEC §6.3 (RecordingResolver): dry-run отчитывается обо всех чтениях.
+/// SPEC §6.3 (RecordingResolver): dry-run reports every read performed.
 #[test]
 fn dry_run_reports_reads() {
     let dir = examples_dir().join("service_catalog");
@@ -272,7 +273,7 @@ fn dry_run_reports_reads() {
         &[],
     );
     assert_eq!(run.code, 0, "stderr:\n{}", run.stderr);
-    // модуль + оба файла данных попали в отчёт
+    // the module and both data files ended up in the report
     assert!(
         run.stderr.contains("[dry-run] read:"),
         "no read report:\n{}",
@@ -280,7 +281,7 @@ fn dry_run_reports_reads() {
     );
     assert!(run.stderr.contains("Cargo.toml"), "{}", run.stderr);
     assert!(run.stderr.contains("team.json"), "{}", run.stderr);
-    // результат не отличается от обычного прогона
+    // the result is identical to a normal run
     let normal = aura(
         &dir,
         &["eval", "service_catalog.aura", "--allow-read=."],
@@ -289,7 +290,7 @@ fn dry_run_reports_reads() {
     assert_eq!(run.stdout, normal.stdout);
 }
 
-/// SPEC §8 (Фаза 6): визуальные отчёты ariadne зафиксированы golden-снапшотом.
+/// SPEC §8 (Phase 6): ariadne's visual reports are pinned by a golden snapshot.
 #[test]
 fn diagnostics_render_golden() {
     let dir = examples_dir();
@@ -300,14 +301,14 @@ fn diagnostics_render_golden() {
     assert_eq!(got.trim_end(), want.trim_end(), "ariadne report changed");
 }
 
-/// Полный цикл пакета: `aura add --from` → оффлайн `eval` через кэш и лок.
+/// Full package cycle: `aura add --from` → offline `eval` through the cache and lock.
 #[test]
 fn add_then_eval_offline() {
     let work = std::env::temp_dir().join(format!("aura-add-test-{}", std::process::id()));
     let registry = work.join("registry");
     std::fs::create_dir_all(&work).unwrap();
 
-    // Устанавливаем validators.aura как пакет pkg/validators@v1.0.0
+    // Install validators.aura as the package pkg/validators@v1.0.0
     let pkg_src = examples_dir().join("validators/validators.aura");
     let run = aura(
         &work,
@@ -329,7 +330,7 @@ fn add_then_eval_offline() {
         "{lock}"
     );
 
-    // Импорт по диапазону @v1 резолвится в установленную 1.0.0 без сети
+    // A range import @v1 resolves to the installed 1.0.0 without the network
     std::fs::write(
         work.join("main.aura"),
         "import pkg/validators@v1 as v\napi: v.service(\"api\", 8080)\n",
@@ -354,7 +355,7 @@ fn add_then_eval_offline() {
 
 #[test]
 fn dry_run_is_byte_identical_and_writes_nothing() {
-    // Инвариант SPEC §6.3: dry-run не меняет результат; два прогона идентичны
+    // SPEC §6.3 invariant: dry-run does not change the result; two runs are identical
     let dir = examples_dir().join("environments");
     let args = ["eval", "environments.aura", "--dry-run"];
     let a = aura(&dir, &args, &[]);

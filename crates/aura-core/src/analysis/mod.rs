@@ -1,8 +1,8 @@
-//! Статический анализ (SPEC §6.1): один проход по AST со стеком областей,
-//! зеркалирующим Environment. Работает до рантайма.
+//! Static analysis (SPEC §6.1): a single AST pass with a scope stack
+//! mirroring the Environment. Runs before the runtime.
 //!
-//! Ошибки (всегда): E0504 undefined variable, статические E0301/E0302.
-//! Предупреждения (в --strict повышаются до ошибок вызывающей стороной):
+//! Errors (always): E0504 undefined variable, static E0301/E0302.
+//! Warnings (promoted to errors by the caller under --strict):
 //! W0501 unused variable, W0502 unused import, W0503 unused function/type,
 //! W0303 useless shadow, W0512 effectful call in imported module.
 
@@ -21,7 +21,7 @@ const EFFECTFUL: &[&str] = &["env", "read_file"];
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DeclKind {
     Var,
-    /// Параметры функций/лямбд не считаются мёртвым кодом (сигнатура может требовать их).
+    /// Function/lambda parameters are never considered dead code (the signature may require them).
     Param,
     Import,
     Func,
@@ -40,7 +40,7 @@ pub struct SemanticAnalyzer<'a> {
     is_root: bool,
 }
 
-/// `is_root = false` — анализ импортированного модуля (включает W0512).
+/// `is_root = false` — analysis of an imported module (includes W0512).
 pub fn analyze<'a>(module: &Module<'a>, is_root: bool) -> Vec<Diagnostic> {
     let mut a = SemanticAnalyzer {
         scopes: Vec::new(),
@@ -58,7 +58,7 @@ pub fn analyze<'a>(module: &Module<'a>, is_root: bool) -> Vec<Diagnostic> {
     a.diags
 }
 
-/// Есть ли блокирующие диагностики: ошибки всегда, в strict — и предупреждения (SPEC §6.1).
+/// Whether there are blocking diagnostics: errors always, warnings too under strict (SPEC §6.1).
 pub fn has_blocking(diags: &[Diagnostic], strict: bool) -> bool {
     diags
         .iter()
@@ -70,7 +70,7 @@ impl<'a> SemanticAnalyzer<'a> {
         self.scopes.push(IndexMap::new());
     }
 
-    /// На выходе из области — отчёт о мёртвом коде (SPEC §6.1, шаг 3).
+    /// On leaving a scope — report dead code (SPEC §6.1, step 3).
     fn pop_scope(&mut self) {
         let scope = self.scopes.pop().expect("scope stack underflow");
         for (name, decl) in scope {
@@ -148,7 +148,7 @@ impl<'a> SemanticAnalyzer<'a> {
             .find_map(|s| s.get(name).map(|d| d.span))
     }
 
-    /// Шаг 2 SPEC §6.1: пометка ближайшего объявления (учитывает shadowing).
+    /// Step 2 of SPEC §6.1: mark the nearest declaration (respects shadowing).
     fn mark_used(&mut self, name: &str, span: Span) {
         for scope in self.scopes.iter_mut().rev() {
             if let Some(decl) = scope.get_mut(name) {
@@ -174,7 +174,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 value,
                 span,
             } => {
-                self.walk_expr(value); // значение не видит собственное имя
+                self.walk_expr(value); // the value does not see its own name
                 self.declare(name, *span, DeclKind::Var, *shadow);
             }
             Stmt::Property { value, .. } => self.walk_expr(value),
@@ -191,7 +191,7 @@ impl<'a> SemanticAnalyzer<'a> {
                     }
                 }
                 self.declare(schema.name, schema.span, DeclKind::Type, false);
-                // D12: pub — это API модуля, не мёртвый код
+                // D12: pub is the module's API, not dead code
                 if schema.public {
                     self.mark_used(schema.name, schema.span);
                 }
@@ -204,7 +204,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 span,
             } => {
                 self.declare(name, *span, DeclKind::Func, false);
-                // D12: pub — это API модуля, не мёртвый код
+                // D12: pub is the module's API, not dead code
                 if *public {
                     self.mark_used(name, *span);
                 }
@@ -262,7 +262,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 self.walk_expr(otherwise);
             }
             Expr::Call { callee, args, span } => {
-                // W0512: эффектный вызов в импортированном модуле (SPEC §6.1, D1)
+                // W0512: an effectful call in an imported module (SPEC §6.1, D1)
                 if let Expr::Variable(name, _) = callee.as_ref() {
                     if !self.is_root && EFFECTFUL.contains(name) {
                         self.diags.push(Diagnostic::warning(
@@ -317,7 +317,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 body,
                 span,
             } => {
-                // `new alias.Schema` использует алиас импорта; сама схема — в чужом модуле
+                // `new alias.Schema` uses the import alias; the schema itself lives in another module
                 match schema_alias {
                     Some(alias) => self.mark_used(alias, *span),
                     None => self.mark_used(schema, *span),
@@ -328,8 +328,8 @@ impl<'a> SemanticAnalyzer<'a> {
         }
     }
 
-    /// `#{expr}` парсится и анализируется как обычное выражение — переменные,
-    /// используемые только в интерполяции, не считаются мёртвыми.
+    /// `#{expr}` is parsed and analyzed as an ordinary expression — variables
+    /// used only inside an interpolation are not considered dead.
     fn walk_interp(&mut self, src: &'a str, span: Span) {
         let parsed = Lexer::new(src, span.source)
             .tokenize()
@@ -373,14 +373,14 @@ mod tests {
         ); // a, y
         assert_eq!(codes("type T\n  a: Int\nend"), vec!["W0503"]);
         assert_eq!(codes("def f(x)\n  a: x\nend"), vec!["W0503"]);
-        // используемое — не мёртвое
+        // used — not dead
         assert!(codes("x = 1\ny = x + 1\nassert y > 0").is_empty());
     }
 
     #[test]
     fn undefined_variable_is_e0504() {
         assert!(codes("x = nope + 1").contains(&"E0504"));
-        // builtin'ы не считаются неопределёнными
+        // builtins are never considered undefined
         assert!(!codes("assert fail == fail").contains(&"E0504"));
     }
 
@@ -389,16 +389,16 @@ mod tests {
         assert!(codes("x = 1\ndomain \"d\"\n  x = 2\nend").contains(&"E0302"));
         assert!(codes("x = 1\nx = 2").contains(&"E0301"));
         assert!(codes("shadow x = 1\nassert x == 1").contains(&"W0303"));
-        // корректный shadow — чисто
+        // a correct shadow — clean
         let src = "x = 1\ndomain \"d\"\n  shadow x = 2\n  assert x == 2\nend\nassert x == 1";
         assert!(codes(src).is_empty());
     }
 
     #[test]
     fn interpolation_uses_are_counted() {
-        // x используется только внутри #{} — не мёртвый
+        // x is used only inside #{} — not dead
         assert!(codes("x = 1\ns = \"v#{x}\"\nassert s == \"v1\"").is_empty());
-        // неопределённая переменная внутри #{} ловится
+        // an undefined variable inside #{} is caught
         assert!(codes("s = \"v#{nope}\"\nassert s == \"\"").contains(&"E0504"));
     }
 

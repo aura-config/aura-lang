@@ -1,5 +1,5 @@
-//! Реестр методов (SPEC §4.4). Диспетчеризация по (TypeTag получателя, имя метода).
-//! Регистрация через fn-указатели: новый метод = функция + `register`, парсер не меняется.
+//! Method registry (SPEC §4.4). Dispatch by (receiver TypeTag, method name).
+//! Registration via fn pointers: a new method = a function + `register`, the parser stays unchanged.
 
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -115,7 +115,7 @@ fn m_len<'a>(
     Ok(Value::Int(n as i64))
 }
 
-/// `.compact()` — удаляет Null с сохранением порядка (SPEC §4.4).
+/// `.compact()` — removes Null while preserving order (SPEC §4.4).
 fn m_list_compact<'a>(
     _it: &mut Interpreter<'a>,
     recv: &Value<'a>,
@@ -133,7 +133,7 @@ fn m_list_compact<'a>(
     ))
 }
 
-/// `.uniq()` — дедупликация с сохранением первого вхождения.
+/// `.uniq()` — deduplication keeping the first occurrence.
 fn m_list_uniq<'a>(
     _it: &mut Interpreter<'a>,
     recv: &Value<'a>,
@@ -167,7 +167,7 @@ fn expect_lambda<'a, 'b>(
     }
 }
 
-/// `.map (elem, index) -> ... end` — колбэк получает элемент и индекс.
+/// `.map (elem, index) -> ... end` — the callback receives the element and its index.
 fn m_list_map<'a>(
     it: &mut Interpreter<'a>,
     recv: &Value<'a>,
@@ -212,7 +212,7 @@ fn m_list_filter<'a>(
     Ok(Value::list(out))
 }
 
-/// `.merge(other)` — правый операнд перекрывает ключи левого.
+/// `.merge(other)` — the right-hand operand overrides the left-hand keys.
 fn m_obj_merge<'a>(
     _it: &mut Interpreter<'a>,
     recv: &Value<'a>,
@@ -232,7 +232,7 @@ fn m_obj_merge<'a>(
     Ok(Value::object(out))
 }
 
-/// `.parse_toml()` — целые TOML → Int (D6).
+/// `.parse_toml()` — TOML integers → Int (D6).
 fn m_parse_toml<'a>(
     _it: &mut Interpreter<'a>,
     recv: &Value<'a>,
@@ -245,7 +245,7 @@ fn m_parse_toml<'a>(
     Ok(toml_to_value(parsed))
 }
 
-/// `.get(index_or_key, default)` — безопасный доступ: промах отдаёт default (или Null).
+/// `.get(index_or_key, default)` — safe access: a miss returns default (or Null).
 fn m_get<'a>(
     _it: &mut Interpreter<'a>,
     recv: &Value<'a>,
@@ -314,7 +314,7 @@ fn m_parse_yaml<'a>(
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
     let Value::Str(s) = recv else { unreachable!() };
-    // Через serde_json::Value: даёт единый маппинг типов и preserve_order
+    // Via serde_json::Value: gives a unified type mapping and preserve_order
     let parsed: serde_json::Value =
         serde_yaml::from_str(s).map_err(|e| rt("E0314", format!("invalid YAML: {e}"), sp))?;
     Ok(json_to_value(parsed))
@@ -354,7 +354,7 @@ fn m_to_toml<'a>(
         .map_err(|d| rt(d.code, d.message, sp))
 }
 
-/// `.keys()` — ключи объекта в порядке объявления.
+/// `.keys()` — object keys in declaration order.
 fn m_obj_keys<'a>(
     _it: &mut Interpreter<'a>,
     recv: &Value<'a>,
@@ -379,7 +379,7 @@ fn m_obj_values<'a>(
     Ok(Value::list(m.values().cloned().collect()))
 }
 
-/// `.contains(x)`: List — элемент; Object — ключ; Str — подстрока.
+/// `.contains(x)`: List — element; Object — key; Str — substring.
 fn m_contains<'a>(
     _it: &mut Interpreter<'a>,
     recv: &Value<'a>,
@@ -415,7 +415,7 @@ fn m_contains<'a>(
     Ok(Value::Bool(found))
 }
 
-/// `.join(sep)` — скалярные элементы через разделитель (без аргумента — пустой).
+/// `.join(sep)` — scalar elements joined by a separator (empty string if no argument).
 fn m_list_join<'a>(
     it: &mut Interpreter<'a>,
     recv: &Value<'a>,
@@ -446,8 +446,8 @@ fn m_list_join<'a>(
     Ok(Value::str(parts.join(&sep)))
 }
 
-/// `"1h30m".parse_duration()` → секунды (Int). Единицы: d, h, m, s.
-/// Детерминированная альтернатива "магическим числам" таймаутов.
+/// `"1h30m".parse_duration()` → seconds (Int). Units: d, h, m, s.
+/// A deterministic alternative to timeout "magic numbers".
 fn m_parse_duration<'a>(
     _it: &mut Interpreter<'a>,
     recv: &Value<'a>,
@@ -495,7 +495,7 @@ fn m_parse_duration<'a>(
     Ok(Value::Int(total))
 }
 
-/// `5400.format_duration()` → "1h30m" (компактно, без нулевых компонент).
+/// `5400.format_duration()` → "1h30m" (compact, no zero components).
 fn m_format_duration<'a>(
     _it: &mut Interpreter<'a>,
     recv: &Value<'a>,
@@ -526,8 +526,8 @@ fn m_format_duration<'a>(
     Ok(Value::str(out))
 }
 
-/// `"2026-07-18T12:00:00Z".parse_datetime()` → epoch-секунды (Int, UTC).
-/// Форматы: `YYYY-MM-DD` (полночь UTC) и RFC3339 с `Z` или смещением `±HH:MM`.
+/// `"2026-07-18T12:00:00Z".parse_datetime()` → epoch seconds (Int, UTC).
+/// Formats: `YYYY-MM-DD` (midnight UTC) and RFC3339 with `Z` or a `±HH:MM` offset.
 fn m_parse_datetime<'a>(
     _it: &mut Interpreter<'a>,
     recv: &Value<'a>,
@@ -544,7 +544,7 @@ fn m_parse_datetime<'a>(
     })
 }
 
-/// `epoch.format_datetime()` → строка RFC3339 в UTC.
+/// `epoch.format_datetime()` → an RFC3339 string in UTC.
 fn m_format_datetime<'a>(
     _it: &mut Interpreter<'a>,
     recv: &Value<'a>,
@@ -630,7 +630,7 @@ fn days_in_month(y: i64, m: i64) -> i64 {
     }
 }
 
-/// Алгоритмы Говарда Хиннанта: пролептический григорианский календарь ↔ дни от эпохи.
+/// Howard Hinnant's algorithms: proleptic Gregorian calendar ↔ days since the epoch.
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = if y >= 0 { y } else { y - 399 } / 400;

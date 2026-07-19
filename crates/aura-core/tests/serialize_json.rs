@@ -1,5 +1,5 @@
-//! Критерий приёмки Фазы 6 (SPEC §8): манифест → JSON без потери типов;
-//! Int сериализуется без `.0`; функции в дереве — E0601 с путём.
+//! Phase 6 acceptance criterion (SPEC §8): manifest -> JSON with no type loss;
+//! Int serializes without `.0`; functions in the tree are E0601 with a path.
 
 use std::collections::HashMap;
 
@@ -51,7 +51,7 @@ fn manifest_to_json_golden() {
     let json = to_json(&value).unwrap();
 
     let domain = &json["production-eu"];
-    // Int → JSON integer, не 9090.0 (D6)
+    // Int -> JSON integer, not 9090.0 (D6)
     assert_eq!(domain["metrics"]["port"], serde_json::json!(9090));
     assert_eq!(
         domain["meta"],
@@ -69,7 +69,7 @@ fn manifest_to_json_golden() {
         domain["security"]["certificates"]["key_path"],
         serde_json::json!("/etc/ssl/certs/server.key")
     );
-    // D10: приватные `=` биндинги, функции и схемы не экспортируются
+    // D10: private `=` bindings, functions and schemas are not exported
     let keys: Vec<&String> = json.as_object().unwrap().keys().collect();
     assert_eq!(keys, vec!["production-eu"]);
     assert_eq!(domain["log_path"], serde_json::json!("/var/log/aura.log"));
@@ -93,7 +93,7 @@ fn flat_format() {
 fn function_inside_tree_is_e0601() {
     use aura_core::lexer::Lexer;
     use aura_core::parser::Parser;
-    // Свойство с лямбдой попадает в экспорт объекта → несериализуемо
+    // A property holding a lambda ends up in the object's export -> not serializable
     let src = "domain \"d\"\n  hook: (x) -> x end\nend";
     let toks = Lexer::new(src, 0).tokenize().unwrap();
     let module = Parser::new(toks).parse_module().unwrap();

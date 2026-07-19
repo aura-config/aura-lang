@@ -1,5 +1,5 @@
-//! Критерий приёмки Фазы 3 (SPEC §8): эталонный манифест вычисляется целиком
-//! (импорты подставляются вручную до появления VFS в Фазе 4).
+//! Phase 3 acceptance criterion (SPEC §8): the reference manifest evaluates fully
+//! (imports are supplied manually until the VFS arrives in Phase 4).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -24,7 +24,7 @@ fn get<'a>(v: &Value<'a>, key: &str) -> Value<'a> {
 fn eval_manifest() -> Value<'static> {
     let toks = Lexer::new(MANIFEST, 0).tokenize().expect("lex ok");
     let module = Parser::new(toks).parse_module().expect("parse ok");
-    // Box::leak: в тесте модуль должен пережить возврат значения ('static)
+    // Box::leak: in this test the module must outlive the returned value ('static)
     let module = Box::leak(Box::new(module));
 
     let mut it = Interpreter::new(Options {
@@ -39,7 +39,7 @@ fn eval_manifest() -> Value<'static> {
     it.env_overrides
         .insert("APP_ENV".to_string(), "production".to_string());
 
-    // Импорты: rust — пустой модуль, defaults — объект с global_labels
+    // Imports: rust - an empty module, defaults - an object with global_labels
     it.provide_module("rust", Value::object(IndexMap::new()));
     let mut labels = IndexMap::new();
     labels.insert("team".to_string(), Value::Str(Arc::from("core")));
@@ -55,12 +55,12 @@ fn eval_manifest() -> Value<'static> {
 fn manifest_evaluates_end_to_end() {
     let root = eval_manifest();
 
-    // D10: `=` приватно — в экспорте только свойства и блоки
+    // D10: `=` is private - only properties and blocks are exported
     let Value::Object(m) = &root else { panic!() };
     assert_eq!(m.keys().collect::<Vec<_>>(), vec!["production-eu"]);
 
     let domain = get(&root, "production-eu");
-    // shadow-затенение: log_path читает затенённое значение
+    // shadow shadowing: log_path reads the shadowed value
     assert_eq!(get(&domain, "log_path"), Value::str("/var/log/aura.log"));
     // is_prod == true → replicas 3
     assert_eq!(get(&domain, "replicas"), Value::Int(3));
@@ -70,7 +70,7 @@ fn manifest_evaluates_end_to_end() {
     assert_eq!(get(&meta, "name"), Value::str("AUTH"));
     assert_eq!(get(&meta, "port"), Value::Int(8001));
 
-    // Вложенные объектные блоки
+    // Nested object blocks
     let security = get(&domain, "security");
     assert_eq!(get(&security, "tls_enabled"), Value::Bool(true));
     assert_eq!(
@@ -78,7 +78,7 @@ fn manifest_evaluates_end_to_end() {
         Value::str("/etc/ssl/certs/server.crt")
     );
 
-    // apps: map + component + интерполяция + merge импортированных labels
+    // apps: map + component + interpolation + merge of imported labels
     let Value::List(apps) = get(&domain, "apps") else {
         panic!()
     };
@@ -88,6 +88,6 @@ fn manifest_evaluates_end_to_end() {
     let labels = get(&apps[0], "labels");
     assert_eq!(get(&labels, "tier"), Value::str("backend"));
     assert_eq!(get(&labels, "managed_by"), Value::str("aura-engine"));
-    assert_eq!(get(&labels, "team"), Value::str("core")); // из defaults.global_labels
+    assert_eq!(get(&labels, "team"), Value::str("core")); // from defaults.global_labels
     assert_eq!(get(&apps[2], "image"), Value::str("company/frontend:1.2.3"));
 }

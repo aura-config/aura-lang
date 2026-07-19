@@ -1,4 +1,4 @@
-//! Virtual File System (SPEC §5): резолв и загрузка модулей за трейтом.
+//! Virtual File System (SPEC §5): module resolution and loading behind a trait.
 
 pub mod loader;
 pub mod lockfile;
@@ -10,12 +10,12 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ModuleId {
     Local(PathBuf),
-    /// Точная версия после резолва (D8).
+    /// The exact version after resolution (D8).
     Registry {
         path: String,
         version: String,
     },
-    /// Задел под прямые URL-импорты; пока не резолвится (пакеты — через `aura add`).
+    /// A placeholder for direct URL imports; not resolved yet (packages go through `aura add`).
     Url(String),
 }
 
@@ -32,7 +32,7 @@ impl fmt::Display for ModuleId {
 #[derive(Debug, Clone, Copy)]
 pub enum ImportSpec<'s> {
     File(&'s str),
-    /// version — как в исходнике, с префиксом `v` (диапазон: `v1`, `v1.2` или точная `v1.2.3`).
+    /// version — as written in the source, with a `v` prefix (a range: `v1`, `v1.2`, or exact `v1.2.3`).
     Registry {
         path: &'s str,
         version: &'s str,
@@ -40,7 +40,7 @@ pub enum ImportSpec<'s> {
 }
 
 pub trait FileResolver {
-    /// Канонизирует спецификатор относительно импортирующего модуля.
+    /// Canonicalizes the specifier relative to the importing module.
     fn resolve(
         &self,
         spec: &ImportSpec<'_>,
@@ -49,8 +49,8 @@ pub trait FileResolver {
     fn load(&self, id: &ModuleId) -> Result<String, String>;
 }
 
-/// Версия как последовательность числовых компонент; диапазон — совпадение префикса
-/// (`v1.2` удовлетворяют все `1.2.*`, SPEC §5.2).
+/// A version as a sequence of numeric components; a range is a prefix match
+/// (`v1.2` is satisfied by any `1.2.*`, SPEC §5.2).
 pub fn parse_version(s: &str) -> Option<Vec<u64>> {
     let s = s.strip_prefix('v').unwrap_or(s);
     s.split('.').map(|c| c.parse().ok()).collect()
@@ -60,9 +60,9 @@ pub fn version_satisfies(request: &[u64], exact: &[u64]) -> bool {
     exact.len() >= request.len() && request.iter().zip(exact).all(|(a, b)| a == b)
 }
 
-/// Конвенция сетевого registry (используется ТОЛЬКО командой `aura add`;
-/// eval к сети не обращается никогда): `github/<owner>/<repo>@vX.Y.Z` →
-/// raw-файл `package.aura` тега `vX.Y.Z` репозитория.
+/// The network registry convention (used ONLY by the `aura add` command;
+/// eval never touches the network): `github/<owner>/<repo>@vX.Y.Z` →
+/// the `package.aura` raw file at the repo's `vX.Y.Z` tag.
 pub fn registry_url(path: &str, version: &str) -> Result<String, String> {
     let version = version.strip_prefix('v').unwrap_or(version);
     if parse_version(version).map_or(true, |v| v.len() != 3) {
@@ -81,9 +81,9 @@ pub fn registry_url(path: &str, version: &str) -> Result<String, String> {
     }
 }
 
-/// Локальный диск: файловые импорты относительно импортирующего файла,
-/// registry — локальный кэш-каталог `<registry_dir>/<path>/<version>.aura`,
-/// наполняемый командой `aura add` (eval к сети не обращается).
+/// Local disk: file imports relative to the importing file, registry —
+/// a local cache directory `<registry_dir>/<path>/<version>.aura`,
+/// populated by the `aura add` command (eval never touches the network).
 pub struct LocalFsResolver {
     pub root: PathBuf,
     pub registry_dir: PathBuf,
@@ -153,12 +153,12 @@ impl FileResolver for LocalFsResolver {
                 let file = self.registry_dir.join(path).join(format!("{version}.aura"));
                 std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))
             }
-            ModuleId::Url(u) => Err(format!("url imports are not supported in v1.2: {u}")),
+            ModuleId::Url(u) => Err(format!("url imports are not supported yet: {u}")),
         }
     }
 }
 
-/// Обёртка dry-run (SPEC §6.3): загрузки модулей выполняются, но логируются в отчёт.
+/// Dry-run wrapper (SPEC §6.3): module loads are performed but recorded into a report.
 pub struct RecordingResolver<'r> {
     pub inner: &'r dyn FileResolver,
     pub log: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
@@ -181,8 +181,8 @@ impl FileResolver for RecordingResolver<'_> {
     }
 }
 
-/// In-memory резолвер для тестов и dry-run снапшотов. Ключи: путь файла как есть,
-/// registry — `"<path>@v<version>"` (точное совпадение, без диапазонов).
+/// An in-memory resolver for tests and dry-run snapshots. Keys: the file path as-is,
+/// registry — `"<path>@v<version>"` (exact match, no ranges).
 pub struct MemoryResolver {
     pub files: HashMap<String, String>,
 }

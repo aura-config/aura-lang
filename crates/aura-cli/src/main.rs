@@ -1,6 +1,6 @@
-//! CLI-слой (SPEC §7.2) и рендеринг диагностик через ariadne (§7.3).
+//! CLI layer (SPEC §7.2) and diagnostic rendering via ariadne (§7.3).
 
-// Diagnostic по значению: ошибки — холодный путь (см. aura-core/src/lib.rs)
+// Diagnostic by value: errors are the cold path (see aura-core/src/lib.rs)
 #![allow(clippy::result_large_err)]
 
 use std::path::{Path, PathBuf};
@@ -45,58 +45,58 @@ enum OutFormat {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Вычислить манифест и экспортировать JSON
+    /// Evaluate a manifest and export JSON
     Eval {
         file: PathBuf,
-        /// Предупреждения анализа становятся ошибками; жёсткая валидация схем (E0513)
+        /// Analysis warnings become errors; strict schema validation (E0513)
         #[arg(long)]
         strict: bool,
-        /// Вычисление без записи на диск (JSON и aura.lock не записываются)
+        /// Evaluate without writing to disk (neither JSON nor aura.lock)
         #[arg(long)]
         dry_run: bool,
-        /// CI-режим: резолв только по aura.lock (E0403), лок не переписывается
+        /// CI mode: resolve strictly via aura.lock (E0403), the lock is never rewritten
         #[arg(long)]
         frozen: bool,
-        /// Разрешить read_file() внутри каталогов (можно повторять)
+        /// Allow read_file() inside these directories (repeatable)
         #[arg(long = "allow-read", value_name = "DIR")]
         allow_read: Vec<PathBuf>,
-        /// Разрешить env(): без значения — все переменные, либо список A,B
+        /// Allow env(): no value — all variables, or a comma-separated list A,B
         #[arg(long = "allow-env", value_name = "VARS", num_args = 0..=1, default_missing_value = "")]
         allow_env: Option<String>,
-        /// Выдать импортированным модулям I/O-права корня (D1)
+        /// Grant imported modules the root's I/O capabilities (D1)
         #[arg(long)]
         allow_imports_io: bool,
         #[arg(long, value_enum, default_value = "json")]
         format: OutFormat,
-        /// Записать JSON в файл вместо stdout
+        /// Write JSON to a file instead of stdout
         #[arg(short, long)]
         output: Option<PathBuf>,
-        /// Каталог локального registry-кэша (по умолчанию ~/.aura/registry)
+        /// Local registry cache directory (default ~/.aura/registry)
         #[arg(long = "registry-dir", value_name = "DIR")]
         registry_dir: Option<PathBuf>,
     },
-    /// Только lex + parse + статический анализ
+    /// Lex + parse + static analysis only
     Check {
         file: PathBuf,
         #[arg(long)]
         strict: bool,
     },
-    /// Установить пакет в локальный registry-кэш и зафиксировать в aura.lock.
-    /// Сеть используется ТОЛЬКО здесь: eval всегда работает оффлайн.
+    /// Install a package into the local registry cache and pin it in aura.lock.
+    /// The network is used ONLY here: eval always runs offline.
     Add {
-        /// Спецификатор: github/<owner>/<repo>@vX.Y.Z
+        /// Specifier: github/<owner>/<repo>@vX.Y.Z
         package: String,
-        /// Установить из локального файла вместо сети (тесты, приватные пакеты)
+        /// Install from a local file instead of the network (tests, private packages)
         #[arg(long, value_name = "FILE")]
         from: Option<PathBuf>,
-        /// Каталог локального registry-кэша (по умолчанию ~/.aura/registry)
+        /// Local registry cache directory (default ~/.aura/registry)
         #[arg(long = "registry-dir", value_name = "DIR")]
         registry_dir: Option<PathBuf>,
     },
-    /// Канонизировать отступы и пустые строки (пишет файлы на место)
+    /// Canonicalize indentation and blank lines (rewrites files in place)
     Fmt {
         files: Vec<PathBuf>,
-        /// Не менять файлы, только проверить (exit 1, если есть отличия)
+        /// Do not modify files, only check (exit 1 on differences)
         #[arg(long)]
         check: bool,
     },
@@ -150,7 +150,7 @@ struct EvalConfig {
     registry_dir: Option<PathBuf>,
 }
 
-/// lex + parse + analysis; возвращает блокирует ли результат (exit 1).
+/// lex + parse + analysis; returns whether the result blocks (exit 1).
 fn front_end(cache: &SourceCache, file: &Path, strict: bool) -> Result<bool, ExitCode> {
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
@@ -204,8 +204,8 @@ fn default_registry_dir() -> PathBuf {
         .join("registry")
 }
 
-/// `aura add pkg@vX.Y.Z`: скачать (или взять из --from), провалидировать,
-/// положить в кэш и зафиксировать в ./aura.lock с sha256-integrity.
+/// `aura add pkg@vX.Y.Z`: download (or take from --from), validate,
+/// store in the cache and pin in ./aura.lock with sha256 integrity.
 fn run_add(package: &str, from: Option<&Path>, registry_dir: Option<PathBuf>) -> ExitCode {
     let Some((path, version)) = package.split_once('@') else {
         eprintln!("error: expected <path>@vX.Y.Z, got '{package}'");
@@ -213,7 +213,7 @@ fn run_add(package: &str, from: Option<&Path>, registry_dir: Option<PathBuf>) ->
     };
     let version_num = version.strip_prefix('v').unwrap_or(version);
 
-    // 1. Источник: локальный файл или сеть (единственное место, где Aura ходит в сеть)
+    // 1. Source: a local file or the network (the only place Aura ever touches the network)
     let text = match from {
         Some(file) => match std::fs::read_to_string(file) {
             Ok(t) => t,
@@ -247,7 +247,7 @@ fn run_add(package: &str, from: Option<&Path>, registry_dir: Option<PathBuf>) ->
         }
     };
 
-    // 2. Валидация пакета до установки (lex + parse + анализ как импортируемого модуля)
+    // 2. Validate the package before installing (lex + parse + analysis as an imported module)
     let cache = SourceCache::new();
     let (source_id, src) = cache.add(format!("{path}@{version}"), text.clone());
     let module = match Lexer::new(src, source_id).tokenize().and_then(|toks| {
@@ -266,7 +266,7 @@ fn run_add(package: &str, from: Option<&Path>, registry_dir: Option<PathBuf>) ->
         render(&d, &cache);
     }
 
-    // 3. Установка в кэш
+    // 3. Install into the cache
     let registry = registry_dir.unwrap_or_else(default_registry_dir);
     let target_dir = registry.join(path);
     if let Err(e) = std::fs::create_dir_all(&target_dir) {
@@ -279,7 +279,7 @@ fn run_add(package: &str, from: Option<&Path>, registry_dir: Option<PathBuf>) ->
         return ExitCode::from(2);
     }
 
-    // 4. Фиксация в ./aura.lock
+    // 4. Pin in ./aura.lock
     let lock_path = Path::new("aura.lock");
     let mut lock = match std::fs::read_to_string(lock_path) {
         Ok(t) => match Lockfile::parse(&t) {
@@ -354,8 +354,8 @@ fn run_fmt(files: &[PathBuf], check: bool) -> ExitCode {
 }
 
 fn run_eval(cfg: EvalConfig) -> ExitCode {
-    // Анализ всех модулей (включая импортируемые) выполняет загрузчик VFS;
-    // его диагностики рендерятся после загрузки (SPEC §6.1).
+    // Analysis of all modules (including imports) is done by the VFS loader;
+    // its diagnostics are rendered after loading (SPEC §6.1).
     let cache = SourceCache::new();
     let entry = match std::fs::canonicalize(&cfg.file) {
         Ok(p) => p,
@@ -378,7 +378,7 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
         registry_dir,
     };
 
-    // Dry-run (SPEC §6.3): все чтения выполняются, но логируются в отчёт
+    // Dry-run (SPEC §6.3): all reads are performed but recorded into a report
     let read_log = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
     let recording;
     let resolver_ref: &dyn aura_core::vfs::FileResolver = if cfg.dry_run {
@@ -445,12 +445,12 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    // --strict: предупреждения анализа (по всем модулям) блокируют вывод
+    // --strict: analysis warnings (across all modules) block the output
     if has_blocking(&loader.diags, cfg.strict) {
         return ExitCode::from(1);
     }
 
-    // Отчёт dry-run о выполненных чтениях (модули + read_file)
+    // Dry-run report of the reads performed (modules + read_file)
     if cfg.dry_run {
         let mut reads = read_log.borrow().clone();
         reads.dedup();
@@ -459,7 +459,7 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
         }
     }
 
-    // aura.lock: дозапись (SPEC §5.2); в dry-run — только отчёт (§6.3)
+    // aura.lock: append new entries (SPEC §5.2); dry-run only reports (§6.3)
     if loader.lock.dirty && !cfg.frozen {
         let text = loader.lock.to_toml_string();
         if cfg.dry_run {
@@ -512,7 +512,7 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Рендеринг Diagnostic через ariadne (SPEC §7.3). Спаны без исходника — плоский вывод.
+/// Renders a Diagnostic via ariadne (SPEC §7.3). Spans without a source fall back to plain output.
 fn render(d: &Diagnostic, cache: &SourceCache) {
     use ariadne::{sources, Color, Config, Label, Report, ReportKind};
 
@@ -531,7 +531,7 @@ fn render(d: &Diagnostic, cache: &SourceCache) {
             .name(sp.source)
             .unwrap_or_else(|| "<input>".to_string());
         let text = cache.text(sp.source).unwrap_or("").to_string();
-        // ariadne индексирует по символам, спаны Aura — байтовые
+        // ariadne indexes by characters, Aura spans are byte offsets
         let start = char_off(&text, sp.start as usize);
         let end = char_off(&text, sp.end as usize).max(start + 1);
         if !files.iter().any(|(n, _)| *n == name) {

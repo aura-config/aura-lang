@@ -1,6 +1,6 @@
-//! Загрузчик дерева модулей (SPEC §5.3): DFS с раскраской (Loading/Loaded),
-//! кэш вычисленных модулей (каждый модуль lex/parse/eval ровно один раз),
-//! интеграция с aura.lock и capability-изоляция импортов (D1).
+//! Module tree loader (SPEC §5.3): DFS with coloring (Loading/Loaded),
+//! a cache of evaluated modules (each module is lexed/parsed/evaluated exactly
+//! once), aura.lock integration, and capability isolation for imports (D1).
 
 use std::collections::HashMap;
 
@@ -25,10 +25,10 @@ pub struct Loader<'a, 'r> {
     pub cache: &'a SourceCache,
     pub resolver: &'r dyn FileResolver,
     pub lock: Lockfile,
-    /// --frozen (CI): отсутствие подходящей записи в локе — ошибка E0403.
+    /// --frozen (CI): no matching lock entry is an E0403 error.
     pub frozen: bool,
-    /// Диагностики статического анализа ВСЕХ загруженных модулей (SPEC §6.1):
-    /// предупреждения копятся здесь; ошибки анализа прерывают загрузку модуля.
+    /// Static analysis diagnostics for ALL loaded modules (SPEC §6.1):
+    /// warnings accumulate here; analysis errors abort loading the module.
     pub diags: Vec<Diagnostic>,
     state: HashMap<ModuleId, LoadState>,
     values: HashMap<ModuleId, Value<'a>>,
@@ -53,7 +53,7 @@ impl<'a, 'r> Loader<'a, 'r> {
         }
     }
 
-    /// Точка входа: корневой модуль получает I/O-capabilities интерпретатора.
+    /// Entry point: the root module receives the interpreter's I/O capabilities.
     pub fn eval_entry(
         &mut self,
         interp: &mut Interpreter<'a>,
@@ -129,9 +129,9 @@ impl<'a, 'r> Loader<'a, 'r> {
             }
         };
 
-        // Статический анализ каждого загружаемого модуля (SPEC §6.1): ошибки
-        // (E0504 и др.) блокируют модуль до вычисления; предупреждения (W0501,
-        // W0512 в импортах) копятся в self.diags — политику strict решает хост.
+        // Static analysis of every loaded module (SPEC §6.1): errors
+        // (E0504 etc.) block the module before evaluation; warnings (W0501,
+        // W0512 in imports) accumulate in self.diags — the host decides the strict policy.
         let mut analysis = crate::analysis::analyze(&module, is_root);
         if let Some(pos) = analysis
             .iter()
@@ -143,8 +143,8 @@ impl<'a, 'r> Loader<'a, 'r> {
         }
         self.diags.extend(analysis);
 
-        // Сначала рекурсивно вычисляем все импорты, затем публикуем алиасы:
-        // дочерние модули перезаписывают глобальную карту алиасов во время своего eval.
+        // First recursively evaluate all imports, then publish the aliases:
+        // child modules overwrite the global alias map during their own eval.
         let mut resolved: Vec<(&str, Value<'a>)> = Vec::with_capacity(module.imports.len());
         for imp in &module.imports {
             let spec = match &imp.source {
@@ -159,7 +159,7 @@ impl<'a, 'r> Loader<'a, 'r> {
             interp.provide_module(alias, value);
         }
 
-        // D1: импортированные модули не имеют I/O-прав (SPEC §4.3).
+        // D1: imported modules have no I/O capabilities (SPEC §4.3).
         let saved_root = interp.current_root;
         interp.current_root = is_root;
         let result = interp.eval_module(&module);
@@ -167,8 +167,8 @@ impl<'a, 'r> Loader<'a, 'r> {
         result
     }
 
-    /// Резолв с приоритетом aura.lock (SPEC §5.2): подходящая запись лока выигрывает;
-    /// --frozen запрещает резолв мимо лока (E0403).
+    /// Resolution prioritizes aura.lock (SPEC §5.2): a matching lock entry wins;
+    /// --frozen forbids resolving around the lock (E0403).
     fn resolve_with_lock(
         &mut self,
         spec: &ImportSpec<'_>,
@@ -201,7 +201,7 @@ impl<'a, 'r> Loader<'a, 'r> {
             .map_err(|e| rt("E0404", e, span))
     }
 
-    /// Integrity-проверка registry-модулей (E0402) и дозапись лока.
+    /// Integrity check for registry modules (E0402) and appending to the lock.
     fn verify_lock(&mut self, id: &ModuleId, text: &str, span: Span) -> Result<(), Diagnostic> {
         let ModuleId::Registry { path, version } = id else {
             return Ok(());

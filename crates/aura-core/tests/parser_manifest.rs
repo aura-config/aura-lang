@@ -1,4 +1,4 @@
-//! Критерий приёмки Фазы 2 (SPEC §8): эталонный манифест разбирается в ожидаемую структуру AST.
+//! Phase 2 acceptance criterion (SPEC §8): the reference manifest parses into the expected AST shape.
 
 use aura_core::lexer::Lexer;
 use aura_core::parser::ast::*;
@@ -29,7 +29,7 @@ fn manifest_structure() {
         ImportSource::File("templates/k8s_defaults.aura")
     );
 
-    // Топ-уровень: 5 assign, type, def, domain
+    // Top level: 5 assigns, type, def, domain
     assert!(m
         .stmts
         .iter()
@@ -47,7 +47,7 @@ fn manifest_structure() {
         Expr::Literal(LitValue::Str("production-eu"), _)
     ));
 
-    // shadow-затенение (D7)
+    // shadow shadowing (D7)
     assert!(domain.body.iter().any(|s| matches!(
         s,
         Stmt::Assign {
@@ -57,7 +57,7 @@ fn manifest_structure() {
         }
     )));
 
-    // meta: new ServiceMeta ... end (D4, D10 — свойство)
+    // meta: new ServiceMeta ... end (D4, D10 - a property)
     assert!(domain.body.iter().any(|s| matches!(
         s,
         Stmt::Property {

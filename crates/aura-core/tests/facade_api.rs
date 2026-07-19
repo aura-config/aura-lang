@@ -1,4 +1,4 @@
-//! Фасад для встраивания: успешный сценарий и структурированные ошибки.
+//! The embedding facade: the success path and structured errors.
 
 use std::path::{Path, PathBuf};
 
@@ -45,7 +45,7 @@ fn errors_are_structured_reports() {
         first.file
     );
     assert_eq!(first.line, 2);
-    // Display-форма пригодна для логов хоста
+    // The Display form is suitable for the host's logs
     let text = first.to_string();
     assert!(
         text.contains("error[E0310]") && text.contains(":2:"),

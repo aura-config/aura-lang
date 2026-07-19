@@ -1,5 +1,5 @@
-//! Рантайм-значения (SPEC §4.1). Иммутабельные контейнеры в Arc: клонирование — O(1).
-//! Value параметризован временем жизни исходника: имена и AST-тела функций — zero-copy.
+//! Runtime values (SPEC §4.1). Immutable containers in Arc: cloning is O(1).
+//! Value is parameterized by the source's lifetime: names and function AST bodies are zero-copy.
 
 use indexmap::IndexMap;
 use std::fmt;
@@ -16,7 +16,7 @@ pub enum Value<'a> {
     Float(f64),
     Str(Arc<str>),
     List(Arc<Vec<Value<'a>>>),
-    /// IndexMap: порядок ключей = порядок объявления (детерминированный JSON).
+    /// IndexMap: key order = declaration order (deterministic JSON).
     Object(Arc<IndexMap<String, Value<'a>>>),
     Schema(Arc<SchemaDef<'a>>),
     Function(Arc<FunctionDef<'a>>),
@@ -31,17 +31,17 @@ pub struct SchemaDef<'a> {
 pub struct FunctionDef<'a> {
     pub params: Vec<&'a str>,
     pub body: FuncBody<'a>,
-    /// Лексическое замыкание (SPEC §4.2).
+    /// Lexical closure (SPEC §4.2).
     pub closure: Env<'a>,
-    /// D1×D12: функция выполняется с capability своего модуля-происхождения,
-    /// а не вызывающего — экспортированная функция пакета не получает права корня.
+    /// D1xD12: the function runs with the capabilities of its origin module,
+    /// not the caller's - an exported package function does not gain the root's rights.
     pub defined_in_root: bool,
 }
 
 #[derive(Clone)]
 pub enum FuncBody<'a> {
     Lambda(LambdaBody<'a>),
-    /// Тело `def` — объектный литерал.
+    /// A `def` body - an object literal.
     Object(ObjectBody<'a>),
 }
 
@@ -106,8 +106,8 @@ impl<'a> Value<'a> {
     }
 }
 
-/// Структурное равенство; Int == Float — по математическому значению;
-/// Function/Schema — по идентичности Arc (SPEC §4.1).
+/// Structural equality; Int == Float compares by mathematical value;
+/// Function/Schema compare by Arc identity (SPEC §4.1).
 impl PartialEq for Value<'_> {
     fn eq(&self, other: &Self) -> bool {
         use Value::*;

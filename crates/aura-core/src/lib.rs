@@ -1,11 +1,11 @@
-// Diagnostic намеренно передаётся по значению: ошибки — холодный путь, боксинг
-// усложнил бы каждую сигнатуру ради микрооптимизации.
+// Diagnostic is deliberately passed by value: errors are the cold path, boxing
+// would complicate every signature for a micro-optimization.
 #![allow(clippy::result_large_err)]
-// Environment использует RefCell по дизайну D9 (однопоточное построение фреймов,
-// см. eval/env.rs); Arc выбран под будущую параллельность доменов.
+// Environment uses RefCell per the D9 design (single-threaded frame construction,
+// see eval/env.rs); Arc was chosen for future domain-level parallelism.
 #![allow(clippy::arc_with_non_send_sync)]
 
-/// Версия ЯЗЫКА Aura (грамматика и семантика по SPEC.md); не совпадает с версией крейта.
+/// The Aura LANGUAGE version (grammar and semantics per SPEC.md); does not match the crate version.
 pub const LANGUAGE_VERSION: &str = "1.3";
 
 pub mod analysis;

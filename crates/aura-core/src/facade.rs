@@ -1,4 +1,4 @@
-//! Высокоуровневый фасад для встраивания Aura в Rust-приложения.
+//! A high-level facade for embedding Aura in Rust applications.
 //!
 //! ```no_run
 //! let opts = aura_core::facade::EvalOptions {
@@ -6,7 +6,7 @@
 //!     ..Default::default()
 //! };
 //! let out = aura_core::facade::eval_file("config/app.aura".as_ref(), &opts).unwrap();
-//! let cfg: serde_json::Value = out.json; // или serde_json::from_value::<MyConfig>(out.json)
+//! let cfg: serde_json::Value = out.json; // or serde_json::from_value::<MyConfig>(out.json)
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -23,25 +23,25 @@ use crate::vfs::{ImportSpec, LocalFsResolver};
 #[derive(Debug, Clone, Default)]
 pub struct EvalOptions {
     pub strict: bool,
-    /// Каталоги, разрешённые для read_file() (D1); пусто = запрещено.
+    /// Directories allowed for read_file() (D1); empty = denied.
     pub allow_read: Vec<PathBuf>,
-    /// Права env(); по умолчанию запрещено.
+    /// env() capabilities; denied by default.
     pub allow_env: EnvCap,
     pub allow_imports_io: bool,
-    /// Каталог registry-кэша; None = ~/.aura/registry.
+    /// Registry cache directory; None = ~/.aura/registry.
     pub registry_dir: Option<PathBuf>,
-    /// Резолв строго по aura.lock (E0403 при расхождении).
+    /// Resolve strictly via aura.lock (E0403 on a mismatch).
     pub frozen: bool,
 }
 
-/// Диагностика в plain-виде: хост рендерит сам, без зависимости на ariadne.
+/// A plain-form diagnostic: the host renders it itself, with no dependency on ariadne.
 #[derive(Debug, Clone)]
 pub struct Report {
     pub code: &'static str,
     pub severity: Severity,
     pub message: String,
     pub file: String,
-    /// 1-based; 0 — позиция неизвестна (например, ошибка сериализации).
+    /// 1-based; 0 means the position is unknown (e.g. a serialization error).
     pub line: u32,
     pub column: u32,
     pub help: Option<String>,
@@ -67,15 +67,15 @@ impl std::fmt::Display for Report {
 #[derive(Debug)]
 pub struct Evaluated {
     pub json: serde_json::Value,
-    /// Предупреждения анализа всех модулей (в strict их наличие уже было бы ошибкой).
+    /// Analysis warnings from all modules (under strict their presence would already be an error).
     pub warnings: Vec<Report>,
-    /// Обновлённый aura.lock, если появились новые записи (хост решает, писать ли).
+    /// The updated aura.lock, if new entries appeared (the host decides whether to write it).
     pub updated_lockfile: Option<String>,
 }
 
-/// Вычисляет манифест со всеми импортами и возвращает JSON-представление.
+/// Evaluates a manifest with all its imports and returns a JSON representation.
 ///
-/// Ошибки — `Vec<Report>` (первая — причина остановки, далее — сопутствующие).
+/// Errors are a `Vec<Report>` (the first is the reason for stopping, the rest are related).
 pub fn eval_file(path: &Path, opts: &EvalOptions) -> Result<Evaluated, Vec<Report>> {
     let cache = SourceCache::new();
     let entry = std::fs::canonicalize(path)

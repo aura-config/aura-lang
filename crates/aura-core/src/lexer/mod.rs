@@ -21,7 +21,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// Fail-fast на первой лексической ошибке (SPEC §2.6).
+    /// Fail-fast on the first lexical error (SPEC §2.6).
     pub fn tokenize(mut self) -> Result<Vec<Token<'a>>, Diagnostic> {
         let mut raw: Vec<Token<'a>> = Vec::new();
         loop {
@@ -46,7 +46,7 @@ impl<'a> Lexer<'a> {
                 }
                 _ => self.lex_operator()?,
             };
-            // Контекстный режим путей импорта действует ровно на один следующий токен (SPEC §2.4).
+            // Contextual import-path mode applies to exactly the next token (SPEC §2.4).
             self.expect_import_path = matches!(kind, TokenKind::Import);
             raw.push(Token {
                 kind,
@@ -69,7 +69,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn bump(&mut self) {
-        // Продвижение на целый UTF-8 символ; ASCII-путь — на байт.
+        // Advance by a whole UTF-8 char; the ASCII fast path advances by a byte.
         let step = self.src[self.pos..]
             .chars()
             .next()
@@ -77,7 +77,7 @@ impl<'a> Lexer<'a> {
         self.pos += step;
     }
 
-    /// Пробелы, `\r`, комментарии `#...`, схлопывание `\n+` в один Newline (SPEC §2.5, правило 1).
+    /// Whitespace, `\r`, `#...` comments, collapsing `\n+` into a single Newline (SPEC §2.5, rule 1).
     fn skip_trivia(&mut self, out: &mut Vec<Token<'a>>) {
         loop {
             match self.peek() {
@@ -102,7 +102,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// ДКА чисел (SPEC §2.2): Int(i64) | Float(f64); `12.foo` — откат, `12.` — E0101.
+    /// Number DFA (SPEC §2.2): Int(i64) | Float(f64); `12.foo` — rollback, `12.` — E0101.
     fn lex_number(&mut self) -> Result<TokenKind<'a>, Diagnostic> {
         let start = self.pos;
         while matches!(self.peek(), Some(b'0'..=b'9')) {
@@ -120,7 +120,7 @@ impl<'a> Lexer<'a> {
                         text.parse().expect("DFA guarantees valid float"),
                     ));
                 }
-                Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => {} // откат: Int, затем Dot, Ident
+                Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => {} // rollback: Int, then Dot, Ident
                 _ => {
                     return Err(Diagnostic::error(
                         "E0101",
@@ -142,10 +142,10 @@ impl<'a> Lexer<'a> {
         })
     }
 
-    /// ДКА строк (SPEC §2.3): чистый срез без escape/interp; InterpStr при `#{...}`.
+    /// String DFA (SPEC §2.3): a plain slice without escapes/interp; InterpStr for `#{...}`.
     fn lex_string(&mut self) -> Result<TokenKind<'a>, Diagnostic> {
         let quote_start = self.pos;
-        self.pos += 1; // открывающая кавычка
+        self.pos += 1; // opening quote
         let content_start = self.pos;
         let mut parts: Vec<StrPart<'a>> = Vec::new();
         let mut lit_start = self.pos;
@@ -212,7 +212,7 @@ impl<'a> Lexer<'a> {
                         self.bump();
                     }
                     parts.push(StrPart::Interp(&self.src[expr_start..self.pos]));
-                    self.pos += 1; // закрывающая '}'
+                    self.pos += 1; // closing '}'
                     lit_start = self.pos;
                 }
                 _ => self.bump(),
@@ -232,7 +232,7 @@ impl<'a> Lexer<'a> {
         TokenKind::keyword(text).unwrap_or(TokenKind::Ident(text))
     }
 
-    /// SPEC §2.4 (D8): `path("/" path)* "@" "v" digits ("." digits){0,2}`; без версии — E0104.
+    /// SPEC §2.4 (D8): `path("/" path)* "@" "v" digits ("." digits){0,2}`; missing version — E0104.
     fn lex_import_path(&mut self) -> Result<TokenKind<'a>, Diagnostic> {
         let start = self.pos;
         while matches!(
@@ -242,8 +242,8 @@ impl<'a> Lexer<'a> {
             self.pos += 1;
         }
         let path = &self.src[start..self.pos];
-        // Одиночный идентификатор без слэшей мог бы быть переменной, но грамматика import
-        // допускает только путь или строку — трактуем как путь и требуем версию.
+        // A single slash-less identifier could be a variable, but the import grammar
+        // only allows a path or a string — treat it as a path and require a version.
         if self.peek() != Some(b'@') {
             return Err(Diagnostic::error(
                 "E0104",
@@ -336,7 +336,7 @@ impl<'a> Lexer<'a> {
     }
 }
 
-/// Пост-фильтр нормализации `\n` (SPEC §2.5, правила 2–7) со стеком скобок.
+/// Newline-normalizing post-filter (SPEC §2.5, rules 2–7) with a bracket stack.
 fn normalize(raw: Vec<Token<'_>>) -> Vec<Token<'_>> {
     let mut out: Vec<Token<'_>> = Vec::with_capacity(raw.len());
     let mut stack: Vec<u8> = Vec::new();
@@ -346,15 +346,15 @@ fn normalize(raw: Vec<Token<'_>>) -> Vec<Token<'_>> {
             let prev = out.last().map(|t| &t.kind);
             let next = raw.get(i + 1).map(|t| &t.kind);
             let keep = match stack.last() {
-                // Внутри (...) переносы подавляются полностью (правило 4).
+                // Inside (...) newlines are suppressed entirely (rule 4).
                 Some(b'(') => false,
-                // Внутри [...] перенос — разделитель элементов, кроме краёв и после ',' (правила 5–6, D2).
+                // Inside [...] a newline is an element separator, except at the edges and after ',' (rules 5–6, D2).
                 Some(b'[') => {
                     !matches!(prev, None | Some(TokenKind::LBracket | TokenKind::Comma))
                         && !matches!(next, None | Some(TokenKind::RBracket))
                 }
-                // Вне скобок: правила 2, 3, 7. `:` намеренно НЕ подавляет — перенос после
-                // `key:` значим, он открывает объектный блок (SPEC §3.2).
+                // Outside brackets: rules 2, 3, 7. `:` deliberately does NOT suppress — a newline
+                // after `key:` is significant, it opens an object block (SPEC §3.2).
                 _ => {
                     let after = !matches!(
                         prev,
@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     fn list_newline_is_element_separator_d2() {
-        // [a \n -b] — однозначно два элемента (SPEC D2)
+        // [a \n -b] — unambiguously two elements (SPEC D2)
         assert_eq!(
             kinds("[a\n-b\n]"),
             vec![
@@ -450,7 +450,7 @@ mod tests {
 
     #[test]
     fn newline_kept_after_colon_for_object_blocks() {
-        // Перенос после `key:` значим — открывает объектный блок (SPEC §3.2)
+        // A newline after `key:` is significant — it opens an object block (SPEC §3.2)
         assert_eq!(
             kinds("security:\nx: 1\nend"),
             vec![
@@ -503,7 +503,7 @@ mod tests {
     #[test]
     fn import_path_without_version_is_e0104() {
         assert_eq!(err("import github/actions/rust-cache as rust"), "E0104");
-        assert_eq!(err("import a/b@1.2 as x"), "E0104"); // без префикса 'v'
+        assert_eq!(err("import a/b@1.2 as x"), "E0104"); // missing the 'v' prefix
     }
 
     #[test]

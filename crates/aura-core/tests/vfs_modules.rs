@@ -1,5 +1,5 @@
-//! Критерии приёмки Фазы 4 (SPEC §8): циклы с полной цепочкой, загрузка ровно один раз,
-//! изоляция I/O импортов (D1), lock-файл (E0402/E0403), манифест через VFS.
+//! Phase 4 acceptance criteria (SPEC §8): cycles with a full chain, loading exactly once,
+//! import I/O isolation (D1), lock file (E0402/E0403), manifest through the VFS.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -51,7 +51,7 @@ fn cyclic_import_reports_full_chain() {
     );
 }
 
-/// Резолвер-обёртка, считающая загрузки каждого модуля.
+/// A resolver wrapper counting loads of each module.
 struct Counting<'x> {
     inner: &'x MemoryResolver,
     loads: RefCell<HashMap<String, u32>>,
@@ -108,13 +108,13 @@ fn imported_modules_have_no_io_capability_d1() {
     let cache = SourceCache::new();
     let mut loader = Loader::new(&cache, &resolver);
     let mut it = Interpreter::new(Options::default());
-    it.env_cap = EnvCap::AllowAll; // права есть у корня, но не у импорта
+    it.env_cap = EnvCap::AllowAll; // the root has permissions, the import does not
     let err = loader
         .eval_entry(&mut it, &ImportSpec::File("root.aura"))
         .unwrap_err();
     assert_eq!(err.code, "E0310");
 
-    // --allow-imports-io снимает запрет
+    // --allow-imports-io lifts the denial
     let cache2 = SourceCache::new();
     let mut loader2 = Loader::new(&cache2, &resolver);
     let mut it2 = Interpreter::new(Options::default());
@@ -130,7 +130,7 @@ fn imported_modules_have_no_io_capability_d1() {
 
 #[test]
 fn loader_analyzes_imported_modules() {
-    // SPEC §6.1: анализ проходит по КАЖДОМУ загружаемому модулю, не только по корню
+    // SPEC §6.1: analysis runs on EVERY loaded module, not just the root
     let resolver = mem(&[
         ("root.aura", "import \"lib.aura\" as lib\nx: lib.v"),
         ("lib.aura", "dead_var = 1\nv: env(\"A\", \"b\")"),
@@ -143,7 +143,7 @@ fn loader_analyzes_imported_modules() {
     loader
         .eval_entry(&mut it, &ImportSpec::File("root.aura"))
         .unwrap();
-    // мёртвый код и эффектный вызов найдены в ИМПОРТИРУЕМОМ модуле
+    // dead code and an effectful call are found in the IMPORTED module
     assert!(loader
         .diags
         .iter()
@@ -169,12 +169,12 @@ fn d12_pub_functions_and_schemas_cross_module() {
     let v = loader
         .eval_entry(&mut it, &ImportSpec::File("root.aura"))
         .unwrap();
-    // pub def вызывается через алиас
+    // pub def is called through the alias
     assert_eq!(get(&get(&v, "l"), "managed_by"), Value::str("pkg"));
-    // pub type инстанцируется через new pkg.Meta (с валидацией)
+    // pub type is instantiated via new pkg.Meta (with validation)
     assert_eq!(get(&get(&v, "m"), "port"), Value::Int(1));
     assert_eq!(get(&v, "via_field"), Value::str("1.0"));
-    // приватный def недоступен импортёру
+    // a private def is not accessible to the importer
     let bad = mem(&[
         (
             "root.aura",
@@ -196,7 +196,7 @@ fn d12_pub_functions_and_schemas_cross_module() {
 
 #[test]
 fn d12_exported_functions_keep_module_capabilities() {
-    // Экспортированная функция пакета НЕ наследует I/O-права корня (D1×D12)
+    // An exported package function does NOT inherit the root's I/O capabilities (D1×D12)
     let resolver = mem(&[
         ("root.aura", "import \"pkg.aura\" as pkg\nx: pkg.leak()"),
         (
@@ -207,7 +207,7 @@ fn d12_exported_functions_keep_module_capabilities() {
     let cache = SourceCache::new();
     let mut loader = Loader::new(&cache, &resolver);
     let mut it = Interpreter::new(Options::default());
-    it.env_cap = EnvCap::AllowAll; // права есть у корня
+    it.env_cap = EnvCap::AllowAll; // the root has permissions
     let err = loader
         .eval_entry(&mut it, &ImportSpec::File("root.aura"))
         .unwrap_err();
@@ -224,7 +224,7 @@ fn lockfile_integrity_and_frozen() {
         ("pkg/lib@v1.2", "n: 42"),
     ]);
 
-    // Первый прогон: лок дописывается
+    // First run: the lock gets appended to
     let cache = SourceCache::new();
     let mut loader = Loader::new(&cache, &resolver);
     let mut it = Interpreter::new(Options::default());
@@ -237,7 +237,7 @@ fn lockfile_integrity_and_frozen() {
     assert_eq!(entry.version, "1.2");
     assert_eq!(entry.integrity, integrity_of("n: 42"));
 
-    // Порча integrity → E0402
+    // Integrity tampering → E0402
     let cache2 = SourceCache::new();
     let mut loader2 = Loader::new(&cache2, &resolver);
     loader2.lock.entries.insert(
@@ -253,7 +253,7 @@ fn lockfile_integrity_and_frozen() {
         .unwrap_err();
     assert_eq!(err.code, "E0402");
 
-    // --frozen без лока → E0403
+    // --frozen without a lock → E0403
     let cache3 = SourceCache::new();
     let mut loader3 = Loader::new(&cache3, &resolver);
     loader3.frozen = true;
@@ -263,7 +263,7 @@ fn lockfile_integrity_and_frozen() {
         .unwrap_err();
     assert_eq!(err.code, "E0403");
 
-    // Round-trip сериализации лока
+    // Round-trip of lock serialization
     let text = loader.lock.to_toml_string();
     let parsed = Lockfile::parse(&text).unwrap();
     assert_eq!(parsed.entries, loader.lock.entries);
@@ -303,7 +303,7 @@ fn manifest_end_to_end_through_vfs() {
     };
     assert_eq!(get(&apps[0], "image"), Value::str("company/auth:1.2.3"));
     assert_eq!(get(&get(&apps[0], "labels"), "team"), Value::str("core"));
-    // registry-модуль зафиксирован в локе
+    // the registry module is pinned in the lock
     assert_eq!(
         loader.lock.entries["github/actions/rust-cache"].version,
         "1.2"

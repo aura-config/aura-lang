@@ -1,4 +1,4 @@
-//! Рекурсивный спуск + Pratt-парсер выражений (SPEC §3).
+//! Recursive descent + Pratt expression parser (SPEC §3).
 
 pub mod ast;
 
@@ -7,7 +7,7 @@ use crate::lexer::{Token, TokenKind};
 use crate::span::Span;
 use ast::*;
 
-/// lbp тернарного `? :`; правая ассоциативность — else-ветвь парсится с min_bp = TERNARY_LBP - 1.
+/// lbp of the ternary `? :`; right associativity — the else branch parses with min_bp = TERNARY_LBP - 1.
 const TERNARY_LBP: u8 = 2;
 const UNARY_RBP: u8 = 15;
 
@@ -47,7 +47,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // ---- Навигация по токенам ----
+    // ---- Token navigation ----
 
     fn peek(&self) -> &TokenKind<'a> {
         &self.toks[self.pos].kind
@@ -126,7 +126,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Ключ свойства: идентификатор либо строка (D11: `"app.kubernetes.io/name": ...`).
+    /// Property key: identifier or string (D11: `"app.kubernetes.io/name": ...`).
     fn expect_key(&mut self) -> Result<(&'a str, Span), Diagnostic> {
         match self.peek() {
             TokenKind::Ident(s) | TokenKind::Str(s) => {
@@ -148,7 +148,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Разделитель statement'ов: Newline, либо допустимая граница (`end`/Eof).
+    /// Statement separator: Newline, or an allowed boundary (`end`/Eof).
     fn eat_separator(&mut self) -> Result<(), Diagnostic> {
         match self.peek() {
             TokenKind::Newline => {
@@ -164,7 +164,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Синхронизация после ошибки: до следующего Newline / `end` / Eof (SPEC §3.4).
+    /// Error recovery: skip to the next Newline / `end` / Eof (SPEC §3.4).
     fn recover(&mut self) {
         while !matches!(
             self.peek(),
@@ -175,7 +175,7 @@ impl<'a> Parser<'a> {
         self.skip_newlines();
     }
 
-    /// Точка входа для одиночного выражения (интерполяции `#{...}`, REPL).
+    /// Entry point for a single expression (`#{...}` interpolations, REPL).
     pub fn parse_expression(mut self) -> Result<Expr<'a>, Diagnostic> {
         let e = self.parse_expr(0)?;
         self.skip_newlines();
@@ -189,7 +189,7 @@ impl<'a> Parser<'a> {
         Ok(e)
     }
 
-    // ---- Модуль ----
+    // ---- Module ----
 
     pub fn parse_module(mut self) -> Result<Module<'a>, Vec<Diagnostic>> {
         let start = self.span();
@@ -271,7 +271,7 @@ impl<'a> Parser<'a> {
         match self.peek() {
             TokenKind::Type => self.parse_type_decl(false),
             TokenKind::Def => self.parse_func_decl(false),
-            // D12: `pub` допустим только перед def/type
+            // D12: `pub` is only allowed before def/type
             TokenKind::Pub => {
                 self.bump();
                 match self.peek() {
@@ -300,7 +300,7 @@ impl<'a> Parser<'a> {
                     span: self.join(start),
                 })
             }
-            // D11: свойство со строковым ключом — `"app.io/name": value`
+            // D11: property with a string key — `"app.io/name": value`
             TokenKind::Str(_) if matches!(self.peek_at(1), TokenKind::Colon) => {
                 let start = self.span();
                 let (key, _) = self.expect_key()?;
@@ -336,7 +336,7 @@ impl<'a> Parser<'a> {
                             span: self.join(start),
                         })
                     }
-                    // Инлайн-блок v1.1 удалён (D3): `metrics port: 9090 ...`
+                    // v1.1 inline block removed (D3): `metrics port: 9090 ...`
                     (TokenKind::Ident(_), TokenKind::Colon) => {
                         let mut d = self.err(
                             "E0201",
@@ -357,7 +357,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Значение свойства: expr на той же строке, либо Newline → вложенный объектный блок (SPEC §3.2).
+    /// Property value: an expr on the same line, or Newline → nested object block (SPEC §3.2).
     fn parse_property_value(&mut self) -> Result<Expr<'a>, Diagnostic> {
         if matches!(self.peek(), TokenKind::Newline) {
             self.bump();
@@ -367,7 +367,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Свойства до закрывающего `end` (тело def / вложенный объект / new Schema).
+    /// Properties up to a closing `end` (def body / nested object / new Schema).
     fn parse_object_body(&mut self) -> Result<ObjectBody<'a>, Diagnostic> {
         let mut props = Vec::new();
         loop {
@@ -499,7 +499,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    // ---- Выражения (Pratt, SPEC §3.3) ----
+    // ---- Expressions (Pratt, SPEC §3.3) ----
 
     fn parse_expr(&mut self, min_bp: u8) -> Result<Expr<'a>, Diagnostic> {
         let start = self.span();
@@ -517,10 +517,10 @@ impl<'a> Parser<'a> {
                         span: self.join(start),
                     };
                 }
-                // Индексация списков `xs[0]` (D11)
+                // List indexing `xs[0]` (D11)
                 TokenKind::LBracket => {
                     self.bump();
-                    // obj["key"] — подсказываем точечную форму (E0318)
+                    // obj["key"] — hint towards dot form (E0318)
                     if matches!(self.peek(), TokenKind::Str(_))
                         && matches!(self.peek_at(1), TokenKind::RBracket)
                     {
@@ -547,7 +547,7 @@ impl<'a> Parser<'a> {
                     self.bump();
                     let then = self.parse_expr(0)?;
                     self.expect(&TokenKind::Colon, "`:` in ternary expression")?;
-                    let otherwise = self.parse_expr(TERNARY_LBP - 1)?; // правая ассоциативность
+                    let otherwise = self.parse_expr(TERNARY_LBP - 1)?; // right associativity
                     lhs = Expr::Ternary {
                         cond: Box::new(lhs),
                         then: Box::new(then),
@@ -648,7 +648,7 @@ impl<'a> Parser<'a> {
             TokenKind::New => {
                 self.bump();
                 let (first, _) = self.expect_ident("schema name after `new`")?;
-                // D12: `new alias.Schema` — импортированная схема
+                // D12: `new alias.Schema` — an imported schema
                 let (schema, schema_alias) = if self.eat(&TokenKind::Dot) {
                     let (name, _) = self.expect_ident("schema name after module alias")?;
                     (name, Some(first))
@@ -676,7 +676,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Lookahead с текущей позиции (LParen): `(` [Ident (`,` Ident)*] `)` `->` ?
+    /// Lookahead from the current position (LParen): `(` [Ident (`,` Ident)*] `)` `->` ?
     fn lambda_ahead(&self) -> bool {
         let mut i = self.pos + 1;
         loop {
@@ -702,13 +702,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// `(params) -> body end`; body — выражение либо объектное тело (SPEC §3.1 LambdaBody).
+    /// `(params) -> body end`; body is an expression or an object body (SPEC §3.1 LambdaBody).
     fn parse_lambda(&mut self) -> Result<Expr<'a>, Diagnostic> {
         let start = self.span();
         self.bump(); // (
         let params = self.parse_param_list()?;
         self.expect(&TokenKind::Arrow, "`->` in lambda")?;
-        // `(x) -> key: v ... end` — объектное тело; иначе одно выражение + `end`
+        // `(x) -> key: v ... end` — an object body; otherwise a single expression + `end`
         let body = if matches!(self.peek(), TokenKind::Ident(_))
             && matches!(self.peek_at(1), TokenKind::Colon)
         {
@@ -769,11 +769,11 @@ impl<'a> Parser<'a> {
         Ok(args)
     }
 
-    /// `.field` | `."строковый ключ"` | `."#{динамический}"` | `.method(args)`
+    /// `.field` | `."string key"` | `."#{dynamic}"` | `.method(args)`
     /// | `.method (params) -> ... end` (trailing lambda)
     fn parse_postfix_dot(&mut self, recv: Expr<'a>, start: Span) -> Result<Expr<'a>, Diagnostic> {
         self.bump(); // .
-                     // D11: строковый ключ после точки — доступ к произвольному имени поля
+                     // D11: string key after the dot — access to an arbitrary field name
         match self.peek() {
             TokenKind::Str(key) => {
                 let key = *key;
@@ -1068,7 +1068,7 @@ mod tests {
 
     #[test]
     fn list_indexing_d11() {
-        // xs[0][1] — цепочка индексов
+        // xs[0][1] — chained indexing
         let Expr::Index {
             bracket: true,
             recv,
@@ -1106,7 +1106,7 @@ mod tests {
         assert!(matches!(m.stmts[0], Stmt::FuncDecl { public: true, .. }));
         assert!(matches!(&m.stmts[1], Stmt::TypeDecl(s) if s.public));
         assert!(matches!(m.stmts[2], Stmt::FuncDecl { public: false, .. }));
-        // pub не перед def/type — ошибка
+        // pub not before def/type — an error
         assert_eq!(first_err("pub x = 1"), "E0206");
     }
 

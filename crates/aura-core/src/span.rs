@@ -1,6 +1,6 @@
 pub type SourceId = u32;
 
-/// Байтовые смещения в исходнике (SPEC §2.1).
+/// Byte offsets into the source (SPEC §2.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
     pub source: SourceId,

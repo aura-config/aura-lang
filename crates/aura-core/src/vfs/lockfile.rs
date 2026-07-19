@@ -1,20 +1,20 @@
-//! aura.lock (SPEC §5.2, D8): фиксация точных версий registry-модулей + integrity-хэш.
+//! aura.lock (SPEC §5.2, D8): pinning exact registry module versions + an integrity hash.
 
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LockEntry {
-    /// Точная версия без префикса `v`, например "1.2.9".
+    /// The exact version without the `v` prefix, e.g. "1.2.9".
     pub version: String,
-    /// "sha256-<hex>" содержимого файла модуля.
+    /// "sha256-<hex>" of the module file's contents.
     pub integrity: String,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct Lockfile {
-    /// BTreeMap — детерминированный порядок записи.
+    /// BTreeMap - a deterministic write order.
     pub entries: BTreeMap<String, LockEntry>,
-    /// Появились новые/обновлённые записи — файл нужно перезаписать (кроме --frozen).
+    /// New/updated entries appeared - the file needs rewriting (except under --frozen).
     pub dirty: bool,
 }
 
@@ -59,7 +59,7 @@ impl Lockfile {
     }
 }
 
-/// Integrity-хэш содержимого модуля.
+/// The integrity hash of a module's contents.
 pub fn integrity_of(text: &str) -> String {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(text.as_bytes());

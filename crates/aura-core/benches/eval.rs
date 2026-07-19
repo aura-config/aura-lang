@@ -1,4 +1,4 @@
-//! Бенчмарк hot path Фазы 3: полный пайплайн lex + parse + eval эталонного манифеста.
+//! Phase 3 hot-path benchmark: the full lex + parse + eval pipeline on the reference manifest.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use indexmap::IndexMap;

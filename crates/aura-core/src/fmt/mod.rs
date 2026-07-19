@@ -1,13 +1,13 @@
-//! `aura fmt`: канонизация отступов (SPEC §7.2).
+//! `aura fmt`: indentation canonicalization (SPEC §7.2).
 //!
-//! Форматтер строчно-ориентированный: текст строк (включая комментарии и
-//! внутристрочное выравнивание) сохраняется, нормализуются только отступы
-//! (2 пробела на уровень), хвостовые пробелы и пустые строки (максимум одна
-//! подряд, без пустых в начале/конце файла).
+//! The formatter is line-oriented: line text (including comments and
+//! intra-line alignment) is preserved, only indentation is normalized
+//! (2 spaces per level), along with trailing whitespace and blank lines
+//! (at most one in a row, none at the start/end of the file).
 //!
-//! Глубина вложенности считается по токенам: `domain`/`component`/`def`/`type`/
-//! `new`/`->`/`[`/`(` и `key:` в конце строки открывают уровень; `end`/`]`/`)` —
-//! закрывают. Инвариант безопасности: поток токенов не меняется (см. тесты).
+//! Nesting depth is computed from tokens: `domain`/`component`/`def`/`type`/
+//! `new`/`->`/`[`/`(` and a trailing `key:` open a level; `end`/`]`/`)`
+//! close one. Safety invariant: the token stream never changes (see tests).
 
 use crate::error::Diagnostic;
 use crate::lexer::{Lexer, TokenKind};
@@ -16,21 +16,21 @@ const INDENT: &str = "  ";
 
 #[derive(Default, Clone, Copy)]
 struct LineInfo {
-    /// Суммарное изменение глубины после строки.
+    /// Net depth change after this line.
     delta: i32,
-    /// Минимум префиксной суммы внутри строки: ведущие `end`/`]` дают дедент самой строке.
+    /// Minimum prefix sum within the line: a leading `end`/`]` dedents this very line.
     min_prefix: i32,
-    /// Последний значимый токен — `:` (открывает объектный блок со следующей строки).
+    /// The last significant token is `:` (opens an object block on the next line).
     ends_with_colon: bool,
-    /// Строка обрывается посреди выражения (`,` `=` `.` `?` или бинарный оператор
-    /// в конце) — следующая строка получает отступ продолжения (+1).
+    /// The line breaks off mid-expression (a trailing `,` `=` `.` `?` or binary
+    /// operator) — the next line gets a continuation indent (+1).
     continues: bool,
 }
 
 pub fn format_source(src: &str) -> Result<String, Diagnostic> {
     let tokens = Lexer::new(src, 0).tokenize()?;
 
-    // Начала строк (байтовые смещения) для маппинга span → номер строки
+    // Line starts (byte offsets) for mapping a span to a line number
     let mut line_starts = vec![0usize];
     for (i, b) in src.bytes().enumerate() {
         if b == b'\n' {
@@ -88,7 +88,7 @@ pub fn format_source(src: &str) -> Result<String, Diagnostic> {
     for (idx, line) in src.lines().enumerate() {
         let text = line.trim();
         if text.is_empty() {
-            // максимум одна пустая строка, и не в начале файла
+            // at most one blank line, and never at the start of the file
             pending_blank = wrote_any;
             continue;
         }
@@ -135,11 +135,11 @@ mod tests {
 
     #[test]
     fn preserves_comments_and_inline_alignment() {
-        let src = "# заголовок\nbase_port        = 8000  # выравнивание сохраняется\n";
+        let src = "# heading\nbase_port        = 8000  # alignment is preserved\n";
         assert_eq!(format_source(src).unwrap(), src);
     }
 
-    /// Инвариант безопасности: форматирование не меняет поток токенов.
+    /// Safety invariant: formatting never changes the token stream.
     #[test]
     fn token_stream_is_preserved() {
         let formatted = format_source(MANIFEST).unwrap();
@@ -150,7 +150,7 @@ mod tests {
         );
     }
 
-    /// Идемпотентность: повторный прогон ничего не меняет.
+    /// Idempotence: running it again changes nothing.
     #[test]
     fn is_idempotent() {
         let once = format_source(MANIFEST).unwrap();

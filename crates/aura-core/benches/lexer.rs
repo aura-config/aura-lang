@@ -1,11 +1,11 @@
-//! Бенчмарк hot path Фазы 1: пропускная способность лексера (МБ/с) на эталонном манифесте.
+//! Phase 1 hot-path benchmark: lexer throughput (MB/s) on the reference manifest.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 
 const MANIFEST: &str = include_str!("../tests/fixtures/production_deploy.aura");
 
 fn bench_lexer(c: &mut Criterion) {
-    // x64 — типичный конфиг среднего размера (~100 КБ)
+    // x64 - a typical medium-sized config (~100 KB)
     let big: String = MANIFEST.repeat(64);
     let mut group = c.benchmark_group("lexer");
     group.throughput(Throughput::Bytes(big.len() as u64));

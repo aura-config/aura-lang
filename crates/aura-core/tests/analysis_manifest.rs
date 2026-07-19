@@ -1,5 +1,5 @@
-//! Критерий приёмки Фазы 5 (SPEC §8): в эталонном манифесте детектируется
-//! `unused_config_version` (и неиспользуемый импорт rust), без ложных ошибок.
+//! Phase 5 acceptance criterion (SPEC §8): the reference manifest is expected to detect
+//! `unused_config_version` (and the unused import rust), with no false errors.
 
 use aura_core::analysis::{analyze, has_blocking};
 use aura_core::error::Severity;
@@ -14,7 +14,7 @@ fn manifest_dead_code() {
     let module = Parser::new(toks).parse_module().expect("parse ok");
     let diags = analyze(&module, true);
 
-    // Ни одной ошибки — только предупреждения о мёртвом коде
+    // Not a single error - only dead-code warnings
     assert!(
         diags.iter().all(|d| d.severity == Severity::Warning),
         "unexpected errors: {diags:#?}"
@@ -32,7 +32,7 @@ fn manifest_dead_code() {
         "must detect unused import rust: {diags:#?}"
     );
 
-    // Обычный режим проходит, --strict блокирует
+    // The normal mode passes, --strict blocks
     assert!(!has_blocking(&diags, false));
     assert!(has_blocking(&diags, true));
 }

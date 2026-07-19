@@ -6,7 +6,7 @@ pub enum Severity {
     Warning,
 }
 
-/// SPEC §7.3. Рендеринг (ariadne) живёт в aura-cli; ядро только формирует данные.
+/// SPEC §7.3. Rendering (ariadne) lives in aura-cli; the core only produces the data.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Diagnostic {
     pub code: &'static str,

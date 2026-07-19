@@ -6,14 +6,14 @@ pub struct Token<'a> {
     pub span: Span,
 }
 
-/// SPEC §2.1. Инвариант zero-copy: ни одного `String` — только срезы исходника.
+/// SPEC §2.1. Zero-copy invariant: not a single `String` - only slices of the source.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind<'a> {
-    // Литералы
+    // Literals
     Ident(&'a str),
     Int(i64),
     Float(f64),
-    /// Содержимое без кавычек; escape-последовательности сырые (ленивое разэкранирование в eval).
+    /// Content without quotes; escape sequences are raw (lazily unescaped during eval).
     Str(&'a str),
     InterpStr(Vec<StrPart<'a>>),
     /// github/actions/rust-cache@v1.2 → path="github/actions/rust-cache", version="v1.2"
@@ -24,7 +24,7 @@ pub enum TokenKind<'a> {
     True,
     False,
     Null,
-    // Ключевые слова
+    // Keywords
     Import,
     As,
     Type,
@@ -36,7 +36,7 @@ pub enum TokenKind<'a> {
     Assert,
     Shadow,
     Pub,
-    // Разделители
+    // Delimiters
     Newline,
     LParen,
     RParen,
@@ -48,7 +48,7 @@ pub enum TokenKind<'a> {
     Assign,
     Arrow,
     Question,
-    // Операторы
+    // Operators
     Plus,
     Minus,
     Star,
@@ -69,7 +69,7 @@ pub enum TokenKind<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StrPart<'a> {
     Lit(&'a str),
-    /// Сырой срез выражения из `#{...}`; парсится Фазой 2.
+    /// A raw expression slice from `#{...}`; parsed by Phase 2.
     Interp(&'a str),
 }
 
