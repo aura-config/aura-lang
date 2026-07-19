@@ -7,7 +7,8 @@ Aura компилирует читаемые манифесты в JSON — со
 отступов, никаких сюрпризов в проде.
 
 ![Rust 1.75+](https://img.shields.io/badge/rust-1.75%2B-orange)
-![Tests](https://img.shields.io/badge/tests-54%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-100%20passing-brightgreen)
+![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)
 ![Status](https://img.shields.io/badge/status-v0.1%20preview-blue)
 
 ---
@@ -90,7 +91,7 @@ aura eval production_deploy.aura --allow-read=. --allow-env=APP_ENV
 ## Быстрый старт
 
 ```console
-git clone https://github.com/<you>/aura-lang && cd aura-lang
+git clone https://github.com/aura-config/aura-lang && cd aura-lang
 cargo build --release
 cd examples
 ../target/release/aura eval production_deploy.aura \

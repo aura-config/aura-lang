@@ -7,5 +7,5 @@ src = "src"
 
 [output.html]
 default-theme = "rust"
-git-repository-url = "https://github.com/ilyabrin/aura-lang"
-edit-url-template = "https://github.com/ilyabrin/aura-lang/edit/main/docs/book/{path}"
+git-repository-url = "https://github.com/aura-config/aura-lang"
+edit-url-template = "https://github.com/aura-config/aura-lang/edit/main/docs/book/{path}"

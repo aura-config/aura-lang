@@ -49,7 +49,7 @@ aura eval app.aura --allow-env=APP_ENV
 ## Где что лежать
 
 - Эта книга — учебник и справочник для *пользователя языка*.
-- [SPEC.md](https://github.com/ilyabrin/aura-lang/blob/main/SPEC.md) —
+- [SPEC.md](https://github.com/aura-config/aura-lang/blob/main/SPEC.md) —
   формальная спецификация для разработчиков реализации.
-- [examples/](https://github.com/ilyabrin/aura-lang/tree/main/examples) —
+- [examples/](https://github.com/aura-config/aura-lang/tree/main/examples) —
   10 работающих примеров с ожидаемыми выводами.

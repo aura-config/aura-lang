@@ -1,8 +1,16 @@
 [package]
 name = "aura-core"
+description = "Aura configuration language: deterministic, capability-secured, schema-validated configs"
+keywords = ["configuration", "config", "language", "deterministic", "yaml"]
+categories = ["config", "parser-implementations"]
+readme = "../../README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
 
 [dependencies]
 indexmap = "2"

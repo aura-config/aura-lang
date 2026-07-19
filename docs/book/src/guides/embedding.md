@@ -4,7 +4,7 @@
 
 ```toml
 [dependencies]
-aura-core = { git = "https://github.com/ilyabrin/aura-lang" }
+aura-core = { git = "https://github.com/aura-config/aura-lang" }
 ```
 
 ```rust

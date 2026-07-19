@@ -3,7 +3,7 @@
 ## Установка
 
 ```console
-git clone https://github.com/ilyabrin/aura-lang && cd aura-lang
+git clone https://github.com/aura-config/aura-lang && cd aura-lang
 cargo build --release
 # бинарник: target/release/aura
 ```
