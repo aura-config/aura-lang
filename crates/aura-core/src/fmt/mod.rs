@@ -22,6 +22,8 @@ struct LineInfo {
     min_prefix: i32,
     /// The last significant token is `:` (opens an object block on the next line).
     ends_with_colon: bool,
+    /// The last significant token is `->` — a trailing lambda arrow that opens a block.
+    ends_with_arrow: bool,
     /// The line breaks off mid-expression (a trailing `,` `=` `.` `?` or binary
     /// operator) — the next line gets a continuation indent (+1).
     continues: bool,
@@ -39,25 +41,41 @@ pub fn format_source(src: &str) -> Result<String, Diagnostic> {
     }
     let line_of = |off: u32| line_starts.partition_point(|s| *s <= off as usize) - 1;
 
+    // Pre-scan: does a line contain an `end`? An arrow on such a line is an inline
+    // lambda (`(x) -> y end`) and opens a block that closes on the same line; an arrow
+    // on a line without `end` is either a trailing lambda opener (multi-line) or a cond
+    // arm (`x -> y`), neither of which should raise the running depth mid-line.
+    let mut line_has_end = vec![false; line_starts.len()];
+    for t in &tokens {
+        if matches!(t.kind, TokenKind::End) {
+            line_has_end[line_of(t.span.start)] = true;
+        }
+    }
+
     let mut infos = vec![LineInfo::default(); line_starts.len()];
     for t in &tokens {
+        let line = line_of(t.span.start);
         let d: i32 = match t.kind {
             TokenKind::Domain
             | TokenKind::Component
             | TokenKind::Def
             | TokenKind::Type
             | TokenKind::New
-            | TokenKind::Arrow
+            | TokenKind::Cond
             | TokenKind::LBracket
             | TokenKind::LParen => 1,
             TokenKind::End | TokenKind::RBracket | TokenKind::RParen => -1,
+            // Arrow raises depth in the running sum only for an inline lambda (line has `end`).
+            TokenKind::Arrow if line_has_end[line] => 1,
             TokenKind::Newline | TokenKind::Eof => continue,
             _ => 0,
         };
-        let info = &mut infos[line_of(t.span.start)];
+        let info = &mut infos[line];
         info.delta += d;
         info.min_prefix = info.min_prefix.min(info.delta);
         info.ends_with_colon = matches!(t.kind, TokenKind::Colon);
+        // A trailing `->` (last significant token, no `end` on the line) opens a block.
+        info.ends_with_arrow = matches!(t.kind, TokenKind::Arrow) && !line_has_end[line];
         info.continues = matches!(
             t.kind,
             TokenKind::Comma
@@ -104,7 +122,7 @@ pub fn format_source(src: &str) -> Result<String, Diagnostic> {
         out.push_str(text);
         out.push('\n');
         wrote_any = true;
-        depth += info.delta + i32::from(info.ends_with_colon);
+        depth += info.delta + i32::from(info.ends_with_colon) + i32::from(info.ends_with_arrow);
         prev_continues = info.continues;
     }
     Ok(out)
@@ -170,6 +188,14 @@ mod tests {
         let messy =
             "xs = [\n\"a\"\n\"b\"\n]\napps: xs.map (n, i) ->\ncomponent n\nimage: n\nend\nend\n";
         let want = "xs = [\n  \"a\"\n  \"b\"\n]\napps: xs.map (n, i) ->\n  component n\n    image: n\n  end\nend\n";
+        assert_eq!(format_source(messy).unwrap(), want);
+    }
+
+    #[test]
+    fn cond_block_indents_arms_flat() {
+        // cond opens a block; arm arrows are inline and must NOT create indent creep.
+        let messy = "t: cond\na == 1 -> \"x\"\n  b == 2 -> \"y\"\nelse -> \"z\"\nend\n";
+        let want = "t: cond\n  a == 1 -> \"x\"\n  b == 2 -> \"y\"\n  else -> \"z\"\nend\n";
         assert_eq!(format_source(messy).unwrap(), want);
     }
 }

@@ -212,6 +212,7 @@ impl<'a> Parser<'a> {
             }
         }
         while !matches!(self.peek(), TokenKind::Eof) {
+            let before = self.pos;
             match self.parse_stmt().and_then(|s| {
                 self.eat_separator()?;
                 Ok(s)
@@ -220,6 +221,12 @@ impl<'a> Parser<'a> {
                 Err(d) => {
                     self.diags.push(d);
                     self.recover();
+                    // Guarantee forward progress: if the error left us on a token that
+                    // `recover()` treats as a boundary (e.g. a stray `end`), consume it so
+                    // the loop can't spin forever pushing the same diagnostic.
+                    if self.pos == before {
+                        self.bump();
+                    }
                 }
             }
         }
@@ -668,6 +675,7 @@ impl<'a> Parser<'a> {
             TokenKind::Component => Ok(Expr::Block(Box::new(
                 self.parse_block(BlockKind::Component)?,
             ))),
+            TokenKind::Cond => self.parse_cond(),
             _ => Err(self.err(
                 "E0204",
                 "expected expression",
@@ -752,6 +760,42 @@ impl<'a> Parser<'a> {
                 ));
             }
         }
+    }
+
+    /// `cond \n (bool -> value)+ else -> value \n end` (D14).
+    fn parse_cond(&mut self) -> Result<Expr<'a>, Diagnostic> {
+        let start = self.span();
+        self.bump(); // cond
+        self.expect(&TokenKind::Newline, "newline after `cond`")?;
+        let mut arms = Vec::new();
+        loop {
+            self.skip_newlines();
+            if matches!(self.peek(), TokenKind::Else) {
+                break;
+            }
+            if matches!(self.peek(), TokenKind::End | TokenKind::Eof) {
+                return Err(self.err(
+                    "E0207",
+                    "`cond` requires an `else` arm",
+                    "add `else -> ...` before `end`",
+                ));
+            }
+            let condition = self.parse_expr(0)?;
+            self.expect(&TokenKind::Arrow, "`->` after a cond condition")?;
+            let value = self.parse_expr(0)?;
+            arms.push((condition, value));
+            self.eat_separator()?;
+        }
+        self.bump(); // else
+        self.expect(&TokenKind::Arrow, "`->` after `else`")?;
+        let otherwise = self.parse_expr(0)?;
+        self.skip_newlines();
+        self.expect(&TokenKind::End, "`end` to close `cond`")?;
+        Ok(Expr::Cond {
+            arms,
+            otherwise: Box::new(otherwise),
+            span: self.join(start),
+        })
     }
 
     fn parse_args(&mut self) -> Result<Vec<Expr<'a>>, Diagnostic> {
@@ -852,6 +896,21 @@ mod tests {
             .parse_module()
             .expect_err("parse must fail")[0]
             .code
+    }
+
+    #[test]
+    fn cond_parses_d14() {
+        let m = module("t: cond\n  a == 1 -> \"x\"\n  else -> \"y\"\nend");
+        let Stmt::Property {
+            value: Expr::Cond { arms, .. },
+            ..
+        } = &m.stmts[0]
+        else {
+            panic!("expected cond property, got {:?}", m.stmts[0])
+        };
+        assert_eq!(arms.len(), 1);
+        // a missing `else` arm is a parse error (D14)
+        assert_eq!(first_err("x: cond\n  true -> 1\nend"), "E0207");
     }
 
     #[test]

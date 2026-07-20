@@ -346,6 +346,27 @@ impl<'a> Interpreter<'a> {
                     *span,
                 )),
             },
+            // D14: first true arm wins; conditions must be Bool; `else` is the fallback.
+            Expr::Cond {
+                arms,
+                otherwise,
+                span,
+            } => {
+                for (condition, value) in arms {
+                    match self.eval_expr(env, condition)? {
+                        Value::Bool(true) => return self.eval_expr(env, value),
+                        Value::Bool(false) => {}
+                        other => {
+                            return Err(rt(
+                                "E0306",
+                                format!("cond condition must be Bool, got {}", other.type_name()),
+                                *span,
+                            ))
+                        }
+                    }
+                }
+                self.eval_expr(env, otherwise)
+            }
             Expr::Call { callee, args, span } => {
                 let argv: Vec<Value<'a>> = args
                     .iter()
@@ -1121,6 +1142,28 @@ mod tests {
         assert_eq!(get(&v, "neg"), Value::Int(7));
         assert_eq!(get(&v, "s"), Value::str("123"));
         assert_eq!(eval("x: \"nope\".to_int()").unwrap_err().code, "E0314");
+    }
+
+    #[test]
+    fn cond_expression() {
+        let src = concat!(
+            "region = \"us\"\n",
+            "tier: cond\n",
+            "  region == \"eu\" -> \"frankfurt\"\n",
+            "  region == \"us\" -> \"virginia\"\n",
+            "  else -> \"singapore\"\n",
+            "end\n",
+            "fallback: cond\n",
+            "  false -> 1\n",
+            "  else -> 42\n",
+            "end\n"
+        );
+        let v = eval(src).unwrap();
+        assert_eq!(get(&v, "tier"), Value::str("virginia"));
+        assert_eq!(get(&v, "fallback"), Value::Int(42));
+        // non-Bool condition -> E0306 (eval-level)
+        let bad = "x: cond\n  \"nope\" -> 1\n  else -> 2\nend";
+        assert_eq!(eval(bad).unwrap_err().code, "E0306");
     }
 
     #[test]

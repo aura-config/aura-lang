@@ -151,6 +151,13 @@ pub enum Expr<'a> {
         otherwise: Box<Expr<'a>>,
         span: Span,
     },
+    /// `cond \n (bool -> value)+ else -> value \n end` (D14). Left of each `->`
+    /// must be Bool; `else` is mandatory. First true arm wins.
+    Cond {
+        arms: Vec<(Expr<'a>, Expr<'a>)>,
+        otherwise: Box<Expr<'a>>,
+        span: Span,
+    },
     Call {
         callee: Box<Expr<'a>>,
         args: Vec<Expr<'a>>,

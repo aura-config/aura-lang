@@ -261,6 +261,15 @@ impl<'a> SemanticAnalyzer<'a> {
                 self.walk_expr(then);
                 self.walk_expr(otherwise);
             }
+            Expr::Cond {
+                arms, otherwise, ..
+            } => {
+                for (condition, value) in arms {
+                    self.walk_expr(condition);
+                    self.walk_expr(value);
+                }
+                self.walk_expr(otherwise);
+            }
             Expr::Call { callee, args, span } => {
                 // W0512: an effectful call in an imported module (SPEC §6.1, D1)
                 if let Expr::Variable(name, _) = callee.as_ref() {

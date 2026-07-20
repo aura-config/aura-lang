@@ -180,6 +180,22 @@ shards: range(3).map (i, _) ->
 end
 ```
 
+### Multi-way choice with `cond`
+
+For 3+ branches where nested ternaries get unreadable, `cond` picks the first
+true arm; `else` is mandatory (a missing one is a parse error):
+
+```ruby
+tier = cond
+  region == "eu" -> "frankfurt"
+  region == "us" -> "virginia"
+  else -> "singapore"
+end
+```
+
+The left of each `->` must be `Bool`; the right is any expression. No pattern
+destructuring - deliberately simpler than a `match`.
+
 ### Time - deterministic only
 
 `now()` does not exist in Aura and never will (D13) - an unreproducible config
