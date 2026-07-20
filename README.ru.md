@@ -44,7 +44,7 @@ def build_labels(app_name, tier)
 end
 
 domain "production-eu"
-  replicas: is_prod ? 3 : 1 # свойство — попадает в JSON
+  replicas: is_prod ? 3 : 1                       # свойство — попадает в JSON
 
   cargo_data  = read_file("./Cargo.toml").parse_toml()
   app_version = cargo_data.package.version
@@ -111,8 +111,8 @@ aura check production_deploy.aura --strict
 Ключевое правило Aura (аналог locals vs outputs в Terraform):
 
 ```ruby
-tmp = base * 2  #  =  приватная переменная: НЕ попадает в JSON
-port: tmp + 1   #  :  свойство: попадает в JSON
+tmp = base * 2        #  =  приватная переменная: НЕ попадает в JSON
+port: tmp + 1         #  :  свойство: попадает в JSON
 ```
 
 Благодаря этому анализ мёртвого кода точен: неиспользуемая `=`‑переменная — это
