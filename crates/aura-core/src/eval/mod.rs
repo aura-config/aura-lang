@@ -797,6 +797,29 @@ impl<'a> Interpreter<'a> {
                 };
                 Err(rt("E0531", msg, span))
             }
+            // Pure generator: range(n) = [0, 1, ..., n-1]. Deterministic, no capability.
+            "range" => {
+                let Some(Value::Int(n)) = args.first() else {
+                    return Err(rt("E0306", "range() expects an Int argument", span));
+                };
+                if *n < 0 {
+                    return Err(rt(
+                        "E0306",
+                        format!("range() argument must be non-negative, got {n}"),
+                        span,
+                    ));
+                }
+                // Guard against accidental OOM; configs never need a huge range.
+                const RANGE_LIMIT: i64 = 1_000_000;
+                if *n > RANGE_LIMIT {
+                    return Err(rt(
+                        "E0306",
+                        format!("range() argument {n} exceeds the limit of {RANGE_LIMIT}"),
+                        span,
+                    ));
+                }
+                Ok(Some(Value::list((0..*n).map(Value::Int).collect())))
+            }
             _ => Ok(None),
         }
     }
@@ -1098,6 +1121,22 @@ mod tests {
         assert_eq!(get(&v, "neg"), Value::Int(7));
         assert_eq!(get(&v, "s"), Value::str("123"));
         assert_eq!(eval("x: \"nope\".to_int()").unwrap_err().code, "E0314");
+    }
+
+    #[test]
+    fn range_builtin() {
+        let v = eval("a: range(3)\nb: range(0)\nc: range(2).map (i, _) -> i * 10 end").unwrap();
+        assert_eq!(
+            get(&v, "a"),
+            Value::list(vec![Value::Int(0), Value::Int(1), Value::Int(2)])
+        );
+        assert_eq!(get(&v, "b"), Value::list(vec![]));
+        assert_eq!(
+            get(&v, "c"),
+            Value::list(vec![Value::Int(0), Value::Int(10)])
+        );
+        assert_eq!(eval("x: range(-1)").unwrap_err().code, "E0306");
+        assert_eq!(eval("x: range(\"3\")").unwrap_err().code, "E0306");
     }
 
     #[test]

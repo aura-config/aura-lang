@@ -169,6 +169,17 @@ end
 `to_json` `to_yaml` `to_toml` `parse_duration` `format_duration` `parse_datetime`
 `format_datetime`. Реестр расширяем без изменений парсера.
 
+Глобальная `range(n)` порождает `[0, 1, ..., n-1]` — удобно генерировать N штук
+(шарды, реплики), а не перечислять руками:
+
+```ruby
+shards: range(3).map (i, _) ->
+  component "shard-#{i}"
+    replica_of: "primary"
+  end
+end
+```
+
 ### Время — только детерминированное
 
 `now()` в Aura не существует и не появится (D13) — невоспроизводимый конфиг

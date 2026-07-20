@@ -169,6 +169,17 @@ Built-in methods: `upper` `lower` `len` `trim` `split` `replace` `starts_with`
 `to_json` `to_yaml` `to_toml` `parse_duration` `format_duration` `parse_datetime`
 `format_datetime`. The registry grows without touching the parser.
 
+The global `range(n)` generates `[0, 1, ..., n-1]` — handy for producing N items
+(shards, replicas) instead of listing them by hand:
+
+```ruby
+shards: range(3).map (i, _) ->
+  component "shard-#{i}"
+    replica_of: "primary"
+  end
+end
+```
+
 ### Time - deterministic only
 
 `now()` does not exist in Aura and never will (D13) - an unreproducible config

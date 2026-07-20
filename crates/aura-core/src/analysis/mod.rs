@@ -15,7 +15,7 @@ use crate::parser::ast::*;
 use crate::parser::Parser;
 use crate::span::Span;
 
-const BUILTINS: &[&str] = &["env", "read_file", "fail"];
+const BUILTINS: &[&str] = &["env", "read_file", "fail", "range"];
 const EFFECTFUL: &[&str] = &["env", "read_file"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
