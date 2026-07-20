@@ -6,7 +6,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use super::env::Env;
-use crate::parser::ast::{LambdaBody, ObjectBody, TypeName};
+use crate::parser::ast::{LambdaBody, ObjectBody, SchemaField};
 
 #[derive(Debug, Clone)]
 pub enum Value<'a> {
@@ -25,7 +25,7 @@ pub enum Value<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SchemaDef<'a> {
     pub name: &'a str,
-    pub fields: Vec<(&'a str, TypeName<'a>)>,
+    pub fields: Vec<SchemaField<'a>>,
 }
 
 pub struct FunctionDef<'a> {

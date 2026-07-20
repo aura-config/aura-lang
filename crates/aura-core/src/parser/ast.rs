@@ -64,10 +64,20 @@ pub enum Stmt<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SchemaDeclaration<'a> {
     pub name: &'a str,
-    pub fields: Vec<(&'a str, TypeName<'a>)>,
+    pub fields: Vec<SchemaField<'a>>,
     /// `pub type` - the schema is visible to the module's importers (D12)
     pub public: bool,
     pub span: Span,
+}
+
+/// A schema field. `default = Some(expr)` makes the field optional: if omitted at
+/// `new`, the default expression is evaluated in the instantiation scope. A field
+/// with no default is required (E0511 if missing). No nullable (`?`) fields yet.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SchemaField<'a> {
+    pub name: &'a str,
+    pub ty: TypeName<'a>,
+    pub default: Option<Expr<'a>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

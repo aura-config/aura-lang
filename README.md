@@ -148,6 +148,21 @@ end
 A missing field is `E0511`; an extra field is `E0513` under `--strict`.
 `Int` and `Float` are separate types: byte limits and 64-bit IDs never lose precision.
 
+A field with `= default` is optional — omit it and the default applies (it may
+reference module vars). No nullable fields: optionality never introduces a `null`.
+
+```ruby
+type Service
+  name: String
+  port: Int = 8080          # optional: omitted -> 8080
+  tier: String = "backend"
+end
+
+api: new Service
+  name: "api"               # port and tier take their defaults
+end
+```
+
 ### Functions, lambdas, methods
 
 ```ruby

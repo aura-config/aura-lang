@@ -498,7 +498,22 @@ impl<'a> Interpreter<'a> {
                 let Some(Value::Schema(def)) = resolved else {
                     return Err(rt("E0504", format!("unknown schema '{schema}'"), *span));
                 };
-                let obj = self.eval_object_body(env, body)?;
+                let provided = self.eval_object_body(env, body)?;
+                let Value::Object(pmap) = &provided else {
+                    unreachable!()
+                };
+                // Apply defaults for optional fields omitted here (in schema order,
+                // after the provided fields). Evaluated in the instantiation scope.
+                let mut map: IndexMap<String, Value<'a>> = (**pmap).clone();
+                for f in &def.fields {
+                    if !map.contains_key(f.name) {
+                        if let Some(default_expr) = &f.default {
+                            let v = self.eval_expr(env, default_expr)?;
+                            map.insert(f.name.to_string(), v);
+                        }
+                    }
+                }
+                let obj = Value::object(map);
                 self.validate_schema(&def, &obj, *span)?;
                 Ok(obj)
             }
@@ -855,15 +870,17 @@ impl<'a> Interpreter<'a> {
         let Value::Object(map) = obj else {
             unreachable!()
         };
-        for (field, ty) in &def.fields {
-            let Some(v) = map.get(*field) else {
+        for f in &def.fields {
+            let Some(v) = map.get(f.name) else {
+                // Defaults are applied before validation, so a still-missing field
+                // has no default and is genuinely required.
                 return Err(rt(
                     "E0511",
-                    format!("missing field '{}' required by schema {}", field, def.name),
+                    format!("missing field '{}' required by schema {}", f.name, def.name),
                     span,
                 ));
             };
-            let ok = match ty {
+            let ok = match f.ty {
                 TypeName::String => matches!(v, Value::Str(_)),
                 TypeName::Int => matches!(v, Value::Int(_)),
                 TypeName::Float => matches!(v, Value::Float(_)),
@@ -876,9 +893,9 @@ impl<'a> Interpreter<'a> {
                     "E0512",
                     format!(
                         "field '{}' of schema {} expects {:?}, got {}",
-                        field,
+                        f.name,
                         def.name,
-                        ty,
+                        f.ty,
                         v.type_name()
                     ),
                     span,
@@ -887,7 +904,7 @@ impl<'a> Interpreter<'a> {
         }
         if self.options.strict {
             for key in map.keys() {
-                if !def.fields.iter().any(|(f, _)| f == key) {
+                if !def.fields.iter().any(|f| f.name == key) {
                     return Err(rt(
                         "E0513",
                         format!(
@@ -1142,6 +1159,44 @@ mod tests {
         assert_eq!(get(&v, "neg"), Value::Int(7));
         assert_eq!(get(&v, "s"), Value::str("123"));
         assert_eq!(eval("x: \"nope\".to_int()").unwrap_err().code, "E0314");
+    }
+
+    #[test]
+    fn schema_optional_fields_with_defaults() {
+        // omitted optional fields take their defaults; a default can reference a var.
+        let src = concat!(
+            "base = 8000\n",
+            "type Service\n",
+            "  name: String\n",
+            "  port: Int = 8080\n",
+            "  tier: String = \"backend\"\n",
+            "  offset: Int = base + 1\n",
+            "end\n",
+            "full: new Service\n",
+            "  name: \"a\"\n",
+            "  port: 9090\n",
+            "  tier: \"frontend\"\n",
+            "  offset: 5\n",
+            "end\n",
+            "defaulted: new Service\n",
+            "  name: \"b\"\n",
+            "end\n"
+        );
+        let v = eval(src).unwrap();
+        let full = get(&v, "full");
+        assert_eq!(get(&full, "port"), Value::Int(9090));
+        assert_eq!(get(&full, "tier"), Value::str("frontend"));
+        let d = get(&v, "defaulted");
+        assert_eq!(get(&d, "name"), Value::str("b"));
+        assert_eq!(get(&d, "port"), Value::Int(8080)); // default
+        assert_eq!(get(&d, "tier"), Value::str("backend")); // default
+        assert_eq!(get(&d, "offset"), Value::Int(8001)); // default references `base`
+                                                         // a required field (no default) is still E0511 when missing
+        let missing = "type S\n  name: String\n  port: Int\nend\nx: new S\n  name: \"z\"\nend";
+        assert_eq!(eval(missing).unwrap_err().code, "E0511");
+        // a default of the wrong type is caught as E0512
+        let badty = "type S\n  n: Int = \"oops\"\nend\nx: new S\nend";
+        assert_eq!(eval(badty).unwrap_err().code, "E0512");
     }
 
     #[test]

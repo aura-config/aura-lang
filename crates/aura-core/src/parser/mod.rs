@@ -422,7 +422,17 @@ impl<'a> Parser<'a> {
                 "Object" => TypeName::Object,
                 other => TypeName::Custom(other),
             };
-            fields.push((field, ty));
+            // `name: Type = default` makes the field optional (default in the instance scope).
+            let default = if self.eat(&TokenKind::Assign) {
+                Some(self.parse_expr(0)?)
+            } else {
+                None
+            };
+            fields.push(SchemaField {
+                name: field,
+                ty,
+                default,
+            });
         }
         Ok(Stmt::TypeDecl(SchemaDeclaration {
             name,

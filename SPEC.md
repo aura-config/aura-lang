@@ -100,6 +100,7 @@ end
 | D12 | `def`/`type` are always private | **Adopted in v1.3**: `pub def` / `pub type` land in the module's object — an importer calls `pkg.fn(...)` (builtin methods take precedence) and instantiates `new pkg.Schema ... end`; top-level pub items are silently excluded from the root JSON (deeper in the tree — E0601); pub is never considered dead code; **D1×D12**: the function runs with its origin module's capabilities, not the caller's; `pub` not immediately before `def`/`type` is E0206 | The foundation of the package ecosystem; explicit in the spirit of `shadow`/`new`; capability isolation cannot be bypassed via exported functions |
 | D13 | — | **Adopted in v1.3**: `now()`/`timestamp()` do not exist and never will — calling them yields E0533 with a hint to pass the time in from outside (`env("BUILD_TIME", ...)`). Deterministic time: `"1h30m".parse_duration()` → seconds (Int; units d/h/m/s, E0319), `Int.format_duration()`, `"RFC3339".parse_datetime()` → epoch UTC (offsets ±HH:MM, E0320), `Int.format_datetime()` → RFC3339 UTC. Calendar arithmetic beyond an epoch Int is package territory | An unreproducible config cannot be written by construction; durations and dates cover config needs without a timezone quagmire in the core |
 | D14 | — | **Adopted in v1.3**: a `cond` multi-way expression — `cond (bool -> value)+ else -> value end`. The left of each `->` must be `Bool` (E0306 otherwise, like a ternary condition); the right is any expression; `else` is mandatory (a missing `else` is the parse error E0207). First true arm wins. No value destructuring. | Fills the 3+ branch gap where nested ternaries become unreadable; deliberately simpler than a pattern-matching `match` |
+| D15 | Every schema field is required | **Adopted in v1.3**: `name: Type = default` makes a field optional — if omitted at `new`, the default expression is evaluated in the instantiation scope (it may reference module vars, e.g. `= base + 1`) and inserted after the provided fields; the default is type-checked like any value (E0512). A field with no default is still required (E0511). No nullable (`?`) fields — optionality never introduces a `null`. | Fills the biggest schema gap (real configs need optional-with-default) with zero new null: every field always has a value, shape stays stable |
 
 ---
 
@@ -289,7 +290,8 @@ pub enum Stmt<'a> {
     Expr(Expr<'a>),
 }
 
-pub struct SchemaDeclaration<'a> { pub name: &'a str, pub fields: Vec<(&'a str, TypeName<'a>)>, pub span: Span }
+pub struct SchemaDeclaration<'a> { pub name: &'a str, pub fields: Vec<SchemaField<'a>>, pub span: Span }
+pub struct SchemaField<'a> { pub name: &'a str, pub ty: TypeName<'a>, pub default: Option<Expr<'a>> } // `= default` -> optional (D15)
 pub enum TypeName<'a> { String, Int, Float, Bool, List, Object, Custom(&'a str) }
 
 pub struct BlockDeclaration<'a> {

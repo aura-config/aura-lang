@@ -185,9 +185,13 @@ impl<'a> SemanticAnalyzer<'a> {
                 }
             }
             Stmt::TypeDecl(schema) => {
-                for (_, ty) in &schema.fields {
-                    if let TypeName::Custom(name) = ty {
+                for f in &schema.fields {
+                    if let TypeName::Custom(name) = f.ty {
                         self.mark_used(name, schema.span);
+                    }
+                    // a default expression may reference variables (e.g. `= base_port`)
+                    if let Some(default) = &f.default {
+                        self.walk_expr(default);
                     }
                 }
                 self.declare(schema.name, schema.span, DeclKind::Type, false);
