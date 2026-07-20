@@ -15,7 +15,7 @@
 | [validators/](validators/) | Пакет на D12: `pub def`/`pub type` как API (`v.service(...)`, `new v.Service`), приватные хелперы невидимы; детерминированное время — `parse_duration`/`format_duration`, арифметика дат через `parse_datetime` | `aura eval deploy.aura` |
 | [telegram_bot/](telegram_bot/) | Конфиг телеграм-бота: секреты вне конфига (`token_env_var`), команды со схемой, dev/prod-переключение режима и лимитов, анти-дубль админов через `assert`, локализация со строковыми ключами | `aura eval bot.aura --allow-env=BOT_ENV` |
 
-Корневой [production_deploy.aura](production_deploy.aura) — эталонный манифест из [SPEC.md](../SPEC.md):
+Корневой [production_deploy.aura](production_deploy.aura) — эталонный манифест из [SPEC.ru.md](../SPEC.ru.md):
 демонстрирует все конструкции языка сразу и обязан проходить полный пайплайн в CI.
 
 ```console
