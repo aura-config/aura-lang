@@ -375,7 +375,11 @@ Postfix `.`: `Ident` + `(` → `MethodCall`, otherwise `FieldAccess`. Chains are
 
 ### 3.4. Error recovery
 
-Fail-fast within an expression; at the `Stmt` level - synchronize to the next `Newline`/`end`, errors accumulate in a `Vec<Diagnostic>`.
+Fail-fast within an expression; at the `Stmt` level - synchronize to the next `Newline`/`end`, errors accumulate in a `Vec<Diagnostic>` (recovery guarantees forward progress: if an error leaves the parser on a boundary token, one token is consumed so recovery cannot spin).
+
+### 3.5. Recursion-depth cap (DoS safety)
+
+The recursive descent is bounded by `MAX_PARSE_DEPTH` (256): crafted deeply-nested input (`((((…`, `[[[[…`, nested blocks/objects) that would otherwise overflow the stack yields `E0208 nesting too deep` instead of a crash — important because `aura add` parses untrusted third-party packages. `parse_module` runs on a 64 MiB-stack thread so the guard trips before the stack is exhausted even in debug builds (whose frames are ~10x larger). Coverage-guided fuzzing (`fuzz/`, `cargo-fuzz`) exercises the lexer, parser, and full pipeline against this class of bug.
 
 ---
 

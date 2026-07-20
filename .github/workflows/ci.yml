@@ -87,3 +87,20 @@ jobs:
         run: |
           ../target/debug/aura eval production_deploy.aura \
             --allow-read=. --allow-env=APP_ENV --registry-dir=registry --frozen > /dev/null
+
+  # Coverage-guided fuzzing (nightly + libFuzzer). Non-blocking: a smoke run of
+  # each target for a bounded time, seeded from examples/. See fuzz/README.md.
+  fuzz:
+    name: Fuzz (nightly, smoke)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-fuzz --locked
+      - name: Smoke-run each target (60s)
+        run: |
+          for t in fuzz_lexer fuzz_parser fuzz_pipeline; do
+            cargo fuzz run "$t" -- -rss_limit_mb=1024 -timeout=10 -max_total_time=60
+          done

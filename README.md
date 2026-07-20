@@ -411,9 +411,14 @@ Criterion benchmarks on the reference manifest (`cargo bench -p aura-core`):
 ## Development
 
 ```console
-cargo test    # 100 tests: units, conformance suite, property tests, golden snapshots
+cargo test    # 108 tests: units, conformance suite, property tests, golden snapshots
 cargo bench   # lexer, parser, full-pipeline benchmarks
 ```
+
+Coverage-guided fuzzing (lexer, parser, full pipeline) lives in
+[fuzz/](fuzz/README.md) — nightly + `cargo-fuzz`, run in a non-blocking CI job.
+The recursive-descent parser is DoS-hardened: deeply-nested input yields `E0208`
+instead of a stack overflow.
 
 The full language and architecture specification is [SPEC.md](SPEC.md). The
 reference manifest, which must pass the entire pipeline, is

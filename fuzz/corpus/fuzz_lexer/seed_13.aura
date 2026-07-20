@@ -1,0 +1,26 @@
+# Использование пакета: функции и схемы приходят из validators.aura (D12),
+# длительности и даты — детерминированные методы ядра (now() в Aura не существует).
+# Запуск: aura eval deploy.aura
+
+import "validators.aura" as v
+
+cache_ttl = "1h30m".parse_duration()
+
+api: v.service("api", 8080)
+
+worker: new v.Service
+  name: "worker"
+  port: 9000
+end
+
+cache:
+  ttl_seconds: cache_ttl
+  ttl_human: cache_ttl.format_duration()
+  refresh_every: (cache_ttl / 3).format_duration()
+end
+
+maintenance:
+  window_start: "2026-07-18T22:00:00Z".parse_datetime()
+  window_end: "2026-07-18T22:00:00Z".parse_datetime() + "4h".parse_duration()
+  window_end_human: ("2026-07-18T22:00:00Z".parse_datetime() + "4h".parse_duration()).format_datetime()
+end

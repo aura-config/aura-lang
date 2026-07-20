@@ -1,6 +1,6 @@
 [workspace]
 members = ["crates/aura-core", "crates/aura-cli"]
-exclude = ["examples"]
+exclude = ["examples", "fuzz"]
 resolver = "2"
 
 [workspace.package]

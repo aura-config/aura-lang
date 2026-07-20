@@ -1,0 +1,41 @@
+# Standalone crate (its own [workspace]) — cargo-fuzz needs nightly + libFuzzer,
+# so it is kept out of the stable workspace and run separately (locally / a
+# dedicated nightly CI job). See fuzz/README.md.
+[package]
+name = "aura-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+aura-core = { path = "../crates/aura-core" }
+
+[workspace]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "fuzz_lexer"
+path = "fuzz_targets/fuzz_lexer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_parser"
+path = "fuzz_targets/fuzz_parser.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_pipeline"
+path = "fuzz_targets/fuzz_pipeline.rs"
+test = false
+doc = false
+bench = false

@@ -1,0 +1,16 @@
+# Feature-флаги с защитой прода: assert останавливает опасную комбинацию до деплоя.
+# Запуск: aura eval feature_flags.aura --allow-env=APP_ENV
+# Попробуйте: APP_ENV=production aura eval ... — получите E0530.
+
+is_prod = env("APP_ENV", "dev") == "production"
+
+experimental_checkout = true
+new_search = is_prod ? false : true
+
+assert !(is_prod && experimental_checkout),
+  "Experimental checkout must not be enabled in production"
+
+flags:
+  experimental_checkout: experimental_checkout
+  new_search: new_search
+end

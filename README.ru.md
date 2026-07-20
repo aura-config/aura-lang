@@ -406,9 +406,14 @@ Criterion-бенчмарки на эталонном манифесте (`cargo 
 ## Разработка
 
 ```console
-cargo test    # 100 тестов: юниты, conformance-suite, property-тесты, golden-снапшоты
+cargo test    # 108 тестов: юниты, conformance-suite, property-тесты, golden-снапшоты
 cargo bench   # бенчмарки лексера, парсера, полного пайплайна
 ```
+
+Coverage-guided фаззинг (лексер, парсер, полный пайплайн) — в
+[fuzz/](fuzz/README.md): nightly + `cargo-fuzz`, гоняется в non-blocking CI-джобе.
+Рекурсивный спуск защищён от DoS: глубоко-вложенный вход даёт `E0208`, а не
+переполнение стека.
 
 Полная спецификация языка и архитектуры — [SPEC.ru.md](SPEC.ru.md). Эталонный манифест,
 который обязан проходить весь пайплайн, — [examples/production_deploy.aura](examples/production_deploy.aura).

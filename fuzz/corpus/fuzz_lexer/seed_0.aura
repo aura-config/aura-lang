@@ -1,0 +1,13 @@
+# CI-матрица: генерация набора сборок вместо ручного перечисления комбинаций.
+# Запуск: aura eval ci_matrix.aura
+
+rust_versions = ["1.75", "stable", "beta"]
+targets       = ["x86_64-unknown-linux-gnu", "aarch64-apple-darwin"]
+
+jobs: rust_versions.map (rv, i) ->
+  component "rust-#{rv}"
+    order: i
+    toolchain: rv
+    targets: targets
+  end
+end

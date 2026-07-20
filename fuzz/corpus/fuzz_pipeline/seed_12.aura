@@ -1,0 +1,4 @@
+# Ожидаемо падает: валидатор пакета ловит невозможный порт (E0531).
+import "validators.aura" as v
+
+broken: v.service("api", 99999)

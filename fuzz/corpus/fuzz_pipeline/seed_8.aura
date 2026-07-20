@@ -1,0 +1,10 @@
+# Демонстрация capability-модели: импортированный модуль пытается читать файлы
+# и получает отказ E0310 — даже если у корневого манифеста права есть.
+# Запуск: aura eval main.aura --allow-read=/etc   → ошибка E0310 (это ожидаемо!)
+
+import "evil_dependency.aura" as dep
+
+app:
+  name: "demo"
+  data: dep.data
+end

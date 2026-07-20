@@ -31,10 +31,16 @@ fn infix_bp(kind: &TokenKind<'_>) -> Option<(u8, u8, BinOp)> {
     })
 }
 
+/// Recursion-depth cap for the recursive-descent parser: crafted deeply-nested
+/// input (`((((…`, `[[[[…`, nested blocks/objects) would otherwise overflow the
+/// stack — a DoS on untrusted input (e.g. a package pulled via `aura add`).
+const MAX_PARSE_DEPTH: u32 = 256;
+
 pub struct Parser<'a> {
     toks: Vec<Token<'a>>,
     pos: usize,
     diags: Vec<Diagnostic>,
+    depth: u32,
 }
 
 impl<'a> Parser<'a> {
@@ -44,7 +50,26 @@ impl<'a> Parser<'a> {
             toks,
             pos: 0,
             diags: Vec::new(),
+            depth: 0,
         }
+    }
+
+    /// Enter one nesting level; E0208 past the cap. Paired with `leave()`.
+    fn enter(&mut self) -> Result<(), Diagnostic> {
+        self.depth += 1;
+        if self.depth > MAX_PARSE_DEPTH {
+            self.depth -= 1;
+            return Err(self.err(
+                "E0208",
+                "nesting too deep",
+                "simplify or split this expression/block",
+            ));
+        }
+        Ok(())
+    }
+
+    fn leave(&mut self) {
+        self.depth -= 1;
     }
 
     // ---- Token navigation ----
@@ -191,7 +216,22 @@ impl<'a> Parser<'a> {
 
     // ---- Module ----
 
-    pub fn parse_module(mut self) -> Result<Module<'a>, Vec<Diagnostic>> {
+    /// Parses on a thread with a large stack. Deeply-nested input would otherwise
+    /// overflow the default stack (~1MB on Windows) before the `MAX_PARSE_DEPTH`
+    /// guard trips — especially in debug builds, whose frames are ~10x larger. A
+    /// 64 MiB stack plus the depth guard makes the recursive descent DoS-safe.
+    pub fn parse_module(self) -> Result<Module<'a>, Vec<Diagnostic>> {
+        std::thread::scope(|s| {
+            std::thread::Builder::new()
+                .stack_size(64 * 1024 * 1024)
+                .spawn_scoped(s, move || self.parse_module_impl())
+                .expect("spawn parser thread")
+                .join()
+                .expect("parser thread panicked")
+        })
+    }
+
+    fn parse_module_impl(mut self) -> Result<Module<'a>, Vec<Diagnostic>> {
         let start = self.span();
         let mut imports = Vec::new();
         let mut stmts = Vec::new();
@@ -275,6 +315,13 @@ impl<'a> Parser<'a> {
     // ---- Statements ----
 
     fn parse_stmt(&mut self) -> Result<Stmt<'a>, Diagnostic> {
+        self.enter()?;
+        let r = self.parse_stmt_impl();
+        self.leave();
+        r
+    }
+
+    fn parse_stmt_impl(&mut self) -> Result<Stmt<'a>, Diagnostic> {
         match self.peek() {
             TokenKind::Type => self.parse_type_decl(false),
             TokenKind::Def => self.parse_func_decl(false),
@@ -376,6 +423,13 @@ impl<'a> Parser<'a> {
 
     /// Properties up to a closing `end` (def body / nested object / new Schema).
     fn parse_object_body(&mut self) -> Result<ObjectBody<'a>, Diagnostic> {
+        self.enter()?;
+        let r = self.parse_object_body_impl();
+        self.leave();
+        r
+    }
+
+    fn parse_object_body_impl(&mut self) -> Result<ObjectBody<'a>, Diagnostic> {
         let mut props = Vec::new();
         loop {
             self.skip_newlines();
@@ -519,6 +573,13 @@ impl<'a> Parser<'a> {
     // ---- Expressions (Pratt, SPEC §3.3) ----
 
     fn parse_expr(&mut self, min_bp: u8) -> Result<Expr<'a>, Diagnostic> {
+        self.enter()?;
+        let r = self.parse_expr_impl(min_bp);
+        self.leave();
+        r
+    }
+
+    fn parse_expr_impl(&mut self, min_bp: u8) -> Result<Expr<'a>, Diagnostic> {
         let start = self.span();
         let mut lhs = self.parse_prefix()?;
         loop {
@@ -906,6 +967,28 @@ mod tests {
             .parse_module()
             .expect_err("parse must fail")[0]
             .code
+    }
+
+    #[test]
+    fn deep_nesting_is_e0208_not_a_crash() {
+        // Crafted deeply-nested input must be rejected (E0208), never overflow the
+        // stack. Runs on the big-stack parser thread + the MAX_PARSE_DEPTH guard.
+        let parens = format!("x: {}1{}", "(".repeat(2000), ")".repeat(2000));
+        assert_eq!(first_err(&parens), "E0208");
+        let brackets = format!("x: {}", "[".repeat(2000));
+        assert_eq!(first_err(&brackets), "E0208");
+        let blocks = format!(
+            "{}\n{}",
+            (0..2000)
+                .map(|i| format!("domain \"d{i}\""))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            "end\n".repeat(2000)
+        );
+        assert_eq!(first_err(&blocks), "E0208");
+        // realistic nesting (10 levels of parens) stays well under the cap
+        let ok = format!("x: {}1{}", "(".repeat(10), ")".repeat(10));
+        module(&ok);
     }
 
     #[test]

@@ -1,0 +1,17 @@
+# Пакет валидаторов (D12): pub-элементы — API для импортёров,
+# приватные хелперы снаружи невидимы.
+
+pub type Service
+  name: String
+  port: Int
+end
+
+# Приватный хелпер: импортёру недоступен (E0309); объявляется до использования
+def valid_port(p)
+  ok: p > 0 && p < 65536
+end
+
+pub def service(name, port)
+  name: name
+  port: valid_port(port).ok ? port : fail("invalid port #{port} for service '#{name}'")
+end
