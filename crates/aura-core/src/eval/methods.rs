@@ -66,6 +66,28 @@ impl<'a> MethodRegistry<'a> {
             r.register(tag, "to_yaml", m_to_yaml);
             r.register(tag, "to_toml", m_to_toml);
         }
+        // stdlib extension: String
+        r.register(TypeTag::Str, "trim", m_str_trim);
+        r.register(TypeTag::Str, "split", m_str_split);
+        r.register(TypeTag::Str, "replace", m_str_replace);
+        r.register(TypeTag::Str, "starts_with", m_str_starts_with);
+        r.register(TypeTag::Str, "ends_with", m_str_ends_with);
+        r.register(TypeTag::Str, "to_int", m_str_to_int);
+        r.register(TypeTag::Str, "to_float", m_str_to_float);
+        // stdlib extension: List
+        r.register(TypeTag::List, "sort", m_list_sort);
+        r.register(TypeTag::List, "reverse", m_list_reverse);
+        r.register(TypeTag::List, "sum", m_list_sum);
+        r.register(TypeTag::List, "min", m_list_min);
+        r.register(TypeTag::List, "max", m_list_max);
+        r.register(TypeTag::List, "flatten", m_list_flatten);
+        r.register(TypeTag::List, "slice", m_list_slice);
+        // stdlib extension: numeric + universal to_str
+        r.register(TypeTag::Int, "abs", m_num_abs);
+        r.register(TypeTag::Float, "abs", m_num_abs);
+        for tag in [TypeTag::Int, TypeTag::Float, TypeTag::Bool, TypeTag::Str] {
+            r.register(tag, "to_str", m_to_str);
+        }
         r
     }
 }
@@ -651,6 +673,352 @@ fn civil_from_days(z: i64) -> (i64, i64, i64) {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+// ---- stdlib extension: String ----
+
+fn expect_str_arg<'a>(args: &[Value<'a>], method: &str, sp: Span) -> Result<String, Diagnostic> {
+    match args.first() {
+        Some(Value::Str(s)) => Ok(s.to_string()),
+        Some(other) => Err(rt(
+            "E0306",
+            format!(
+                "{method}() expects a String argument, got {}",
+                other.type_name()
+            ),
+            sp,
+        )),
+        None => Err(rt("E0306", format!("{method}() expects one argument"), sp)),
+    }
+}
+
+fn m_str_trim<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    _sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Str(s) = recv else { unreachable!() };
+    Ok(Value::str(s.trim()))
+}
+
+/// `.split(sep)` → List of substrings; the separator must be non-empty.
+fn m_str_split<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Str(s) = recv else { unreachable!() };
+    let sep = expect_str_arg(args, "split", sp)?;
+    if sep.is_empty() {
+        return Err(rt("E0306", "split() separator must be non-empty", sp));
+    }
+    Ok(Value::list(s.split(&sep).map(Value::str).collect()))
+}
+
+/// `.replace(from, to)` → String with all occurrences replaced.
+fn m_str_replace<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Str(s) = recv else { unreachable!() };
+    let (Some(Value::Str(from)), Some(Value::Str(to))) = (args.first(), args.get(1)) else {
+        return Err(rt(
+            "E0306",
+            "replace(from, to) expects two String arguments",
+            sp,
+        ));
+    };
+    Ok(Value::str(s.replace(from.as_ref(), to)))
+}
+
+fn m_str_starts_with<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Str(s) = recv else { unreachable!() };
+    let prefix = expect_str_arg(args, "starts_with", sp)?;
+    Ok(Value::Bool(s.starts_with(&prefix)))
+}
+
+fn m_str_ends_with<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Str(s) = recv else { unreachable!() };
+    let suffix = expect_str_arg(args, "ends_with", sp)?;
+    Ok(Value::Bool(s.ends_with(&suffix)))
+}
+
+/// `.to_int()` — parse (trimmed) into Int; E0314 on failure.
+fn m_str_to_int<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Str(s) = recv else { unreachable!() };
+    s.trim()
+        .parse::<i64>()
+        .map(Value::Int)
+        .map_err(|_| rt("E0314", format!("cannot parse '{s}' as Int"), sp))
+}
+
+fn m_str_to_float<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Str(s) = recv else { unreachable!() };
+    s.trim()
+        .parse::<f64>()
+        .map(Value::Float)
+        .map_err(|_| rt("E0314", format!("cannot parse '{s}' as Float"), sp))
+}
+
+// ---- stdlib extension: List ----
+
+/// Total-ish scalar ordering; None means the two values are incomparable.
+fn scalar_cmp(a: &Value<'_>, b: &Value<'_>) -> Option<std::cmp::Ordering> {
+    use Value::*;
+    match (a, b) {
+        (Int(x), Int(y)) => Some(x.cmp(y)),
+        (Float(x), Float(y)) => x.partial_cmp(y),
+        (Int(x), Float(y)) => (*x as f64).partial_cmp(y),
+        (Float(x), Int(y)) => x.partial_cmp(&(*y as f64)),
+        (Str(x), Str(y)) => Some(x.as_ref().cmp(y.as_ref())),
+        (Bool(x), Bool(y)) => Some(x.cmp(y)),
+        _ => None,
+    }
+}
+
+/// `.sort()` — ascending; all elements must be mutually comparable scalars.
+fn m_list_sort<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    // Validate up front so sort_by never sees an incomparable pair.
+    if let Some(first) = xs.first() {
+        for v in xs.iter() {
+            if scalar_cmp(first, v).is_none() {
+                return Err(rt(
+                    "E0306",
+                    format!(
+                        "sort() cannot compare {} and {}",
+                        first.type_name(),
+                        v.type_name()
+                    ),
+                    sp,
+                ));
+            }
+        }
+    }
+    let mut out: Vec<Value<'a>> = xs.to_vec();
+    out.sort_by(|a, b| scalar_cmp(a, b).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(Value::list(out))
+}
+
+fn m_list_reverse<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    _sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    Ok(Value::list(xs.iter().rev().cloned().collect()))
+}
+
+/// `.sum()` — Int if all Int, Float if any Float; E0304 on Int overflow.
+fn m_list_sum<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let _ = args;
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    let any_float = xs.iter().any(|v| matches!(v, Value::Float(_)));
+    if any_float {
+        let mut acc = 0.0f64;
+        for v in xs.iter() {
+            match v {
+                Value::Int(n) => acc += *n as f64,
+                Value::Float(f) => acc += *f,
+                other => {
+                    return Err(rt(
+                        "E0306",
+                        format!("sum() expects numbers, got {}", other.type_name()),
+                        sp,
+                    ))
+                }
+            }
+        }
+        Ok(Value::Float(acc))
+    } else {
+        let mut acc = 0i64;
+        for v in xs.iter() {
+            match v {
+                Value::Int(n) => {
+                    acc = acc
+                        .checked_add(*n)
+                        .ok_or_else(|| rt("E0304", "sum() overflows i64", sp))?
+                }
+                other => {
+                    return Err(rt(
+                        "E0306",
+                        format!("sum() expects numbers, got {}", other.type_name()),
+                        sp,
+                    ))
+                }
+            }
+        }
+        Ok(Value::Int(acc))
+    }
+}
+
+fn list_extreme<'a>(
+    xs: &[Value<'a>],
+    want_max: bool,
+    method: &str,
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let mut best = xs
+        .first()
+        .ok_or_else(|| rt("E0317", format!("{method}() on an empty list"), sp))?;
+    for v in &xs[1..] {
+        let ord = scalar_cmp(v, best).ok_or_else(|| {
+            rt(
+                "E0306",
+                format!(
+                    "{method}() cannot compare {} and {}",
+                    v.type_name(),
+                    best.type_name()
+                ),
+                sp,
+            )
+        })?;
+        if (want_max && ord == std::cmp::Ordering::Greater)
+            || (!want_max && ord == std::cmp::Ordering::Less)
+        {
+            best = v;
+        }
+    }
+    Ok(best.clone())
+}
+
+fn m_list_min<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    list_extreme(xs, false, "min", sp)
+}
+
+fn m_list_max<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    list_extreme(xs, true, "max", sp)
+}
+
+/// `.flatten()` — one level: nested lists are spread, scalars kept as-is.
+fn m_list_flatten<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    _sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    let mut out: Vec<Value<'a>> = Vec::new();
+    for v in xs.iter() {
+        match v {
+            Value::List(inner) => out.extend(inner.iter().cloned()),
+            other => out.push(other.clone()),
+        }
+    }
+    Ok(Value::list(out))
+}
+
+/// `.slice(start, end)` — half-open `[start, end)`, indices clamped to bounds.
+fn m_list_slice<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    let (Some(Value::Int(start)), Some(Value::Int(end))) = (args.first(), args.get(1)) else {
+        return Err(rt(
+            "E0306",
+            "slice(start, end) expects two Int arguments",
+            sp,
+        ));
+    };
+    if *start < 0 || *end < 0 {
+        return Err(rt("E0306", "slice() indices must be non-negative", sp));
+    }
+    let len = xs.len();
+    let s = (*start as usize).min(len);
+    let e = (*end as usize).clamp(s, len);
+    Ok(Value::list(xs[s..e].to_vec()))
+}
+
+// ---- stdlib extension: numeric + universal to_str ----
+
+fn m_num_abs<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    match recv {
+        Value::Int(n) => n
+            .checked_abs()
+            .map(Value::Int)
+            .ok_or_else(|| rt("E0304", "abs() overflows i64", sp)),
+        Value::Float(f) => Ok(Value::Float(f.abs())),
+        _ => unreachable!(),
+    }
+}
+
+/// `.to_str()` — scalar → its String rendering (same as string interpolation).
+fn m_to_str<'a>(
+    it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    Ok(Value::str(it.display(recv, sp)?))
 }
 
 fn json_to_value<'a>(j: serde_json::Value) -> Value<'a> {

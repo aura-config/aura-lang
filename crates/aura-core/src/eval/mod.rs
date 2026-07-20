@@ -1072,6 +1072,78 @@ mod tests {
     }
 
     #[test]
+    fn stdlib_string_and_numeric_methods() {
+        let src = concat!(
+            "parts: \"a,b,c\".split(\",\")\n",
+            "trimmed: \"  hi \".trim()\n",
+            "repl: \"a-b-c\".replace(\"-\", \"_\")\n",
+            "sw: \"hello\".starts_with(\"he\")\n",
+            "ew: \"hello\".ends_with(\"lo\")\n",
+            "n: \" 42 \".to_int()\n",
+            "f: \"3.5\".to_float()\n",
+            "neg: (0 - 7).abs()\n",
+            "s: 123.to_str()\n"
+        );
+        let v = eval(src).unwrap();
+        assert_eq!(
+            get(&v, "parts"),
+            Value::list(vec![Value::str("a"), Value::str("b"), Value::str("c")])
+        );
+        assert_eq!(get(&v, "trimmed"), Value::str("hi"));
+        assert_eq!(get(&v, "repl"), Value::str("a_b_c"));
+        assert_eq!(get(&v, "sw"), Value::Bool(true));
+        assert_eq!(get(&v, "ew"), Value::Bool(true));
+        assert_eq!(get(&v, "n"), Value::Int(42));
+        assert_eq!(get(&v, "f"), Value::Float(3.5));
+        assert_eq!(get(&v, "neg"), Value::Int(7));
+        assert_eq!(get(&v, "s"), Value::str("123"));
+        assert_eq!(eval("x: \"nope\".to_int()").unwrap_err().code, "E0314");
+    }
+
+    #[test]
+    fn stdlib_list_methods() {
+        let src = concat!(
+            "sorted: [3, 1, 2].sort()\n",
+            "rev: [1, 2, 3].reverse()\n",
+            "total: [1, 2, 3].sum()\n",
+            "totalf: [1, 2.5].sum()\n",
+            "lo: [3, 1, 2].min()\n",
+            "hi: [3, 1, 2].max()\n",
+            "flat: [[1, 2], [3], 4].flatten()\n",
+            "sl: [10, 20, 30, 40].slice(1, 3)\n"
+        );
+        let v = eval(src).unwrap();
+        assert_eq!(
+            get(&v, "sorted"),
+            Value::list(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+        );
+        assert_eq!(
+            get(&v, "rev"),
+            Value::list(vec![Value::Int(3), Value::Int(2), Value::Int(1)])
+        );
+        assert_eq!(get(&v, "total"), Value::Int(6));
+        assert_eq!(get(&v, "totalf"), Value::Float(3.5));
+        assert_eq!(get(&v, "lo"), Value::Int(1));
+        assert_eq!(get(&v, "hi"), Value::Int(3));
+        assert_eq!(
+            get(&v, "flat"),
+            Value::list(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+                Value::Int(4)
+            ])
+        );
+        assert_eq!(
+            get(&v, "sl"),
+            Value::list(vec![Value::Int(20), Value::Int(30)])
+        );
+        // incomparable sort and empty min are errors
+        assert_eq!(eval("x: [1, \"a\"].sort()").unwrap_err().code, "E0306");
+        assert_eq!(eval("x: [].min()").unwrap_err().code, "E0317");
+    }
+
+    #[test]
     fn format_parsing_and_emitting() {
         let v = eval("d = \"{\\\"a\\\": [1, 2]}\".parse_json()\nx: d.a[1]").unwrap();
         assert_eq!(get(&v, "x"), Value::Int(2));

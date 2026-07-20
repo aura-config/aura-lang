@@ -162,10 +162,12 @@ xs.compact().uniq().map (item, index) ->
 end
 ```
 
-Встроенные методы: `upper` `lower` `len` `compact` `uniq` `map` `filter` `merge`
-`first` `last` `get` `keys` `values` `contains` `join` `parse_toml` `parse_json`
-`parse_yaml` `to_json` `to_yaml` `to_toml` `parse_duration` `format_duration`
-`parse_datetime` `format_datetime`. Реестр расширяем без изменений парсера.
+Встроенные методы: `upper` `lower` `len` `trim` `split` `replace` `starts_with`
+`ends_with` `to_int` `to_float` `to_str` `compact` `uniq` `map` `filter` `sort`
+`reverse` `sum` `min` `max` `flatten` `slice` `first` `last` `get` `contains`
+`join` `merge` `keys` `values` `abs` `parse_toml` `parse_json` `parse_yaml`
+`to_json` `to_yaml` `to_toml` `parse_duration` `format_duration` `parse_datetime`
+`format_datetime`. Реестр расширяем без изменений парсера.
 
 ### Время — только детерминированное
 

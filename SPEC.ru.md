@@ -481,6 +481,7 @@ impl MethodRegistry {
 - Инвариант интерполяции: внутри `#{...}` действует обычный синтаксис выражений — кавычки строк НЕ экранируются по правилам внешней строки (срез сканируется по балансу `{}`).
 - Форматы (D11-пакет): `.parse_toml()` / `.parse_json()` / `.parse_yaml()` на `Str` → `Value` (целые → `Int`, единый маппинг через serde_json); `.to_json()` / `.to_yaml()` / `.to_toml()` на `Object`/`List` → `Str` (E0603: TOML требует объект на верхнем уровне и не имеет null). Эмиттеры разделяются с CLI `--format json|json-flat|yaml|toml`.
 - Время (D13, детерминированное): `.parse_duration()` на `Str` → `Int` секунд (единицы d/h/m/s, E0319 на ошибке); `.format_duration()` на `Int` → `Str`; `.parse_datetime()` на `Str` (RFC3339) → `Int` epoch UTC (смещения `±HH:MM`, E0320 на ошибке); `.format_datetime()` на `Int` → `Str` (RFC3339 UTC). `now()`/`timestamp()` не существуют (E0533).
+- Расширение stdlib (v1.3): `String` — `.trim()`, `.split(sep)` (непустой `sep` → List), `.replace(from, to)`, `.starts_with(p)`/`.ends_with(s)` → Bool, `.to_int()`/`.to_float()` (E0314 при ошибке); `List` — `.sort()` (по возрастанию, взаимно сравнимые скаляры, иначе E0306), `.reverse()`, `.sum()` (Int, либо Float при наличии Float; E0304 при переполнении Int), `.min()`/`.max()` (E0317 на пустом), `.flatten()` (один уровень: разворачивает вложенные списки, скаляры сохраняет), `.slice(start, end)` (полуоткрытый, индексы обрезаются по границам); `Int`/`Float` — `.abs()`; `Int`/`Float`/`Bool`/`Str` — `.to_str()` (то же представление, что в интерполяции).
 
 ### 4.5. EvalCtx
 
