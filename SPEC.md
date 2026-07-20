@@ -480,6 +480,7 @@ impl MethodRegistry {
 - Семантика: `.compact()` — удаляет `Null`; `.uniq()` — дедупликация с сохранением первого вхождения; `.merge(other)` — правый перекрывает; `.len()` → `Int`; `.upper()`/`.lower()` — через `str` API; `.first()`/`.last()` — E0317 на пустом списке; `.get(index_or_key, default)` — безопасный доступ (промах → default/Null); `.keys()`/`.values()` — Object → List в порядке объявления; `.contains(x)` — элемент/ключ/подстрока для List/Object/Str; `.join(sep)` — скаляры списка через разделитель.
 - Инвариант интерполяции: внутри `#{...}` действует обычный синтаксис выражений — кавычки строк НЕ экранируются по правилам внешней строки (срез сканируется по балансу `{}`).
 - Форматы (D11-пакет): `.parse_toml()` / `.parse_json()` / `.parse_yaml()` на `Str` → `Value` (целые → `Int`, единый маппинг через serde_json); `.to_json()` / `.to_yaml()` / `.to_toml()` на `Object`/`List` → `Str` (E0603: TOML требует объект на верхнем уровне и не имеет null). Эмиттеры разделяются с CLI `--format json|json-flat|yaml|toml`.
+- Время (D13, детерминированное): `.parse_duration()` на `Str` → `Int` секунд (единицы d/h/m/s, E0319 на ошибке); `.format_duration()` на `Int` → `Str`; `.parse_datetime()` на `Str` (RFC3339) → `Int` epoch UTC (смещения `±HH:MM`, E0320 на ошибке); `.format_datetime()` на `Int` → `Str` (RFC3339 UTC). `now()`/`timestamp()` не существуют (E0533).
 
 ### 4.5. EvalCtx
 
@@ -604,9 +605,11 @@ impl serde::Serialize for Value {
 ```text
 aura eval <file.aura> [--strict] [--dry-run] [--frozen]
                       [--allow-read=<paths>] [--allow-env[=A,B]] [--allow-imports-io]
-                      [--format json|json-flat] [-o out.json]
+                      [--format json|json-flat|yaml|toml] [-o out.json]
+                      [--registry-dir=<dir>]
 aura check <file.aura> [--strict]        # lex + parse + analysis
 aura fmt <files...> [--check]            # канонизация отступов
+aura add <path>@vX.Y.Z [--from <file>] [--registry-dir=<dir>]  # установка пакета (D12-пакет, §5.2)
 ```
 
 `aura fmt` — строчно-ориентированный: нормализует отступы (2 пробела/уровень по
@@ -614,6 +617,10 @@ aura fmt <files...> [--check]            # канонизация отступо
 открывают, `end`/`]`/`)` закрывают; строки-продолжения после `,`/`=`/оператора — +1),
 хвостовые пробелы и пустые строки (≤1 подряд); комментарии и внутристрочное
 выравнивание сохраняются. Инвариант: поток токенов до/после идентичен; идемпотентен.
+
+`--format yaml|toml` использует эмиттеры §4.4 (D11-пакет); `--registry-dir` задаёт
+локальный кэш пакетов (по умолчанию `~/.aura/registry`), используется и `eval`
+(резолв `import`), и `add` (место установки). Семантика `aura add` — см. §5.2.
 
 Exit codes: 0 — успех; 1 — диагностические ошибки; 2 — I/O/аргументы.
 
@@ -644,6 +651,8 @@ pub struct Diagnostic {
 | 3 | `eval` | Манифест c `MemoryResolver`; тесты `E0301`/`E0302`/shadow; Int/Float арифметика и переполнение; capability-отказы `E0310`/`E0311`; все builtin-методы |
 | 4 | `vfs` | Цикл a→b→a с полной цепочкой; лок-файл: резолв диапазона, `E0402`/`E0403 --frozen`; каждый файл парсится один раз |
 | 5 | `analysis` | `unused_config_version` детектируется; `--strict` падает на `E0513`; `--dry-run` — идентичный JSON без записи |
-| 6 | `cli`, `serialize` | Golden-тест манифест → `production_deploy.json`; `Int` без `.0`; snapshot-отчёты ariadne |
+| 6 | `cli`, `serialize` | Golden-тест манифест → `production_deploy.json`; `Int` без `.0`; golden-текст отчётов ariadne (ANSI-strip, без внешнего snapshot-инструмента) |
+| 6.5 | закрытие пробелов §6.3/§8 | `RecordingResolver`/`RecordingFs`: `--dry-run` логирует прочитанные файлы в отчёт; golden-сравнение stderr `check --strict` на эталонном манифесте |
+| 7 (v1.3) | `D10`–`D13`, `aura fmt`, `aura add` | `=` не экспортируется (D10); `.field`/`."str"`/`xs[i]`/`.get` (D11); `pub def`/`pub type` через модуль, capability исполняется от модуля-происхождения (D12); `now()` запрещён, `parse_duration`/`parse_datetime` (D13); `aura fmt` не меняет поток токенов и идемпотентен; `aura add --from` → offline `eval --frozen` через установленный пакет |
 
-Тестовый инструментарий: `insta` (snapshots), `proptest` (лексер), интеграционные тесты в `tests/` поверх `Pipeline`.
+Тестовый инструментарий: `proptest` (лексер — фаззинг и инварианты span'ов), golden-текстовые файлы для отчётов ariadne (без внешнего snapshot-фреймворка), conformance-тесты в `aura-cli/tests/` через реальный бинарник против `examples/*/expected.*`.
