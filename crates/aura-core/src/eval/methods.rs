@@ -602,6 +602,11 @@ fn parse_rfc3339(s: &str) -> Option<i64> {
         }
     };
     let (date, rest) = if s.len() > 10 {
+        // split_at is byte-indexed: a multi-byte char across the boundary is not
+        // valid RFC3339 (which is ASCII), so reject instead of panicking.
+        if !s.is_char_boundary(10) {
+            return None;
+        }
         s.split_at(10)
     } else {
         (s, "")
@@ -616,7 +621,7 @@ fn parse_rfc3339(s: &str) -> Option<i64> {
         return Some(epoch);
     }
     let rest = rest.strip_prefix('T')?;
-    if rest.len() < 9 {
+    if rest.len() < 9 || !rest.is_char_boundary(8) {
         return None;
     }
     let (time, zone) = rest.split_at(8);

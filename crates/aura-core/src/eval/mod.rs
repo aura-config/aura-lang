@@ -1108,6 +1108,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_datetime_multibyte_is_error_not_panic() {
+        // Fuzz regression: parse_rfc3339 used byte-indexed split_at; a multi-byte
+        // char straddling the split point must yield E0320, never a panic.
+        assert_eq!(
+            eval("x: \"2026-07-18TxxxxxxxЫ\".parse_datetime()")
+                .unwrap_err()
+                .code,
+            "E0320"
+        );
+    }
+
+    #[test]
     fn capability_denied_by_default_d1() {
         assert_eq!(
             eval("x = read_file(\"/etc/passwd\")").unwrap_err().code,
