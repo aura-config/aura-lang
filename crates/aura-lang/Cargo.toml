@@ -15,18 +15,26 @@ authors.workspace = true
 [[bin]]
 name = "aura"
 path = "src/main.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+# The `aura` binary. Kept optional so the library stays pure Rust (no
+# clap/ariadne/ureq) and cross-compiles to wasm32/etc. — `--no-default-features`
+# checks the embeddable library alone.
+cli = ["dep:ariadne", "dep:clap", "dep:ureq"]
 
 [dependencies]
-# Library
+# Library (always)
 indexmap = "2"
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml = "0.9"
 sha2 = "0.10"
 toml = "0.8"
-# CLI
-ariadne = "0.5"
-clap = { version = "4", features = ["derive", "string"] }
-ureq = "2"
+# CLI-only (behind the `cli` feature)
+ariadne = { version = "0.5", optional = true }
+clap = { version = "4", features = ["derive", "string"], optional = true }
+ureq = { version = "2", optional = true }
 
 [dev-dependencies]
 criterion = "0.5"
