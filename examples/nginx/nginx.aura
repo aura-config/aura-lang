@@ -1,0 +1,41 @@
+# Generate an nginx.conf from structured Aura config.
+#
+# Aura outputs structured data (JSON/YAML/TOML), but a `text … end` block string
+# (D16) is an ordinary String — so it can hold any text format, including
+# nginx's own DSL. Get the file with:
+#
+#   aura eval nginx.aura --format yaml      # readable block scalar, or
+#   aura eval nginx.aura | jq -r .nginx_conf > nginx.conf
+
+app      = "checkout"
+port     = 8080
+host     = "checkout.example.com"
+backends = ["10.0.0.1", "10.0.0.2", "10.0.0.3"]
+
+# One `server` directive per backend, indented for the upstream block. (The
+# interpolation line below sits at the block's base indent, so each mapped line
+# carries its own full indentation.)
+upstream_servers = backends.map (ip, i) -> "  server #{ip}:#{port};" end.join("\n")
+
+# The whole nginx.conf as one string. Interpolation splices in the computed
+# upstream lines; everything else is verbatim nginx syntax (`{ } ;` are text).
+nginx_conf: text
+  # Managed by Aura — do not edit by hand.
+  upstream #{app}_backend {
+    least_conn;
+  #{upstream_servers}
+  }
+
+  server {
+    listen 443 ssl;
+    server_name #{host};
+
+    ssl_certificate     /etc/ssl/#{app}.crt;
+    ssl_certificate_key /etc/ssl/#{app}.key;
+
+    location / {
+      proxy_pass http://#{app}_backend;
+      proxy_set_header Host #{host};
+    }
+  }
+end

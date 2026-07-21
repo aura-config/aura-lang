@@ -212,6 +212,13 @@ fn security_demo_denies_import_io() {
     );
 }
 
+/// Generating a non-JSON format: a `text … end` block string builds an
+/// nginx.conf as a String value.
+#[test]
+fn nginx_generates_conf() {
+    check_ok("nginx", "nginx.aura", &[], &[], "expected.json");
+}
+
 /// Full-language showcase: every core construct in one manifest end-to-end.
 #[test]
 fn showcase_all_constructs() {
