@@ -1,1 +1,4 @@
 /target
+
+# cargo-fuzz parallel job logs
+fuzz-*.log
