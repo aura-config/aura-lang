@@ -32,6 +32,12 @@ impl<'a> MethodRegistry<'a> {
         self.table.get(&(tag, name)).copied()
     }
 
+    /// Every registered `(receiver, method)` pair. Lets tooling (the LSP) check
+    /// its stdlib manifest against the real registry so the two cannot drift.
+    pub fn entries(&self) -> Vec<(TypeTag, &'static str)> {
+        self.table.keys().copied().collect()
+    }
+
     pub fn builtin() -> Self {
         let mut r = Self::new();
         r.register(TypeTag::Str, "upper", m_str_upper);
