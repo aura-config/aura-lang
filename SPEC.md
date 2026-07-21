@@ -1,16 +1,16 @@
-# Aura v1.3 — Interpreter Master Specification (Rust)
+# Aura — Interpreter Master Specification (Rust)
 
-Status: normative. Any implementation must conform to this document. Version v1.2 was a revision of the v1.1 design following an architecture audit; v1.3 added the package ecosystem (D12) and deterministic time (D13) — see §0.2.
+Status: normative. Any implementation must conform to this document. The design log — an architecture audit followed by additions such as the package ecosystem (D12) and deterministic time (D13) — is recorded in §0.2.
 
 ---
 
 ## 0. General provisions
 
-- Language: Rust (edition 2021+), MSRV 1.75.
+- Language: Rust (edition 2021+), MSRV 1.85.
 - Principles: zero-copy lexer/parser (`&'a str`), immutable values, deterministic evaluation, no significant indentation, `\n` as a separator, `end` as an explicit closing terminator, **a capability model for effects** (I/O is denied by default for imported modules).
 - Core external dependencies: `serde`, `serde_json`, `toml`, `indexmap`, `ariadne` (diagnostics), `clap` (CLI). The core (`lexer`, `parser`, `eval`) does not depend on `clap`/`ariadne`.
 
-### 0.1. Reference manifest (v1.2)
+### 0.1. Reference manifest
 
 The file `tests/fixtures/production_deploy.aura` must pass the full pipeline (`parse → analyze → eval → json`) on every CI run:
 
@@ -82,9 +82,9 @@ domain "production-eu"
 end
 ```
 
-### 0.2. Design changes v1.1 → v1.3 (normative)
+### 0.2. Design decisions (normative)
 
-| # | Was (v1.1) | Now (v1.2) | Rationale |
+| # | Was | Now | Rationale |
 | --- | --- | --- | --- |
 | D1 | `read_file`/`env` available everywhere | Capability model: effects are only allowed for the root module; imports get them only via explicit flags | Determinism and supply-chain safety |
 | D2 | `\n` is suppressed after binary operators, including inside lists | Inside `[]` a newline ALWAYS ends an element; a multi-line expression is only allowed inside `(...)` | Removes the `[a \n -b]` ambiguity |
@@ -97,11 +97,11 @@ end
 | D9 | `Arc<RwLock<Environment>>` | An immutable `Arc<Environment>` with a freeze phase | No deadlocks, less code; there was never any mutation anyway |
 | D10 | Every `x = ...` is exported to JSON | `key:` is exported, `x =` is a private computation (locals vs. outputs, as in Nix/Terraform) | Resolves the "output vs. dead code" conflict: dead-code analysis of `=` bindings becomes sound |
 | D11 | Field access only by identifier | Fields: `.ident` and `."string"` (including `."#{dynamic}"`); lists: `xs[int]` (E0317 out of bounds); optionally: `.get(k, default)`; `obj["key"]` is E0318 with a hint; string keys in literals (`"app.io/name": v`) | One operator per operation: dot for fields, brackets only for list indices |
-| D12 | `def`/`type` are always private | **Adopted in v1.3**: `pub def` / `pub type` land in the module's object — an importer calls `pkg.fn(...)` (builtin methods take precedence) and instantiates `new pkg.Schema ... end`; top-level pub items are silently excluded from the root JSON (deeper in the tree — E0601); pub is never considered dead code; **D1×D12**: the function runs with its origin module's capabilities, not the caller's; `pub` not immediately before `def`/`type` is E0206 | The foundation of the package ecosystem; explicit in the spirit of `shadow`/`new`; capability isolation cannot be bypassed via exported functions |
-| D13 | — | **Adopted in v1.3**: `now()`/`timestamp()` do not exist and never will — calling them yields E0533 with a hint to pass the time in from outside (`env("BUILD_TIME", ...)`). Deterministic time: `"1h30m".parse_duration()` → seconds (Int; units d/h/m/s, E0319), `Int.format_duration()`, `"RFC3339".parse_datetime()` → epoch UTC (offsets ±HH:MM, E0320), `Int.format_datetime()` → RFC3339 UTC. Calendar arithmetic beyond an epoch Int is package territory | An unreproducible config cannot be written by construction; durations and dates cover config needs without a timezone quagmire in the core |
-| D14 | — | **Adopted in v1.3**: a `cond` multi-way expression — `cond (bool -> value)+ else -> value end`. The left of each `->` must be `Bool` (E0306 otherwise, like a ternary condition); the right is any expression; `else` is mandatory (a missing `else` is the parse error E0207). First true arm wins. No value destructuring. | Fills the 3+ branch gap where nested ternaries become unreadable; deliberately simpler than a pattern-matching `match` |
-| D15 | Every schema field is required | **Adopted in v1.3**: `name: Type = default` makes a field optional — if omitted at `new`, the default expression is evaluated in the instantiation scope (it may reference module vars, e.g. `= base + 1`) and inserted after the provided fields; the default is type-checked like any value (E0512). A field with no default is still required (E0511). No nullable (`?`) fields — optionality never introduces a `null`. **Limitation:** a default is evaluated in the instantiation scope only — it cannot reference sibling fields (`burst: Int = cpu * 2` is E0504); dependent defaults are a `def` constructor's job (`def quota(cpu) … burst: cpu * 2 … end`). A future D17 may add in-schema dependent defaults (field order + cycle detection) if demand appears. | Fills the biggest schema gap (real configs need optional-with-default) with zero new null: every field always has a value, shape stays stable |
-| D16 | One-line quoted strings only | **Adopted in v1.4**: a `text … end` block string in value position (`key: text` / `x = text` immediately followed by a newline). Yields an ordinary `String`, so any property/field accepts either a quoted `"one-liner"` or a block. Interpolation `#{…}` and `\` escapes behave exactly as in quoted strings; the common leading indentation is stripped and content lines are joined by `\n` (no trailing newline). Terminator rule: the closing `end` sits at the opener line's indentation (`indent ≤ key`); content must be indented deeper, so an embedded `end` (Ruby/shell) is text — this resolves the heredoc collision by indent. An opener with no closing `end` is `E0107`. `text` stays an ordinary identifier everywhere except this contextual opener (a property named `text` is unaffected). No `raw` variant at launch. | Real configs embed short scripts/templates; the inline/block duality keeps “quotes = string” intact and needs no `exec`/wrapper type |
+| D12 | `def`/`type` are always private | **Adopted**: `pub def` / `pub type` land in the module's object — an importer calls `pkg.fn(...)` (builtin methods take precedence) and instantiates `new pkg.Schema ... end`; top-level pub items are silently excluded from the root JSON (deeper in the tree — E0601); pub is never considered dead code; **D1×D12**: the function runs with its origin module's capabilities, not the caller's; `pub` not immediately before `def`/`type` is E0206 | The foundation of the package ecosystem; explicit in the spirit of `shadow`/`new`; capability isolation cannot be bypassed via exported functions |
+| D13 | — | **Adopted**: `now()`/`timestamp()` do not exist and never will — calling them yields E0533 with a hint to pass the time in from outside (`env("BUILD_TIME", ...)`). Deterministic time: `"1h30m".parse_duration()` → seconds (Int; units d/h/m/s, E0319), `Int.format_duration()`, `"RFC3339".parse_datetime()` → epoch UTC (offsets ±HH:MM, E0320), `Int.format_datetime()` → RFC3339 UTC. Calendar arithmetic beyond an epoch Int is package territory | An unreproducible config cannot be written by construction; durations and dates cover config needs without a timezone quagmire in the core |
+| D14 | — | **Adopted**: a `cond` multi-way expression — `cond (bool -> value)+ else -> value end`. The left of each `->` must be `Bool` (E0306 otherwise, like a ternary condition); the right is any expression; `else` is mandatory (a missing `else` is the parse error E0207). First true arm wins. No value destructuring. | Fills the 3+ branch gap where nested ternaries become unreadable; deliberately simpler than a pattern-matching `match` |
+| D15 | Every schema field is required | **Adopted**: `name: Type = default` makes a field optional — if omitted at `new`, the default expression is evaluated in the instantiation scope (it may reference module vars, e.g. `= base + 1`) and inserted after the provided fields; the default is type-checked like any value (E0512). A field with no default is still required (E0511). No nullable (`?`) fields — optionality never introduces a `null`. **Limitation:** a default is evaluated in the instantiation scope only — it cannot reference sibling fields (`burst: Int = cpu * 2` is E0504); dependent defaults are a `def` constructor's job (`def quota(cpu) … burst: cpu * 2 … end`). A future D17 may add in-schema dependent defaults (field order + cycle detection) if demand appears. | Fills the biggest schema gap (real configs need optional-with-default) with zero new null: every field always has a value, shape stays stable |
+| D16 | One-line quoted strings only | **Adopted**: a `text … end` block string in value position (`key: text` / `x = text` immediately followed by a newline). Yields an ordinary `String`, so any property/field accepts either a quoted `"one-liner"` or a block. Interpolation `#{…}` and `\` escapes behave exactly as in quoted strings; the common leading indentation is stripped and content lines are joined by `\n` (no trailing newline). Terminator rule: the closing `end` sits at the opener line's indentation (`indent ≤ key`); content must be indented deeper, so an embedded `end` (Ruby/shell) is text — this resolves the heredoc collision by indent. An opener with no closing `end` is `E0107`. `text` stays an ordinary identifier everywhere except this contextual opener (a property named `text` is unaffected). No `raw` variant at launch. | Real configs embed short scripts/templates; the inline/block duality keeps “quotes = string” intact and needs no `exec`/wrapper type |
 
 ---
 
@@ -327,7 +327,7 @@ pub enum LambdaBody<'a> { Expr(Box<Expr<'a>>), Object(ObjectBody<'a>) }
 ### 3.2. Construct parsing rules
 
 - `key: value` inside an object body is a property; `name = expr` is an assignment. Distinguished by the token after the identifier (`:` vs `=`).
-- A nested object: `key:` followed immediately by a `Newline` (no value on the line) opens an `ObjectLiteral` up to `end`. This is the only block form of an object (D3); the v1.1 inline form `metrics port: 9090 ...` is now a syntax error `E0201` with a hint to "use `metrics:` … `end`".
+- A nested object: `key:` followed immediately by a `Newline` (no value on the line) opens an `ObjectLiteral` up to `end`. This is the only block form of an object (D3); the earlier inline form `metrics port: 9090 ...` is now a syntax error `E0201` with a hint to "use `metrics:` … `end`".
 - `new Ident \n props end` → `SchemaInstance` (D4). A bare `Ident` in expression position is always a `Variable`, regardless of case.
 - `assert expr [, expr]` is a statement; allowed at any level (module, `domain`, `def`). A failure raises `E0530` with the evaluated message.
 - `shadow name = expr` — an assignment that explicitly permits shadowing an outer scope (D7).
@@ -493,7 +493,7 @@ impl MethodRegistry {
 - Interpolation invariant: inside `#{...}` ordinary expression syntax applies - string quotes are NOT escaped by the outer string's rules (the slice is scanned by `{}` balance).
 - Formats (the D11 package): `.parse_toml()` / `.parse_json()` / `.parse_yaml()` on `Str` → `Value` (integers → `Int`, a unified mapping via serde_json); `.to_json()` / `.to_yaml()` / `.to_toml()` on `Object`/`List` → `Str` (E0603: TOML requires an object at the top level and has no null). The emitters are shared with the CLI's `--format json|json-flat|yaml|toml`.
 - Time (D13, deterministic): `.parse_duration()` on `Str` → `Int` seconds (units d/h/m/s, E0319 on error); `.format_duration()` on `Int` → `Str`; `.parse_datetime()` on `Str` (RFC3339) → `Int` epoch UTC (offsets `±HH:MM`, E0320 on error); `.format_datetime()` on `Int` → `Str` (RFC3339 UTC). `now()`/`timestamp()` do not exist (E0533).
-- Stdlib extension (v1.3): `String` — `.trim()`, `.split(sep)` (non-empty `sep` → List), `.replace(from, to)`, `.starts_with(p)`/`.ends_with(s)` → Bool, `.to_int()`/`.to_float()` (E0314 on failure); `List` — `.sort()` (ascending, mutually-comparable scalars, else E0306), `.reverse()`, `.sum()` (Int, or Float if any Float; E0304 on Int overflow), `.min()`/`.max()` (E0317 on empty), `.flatten()` (one level: spreads nested lists, keeps scalars), `.slice(start, end)` (half-open, indices clamped); `Int`/`Float` — `.abs()`; `Int`/`Float`/`Bool`/`Str` — `.to_str()` (same rendering as string interpolation).
+- Stdlib extension: `String` — `.trim()`, `.split(sep)` (non-empty `sep` → List), `.replace(from, to)`, `.starts_with(p)`/`.ends_with(s)` → Bool, `.to_int()`/`.to_float()` (E0314 on failure); `List` — `.sort()` (ascending, mutually-comparable scalars, else E0306), `.reverse()`, `.sum()` (Int, or Float if any Float; E0304 on Int overflow), `.min()`/`.max()` (E0317 on empty), `.flatten()` (one level: spreads nested lists, keeps scalars), `.slice(start, end)` (half-open, indices clamped); `Int`/`Float` — `.abs()`; `Int`/`Float`/`Bool`/`Str` — `.to_str()` (same rendering as string interpolation).
 - Global pure functions (not methods): `range(n)` → `[0, 1, ..., n-1]` (deterministic list generator; `n` must be a non-negative `Int` ≤ 1,000,000, else E0306). No capability needed. Alongside the effectful `env`/`read_file`/`fail` (§4.3) and the banned `now`/`timestamp` (E0533, D13).
 
 ### 4.5. EvalCtx
@@ -538,7 +538,7 @@ Implementations: `LocalFsResolver`, `MemoryResolver` (tests, dry-run), `HttpReso
 
 - `import github/actions/rust-cache@v1.2 as rust`: `@v1` and `@v1.2` are ranges (semver-caret style), `@v1.2.3` is an exact version.
 - `aura.lock` (TOML, next to the root manifest) pins the resolution: `path = { version = "1.2.7", integrity = "sha256-..." }`. Algorithm: if a lock entry satisfies the range, it's used and its content hash is checked (`E0402 integrity mismatch`); otherwise the resolver picks the highest matching version from the local cache `~/.aura/registry/` and appends to the lock. The `--frozen` flag (CI): a missing/mismatched lock entry is an `E0403` error, and the lock is never rewritten.
-- The network (v1.3): exists ONLY in the `aura add <path>@vX.Y.Z` command - downloading by the convention `github/<owner>/<repo>` → the raw file `package.aura` at tag `vX.Y.Z`, validating the package (lex+parse+analysis), installing it into the cache and writing its integrity to `aura.lock`. **`eval` never touches the network** - evaluation's determinism never depends on network state; `--frozen` in CI guarantees that exactly what's installed is used. `aura add --from <file>` installs from a local file (private packages, tests). A network install requires an exact version; ranges (`@v1`) are resolved from the local cache.
+- The network: exists ONLY in the `aura add <path>@vX.Y.Z` command - downloading by the convention `github/<owner>/<repo>` → the raw file `package.aura` at tag `vX.Y.Z`, validating the package (lex+parse+analysis), installing it into the cache and writing its integrity to `aura.lock`. **`eval` never touches the network** - evaluation's determinism never depends on network state; `--frozen` in CI guarantees that exactly what's installed is used. `aura add --from <file>` installs from a local file (private packages, tests). A network install requires an exact version; ranges (`@v1`) are resolved from the local cache.
 
 ### 5.3. Module graph, cycles, AST cache
 
@@ -662,14 +662,14 @@ pub struct Diagnostic {
 
 | Phase | Artifact | Acceptance criterion |
 | --- | --- | --- |
-| 1 | `lexer` | Tokenizes the v1.2 manifest; a snapshot test; a property test "concatenating spans = the source"; tests for D2 (`[a \n -b]` → 2 elements) and D8 (`E0104` without a version) |
+| 1 | `lexer` | Tokenizes the reference manifest; a snapshot test; a property test "concatenating spans = the source"; tests for D2 (`[a \n -b]` → 2 elements) and D8 (`E0104` without a version) |
 | 2 | `parser` | An AST snapshot; Pratt precedences; `E0201` on an inline block; `new`/`assert`/`shadow`; negative tests with positions |
 | 3 | `eval` | The manifest with `MemoryResolver`; tests for `E0301`/`E0302`/shadow; Int/Float arithmetic and overflow; capability denials `E0310`/`E0311`; every builtin method |
 | 4 | `vfs` | A cycle a→b→a with the full chain; the lock file: range resolution, `E0402`/`E0403 --frozen`; every file is parsed exactly once |
 | 5 | `analysis` | `unused_config_version` is detected; `--strict` fails on `E0513`; `--dry-run` produces identical JSON without writing |
 | 6 | `cli`, `serialize` | A golden test: manifest → `production_deploy.json`; `Int` without `.0`; golden-text ariadne reports (ANSI-stripped, no external snapshot tool) |
 | 6.5 | closing the §6.3/§8 gaps | `RecordingResolver`/`RecordingFs`: `--dry-run` logs the files it read into a report; a golden comparison of `check --strict`'s stderr on the reference manifest |
-| 7 (v1.3) | `D10`-`D13`, `aura fmt`, `aura add` | `=` is not exported (D10); `.field`/`."str"`/`xs[i]`/`.get` (D11); `pub def`/`pub type` via the module object, with capabilities running from the origin module (D12); `now()` is forbidden, `parse_duration`/`parse_datetime` work (D13); `aura fmt` never changes the token stream and is idempotent; `aura add --from` → an offline `eval --frozen` through the installed package |
+| 7 | `D10`-`D13`, `aura fmt`, `aura add` | `=` is not exported (D10); `.field`/`."str"`/`xs[i]`/`.get` (D11); `pub def`/`pub type` via the module object, with capabilities running from the origin module (D12); `now()` is forbidden, `parse_duration`/`parse_datetime` work (D13); `aura fmt` never changes the token stream and is idempotent; `aura add --from` → an offline `eval --frozen` through the installed package |
 
 Test tooling: `proptest` (the lexer - fuzzing and span invariants), golden text files for ariadne reports (no external snapshot framework), conformance tests in `aura-cli/tests/` that exercise the real binary against `examples/*/expected.*`.
 
