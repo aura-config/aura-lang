@@ -7,6 +7,7 @@
 mod diagnostics;
 mod goto;
 mod hover;
+mod infer;
 mod stdlib;
 
 use std::collections::HashMap;
@@ -247,8 +248,13 @@ fn format_edits(text: &str) -> Option<Vec<TextEdit>> {
 fn completion_items(stdlib: &Stdlib, text: &str, offset: usize) -> Vec<CompletionItem> {
     let mut items = Vec::new();
     if goto::is_method_context(text, offset) {
+        // Type-aware when the receiver type can be inferred; otherwise all methods.
+        let recv = infer::receiver_type(stdlib, text, offset);
         let mut seen = std::collections::HashSet::new();
         for e in stdlib.methods() {
+            if recv.as_deref().is_some_and(|ty| ty != e.receiver) {
+                continue;
+            }
             // A name shared across receivers (to_str, get, …) is offered once.
             if seen.insert(e.name.clone()) {
                 items.push(stdlib_item(e, CompletionItemKind::METHOD));
