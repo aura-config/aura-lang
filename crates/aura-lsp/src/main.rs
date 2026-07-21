@@ -15,13 +15,13 @@ use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification as _,
     PublishDiagnostics,
 };
-use lsp_types::request::{Completion, HoverRequest, Request as _};
+use lsp_types::request::{Completion, Formatting, HoverRequest, Request as _};
 use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionOptions, CompletionResponse,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    Documentation, Hover, HoverContents, HoverParams, HoverProviderCapability, MarkupContent,
-    MarkupKind, PublishDiagnosticsParams, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncKind,
+    DocumentFormattingParams, Documentation, Hover, HoverContents, HoverParams,
+    HoverProviderCapability, MarkupContent, MarkupKind, OneOf, Position, PublishDiagnosticsParams,
+    Range, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
 };
 
 use stdlib::Stdlib;
@@ -38,6 +38,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         completion_provider: Some(CompletionOptions::default()),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
+        // Enables format-on-save (when the editor's formatOnSave is on) and the
+        // explicit "Format Document" command, reusing `aura fmt`.
+        document_formatting_provider: Some(OneOf::Left(true)),
         ..Default::default()
     };
     connection.initialize(serde_json::to_value(capabilities)?)?;
@@ -69,6 +72,14 @@ fn main_loop(
                         let items = completion_items(stdlib);
                         let result = serde_json::to_value(CompletionResponse::Array(items))?;
                         respond(connection, req.id, result)?;
+                    }
+                    Formatting::METHOD => {
+                        let p: DocumentFormattingParams = serde_json::from_value(req.params)?;
+                        let uri = p.text_document.uri.to_string();
+                        // Reuse `aura fmt`; a whole-document replace. A file that
+                        // does not even lex is left untouched (None -> no edits).
+                        let edits = docs.get(&uri).and_then(|text| format_edits(text));
+                        respond(connection, req.id, serde_json::to_value(edits)?)?;
                     }
                     HoverRequest::METHOD => {
                         let p: HoverParams = serde_json::from_value(req.params)?;
@@ -145,6 +156,23 @@ fn respond(
     Ok(())
 }
 
+/// Format a document with `aura fmt` as a single whole-document edit, or `None`
+/// if it does not lex (never rewrite a file we cannot tokenize).
+fn format_edits(text: &str) -> Option<Vec<TextEdit>> {
+    let formatted = aura_core::fmt::format_source(text).ok()?;
+    if formatted == text {
+        return Some(Vec::new()); // already canonical: no edit
+    }
+    let end = diagnostics::LineIndex::new(text).position(text, text.len());
+    Some(vec![TextEdit {
+        range: Range {
+            start: Position::new(0, 0),
+            end,
+        },
+        new_text: formatted,
+    }])
+}
+
 /// Completion items for the whole stdlib surface: methods (deduped by name),
 /// builtin functions, and keywords. Each carries a signature and doc.
 fn completion_items(stdlib: &Stdlib) -> Vec<CompletionItem> {
@@ -196,4 +224,20 @@ fn publish(
     };
     connection.sender.send(Message::Notification(not))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn formatting_reindents_and_is_a_noop_when_canonical() {
+        // messy indentation -> one whole-document edit with canonical text
+        let messy = "domain \"d\"\n      x: 1\nend\n";
+        let edit = format_edits(messy).expect("lexes").pop().expect("an edit");
+        assert_eq!(edit.new_text, "domain \"d\"\n  x: 1\nend\n");
+        assert_eq!(edit.range.start, Position::new(0, 0));
+        // already-canonical input yields no edits
+        assert!(format_edits(&edit.new_text).unwrap().is_empty());
+    }
 }
