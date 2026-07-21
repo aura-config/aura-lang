@@ -43,6 +43,22 @@ impl LineIndex {
             character,
         }
     }
+
+    /// Byte offset for an LSP `(line, character)` position (UTF-16 character).
+    /// Clamps out-of-range lines/characters to the document.
+    pub fn offset(&self, text: &str, line: u32, character: u32) -> usize {
+        let Some(&line_start) = self.line_starts.get(line as usize) else {
+            return text.len();
+        };
+        let mut u16 = 0u32;
+        for (i, ch) in text[line_start..].char_indices() {
+            if u16 >= character || ch == '\n' {
+                return line_start + i;
+            }
+            u16 += ch.len_utf16() as u32;
+        }
+        text.len()
+    }
 }
 
 /// Runs the static pipeline and returns LSP diagnostics (empty if the source is clean).

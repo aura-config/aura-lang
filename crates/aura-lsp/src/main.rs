@@ -5,6 +5,7 @@
 //! smart lives in `aura-core`; this binary is only the protocol layer.
 
 mod diagnostics;
+mod goto;
 mod hover;
 mod stdlib;
 
@@ -15,13 +16,14 @@ use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification as _,
     PublishDiagnostics,
 };
-use lsp_types::request::{Completion, Formatting, HoverRequest, Request as _};
+use lsp_types::request::{Completion, Formatting, GotoDefinition, HoverRequest, Request as _};
 use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionOptions, CompletionResponse,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentFormattingParams, Documentation, Hover, HoverContents, HoverParams,
-    HoverProviderCapability, MarkupContent, MarkupKind, OneOf, Position, PublishDiagnosticsParams,
-    Range, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
+    DocumentFormattingParams, Documentation, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+    HoverContents, HoverParams, HoverProviderCapability, Location, MarkupContent, MarkupKind,
+    OneOf, Position, PublishDiagnosticsParams, Range, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
 };
 
 use stdlib::Stdlib;
@@ -41,6 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
         // Enables format-on-save (when the editor's formatOnSave is on) and the
         // explicit "Format Document" command, reusing `aura fmt`.
         document_formatting_provider: Some(OneOf::Left(true)),
+        definition_provider: Some(OneOf::Left(true)),
         ..Default::default()
     };
     connection.initialize(serde_json::to_value(capabilities)?)?;
@@ -80,6 +83,27 @@ fn main_loop(
                         // does not even lex is left untouched (None -> no edits).
                         let edits = docs.get(&uri).and_then(|text| format_edits(text));
                         respond(connection, req.id, serde_json::to_value(edits)?)?;
+                    }
+                    GotoDefinition::METHOD => {
+                        let p: GotoDefinitionParams = serde_json::from_value(req.params)?;
+                        let pos = p.text_document_position_params;
+                        let uri = pos.text_document.uri;
+                        let result = docs
+                            .get(&uri.to_string())
+                            .and_then(|text| {
+                                goto::definition_range(
+                                    text,
+                                    pos.position.line,
+                                    pos.position.character,
+                                )
+                            })
+                            .map(|range| {
+                                GotoDefinitionResponse::Scalar(Location {
+                                    uri: uri.clone(),
+                                    range,
+                                })
+                            });
+                        respond(connection, req.id, serde_json::to_value(result)?)?;
                     }
                     HoverRequest::METHOD => {
                         let p: HoverParams = serde_json::from_value(req.params)?;
