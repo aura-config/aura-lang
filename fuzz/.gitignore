@@ -1,0 +1,8 @@
+/target
+/artifacts
+/Cargo.lock
+
+# Fuzzer-generated coverage inputs (hash-named). Keep only the curated *.aura
+# seeds, which are tracked explicitly.
+corpus/*/*
+!corpus/*/*.aura
