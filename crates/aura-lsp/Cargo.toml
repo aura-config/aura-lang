@@ -1,0 +1,23 @@
+[package]
+name = "aura-lsp"
+description = "Language Server (LSP) for the Aura configuration language: live diagnostics"
+keywords = ["configuration", "lsp", "language-server", "editor"]
+categories = ["development-tools"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "aura-lsp"
+path = "src/main.rs"
+
+[dependencies]
+aura-core = { path = "../aura-core" }
+lsp-server = "0.7"
+lsp-types = "0.97"
+serde_json = "1"

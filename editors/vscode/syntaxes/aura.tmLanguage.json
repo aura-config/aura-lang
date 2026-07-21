@@ -4,6 +4,7 @@
   "scopeName": "source.aura",
   "patterns": [
     { "include": "#comment" },
+    { "include": "#block-string" },
     { "include": "#string" },
     { "include": "#keyword" },
     { "include": "#constant" },
@@ -18,31 +19,48 @@
       "name": "comment.line.number-sign.aura",
       "match": "#(?!\\{).*$"
     },
+    "interpolation": {
+      "name": "meta.embedded.interpolation.aura",
+      "begin": "#\\{",
+      "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.aura" } },
+      "end": "\\}",
+      "endCaptures": { "0": { "name": "punctuation.section.interpolation.end.aura" } },
+      "patterns": [
+        { "include": "#number" },
+        { "include": "#operator" },
+        { "name": "variable.other.aura", "match": "[a-zA-Z_][a-zA-Z0-9_]*" }
+      ]
+    },
     "string": {
       "name": "string.quoted.double.aura",
       "begin": "\"",
       "end": "\"",
       "patterns": [
         { "name": "constant.character.escape.aura", "match": "\\\\[nt\"\\\\#]" },
-        {
-          "name": "meta.embedded.interpolation.aura",
-          "begin": "#\\{",
-          "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.aura" } },
-          "end": "\\}",
-          "endCaptures": { "0": { "name": "punctuation.section.interpolation.end.aura" } },
-          "patterns": [
-            { "include": "#number" },
-            { "include": "#operator" },
-            { "name": "variable.other.aura", "match": "[a-zA-Z_][a-zA-Z0-9_]*" }
-          ]
-        }
+        { "include": "#interpolation" }
+      ]
+    },
+    "block-string": {
+      "comment": "D16 block string: `key: text` / `x = text` opener until a lone `end`",
+      "begin": "^\\s*([A-Za-z_][A-Za-z0-9_]*|\"[^\"]+\")\\s*([:=])\\s*(text)\\s*$",
+      "beginCaptures": {
+        "1": { "name": "variable.other.property.aura" },
+        "2": { "name": "punctuation.separator.key-value.aura" },
+        "3": { "name": "keyword.control.aura" }
+      },
+      "end": "^\\s*(end)\\b",
+      "endCaptures": { "1": { "name": "keyword.control.aura" } },
+      "name": "string.unquoted.block.aura",
+      "patterns": [
+        { "name": "constant.character.escape.aura", "match": "\\\\[nt\"\\\\#]" },
+        { "include": "#interpolation" }
       ]
     },
     "keyword": {
       "patterns": [
         {
           "name": "keyword.control.aura",
-          "match": "\\b(import|as|type|def|end|domain|component|new|assert|shadow|pub)\\b"
+          "match": "\\b(import|as|type|def|end|domain|component|new|assert|shadow|pub|cond|else)\\b"
         }
       ]
     },
@@ -52,7 +70,7 @@
     },
     "builtin": {
       "name": "support.function.builtin.aura",
-      "match": "\\b(env|read_file|fail)(?=\\()"
+      "match": "\\b(env|read_file|fail|range)(?=\\()"
     },
     "number": {
       "name": "constant.numeric.aura",

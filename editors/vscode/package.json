@@ -1,11 +1,13 @@
 {
   "name": "aura-lang",
   "displayName": "Aura",
-  "description": "Syntax highlighting for the Aura configuration language",
+  "description": "Aura configuration language: syntax highlighting + language server (live diagnostics)",
   "version": "0.1.0",
   "publisher": "aura-lang",
   "engines": { "vscode": "^1.75.0" },
-  "categories": ["Programming Languages"],
+  "categories": ["Programming Languages", "Linters"],
+  "main": "./extension.js",
+  "activationEvents": ["onLanguage:aura"],
   "contributes": {
     "languages": [
       {
@@ -21,6 +23,27 @@
         "scopeName": "source.aura",
         "path": "./syntaxes/aura.tmLanguage.json"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Aura",
+      "properties": {
+        "aura.server.path": {
+          "type": "string",
+          "default": "aura-lsp",
+          "description": "Path to the aura-lsp language server binary (looked up on PATH by default)."
+        },
+        "aura.server.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run the Aura language server for live diagnostics."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "scripts": {
+    "package": "vsce package"
   }
 }
