@@ -1,8 +1,8 @@
 [package]
-name = "aura-core"
-description = "Aura configuration language: deterministic, capability-secured, schema-validated configs"
-keywords = ["configuration", "config", "language", "deterministic", "yaml"]
-categories = ["config", "parser-implementations"]
+name = "aura-lang"
+description = "Aura configuration language: deterministic, capability-secured, schema-validated configs — embeddable library + the `aura` CLI"
+keywords = ["configuration", "config", "language", "deterministic", "cli"]
+categories = ["config", "parser-implementations", "command-line-utilities"]
 readme = "../../README.md"
 version.workspace = true
 edition.workspace = true
@@ -12,12 +12,21 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 
+[[bin]]
+name = "aura"
+path = "src/main.rs"
+
 [dependencies]
+# Library
 indexmap = "2"
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml = "0.9"
 sha2 = "0.10"
 toml = "0.8"
+# CLI
+ariadne = "0.5"
+clap = { version = "4", features = ["derive", "string"] }
+ureq = "2"
 
 [dev-dependencies]
 criterion = "0.5"

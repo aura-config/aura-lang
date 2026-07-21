@@ -113,7 +113,7 @@ end
 aura/
 ├── Cargo.toml                  # workspace
 ├── crates/
-│   └── aura-core/
+│   ├── aura-lang/                  # библиотека + CLI `aura` (один крейт)
 │       └── src/
 │           ├── lib.rs
 │           ├── span.rs         # Span, SourceId
@@ -143,10 +143,10 @@ aura/
 │           │   ├── mod.rs      # FileResolver, ModuleGraph
 │           │   ├── local.rs    # LocalFsResolver, MemoryResolver
 │           │   └── lockfile.rs # aura.lock
-│           └── serialize/
-│               └── mod.rs      # Value -> serde_json::Value
-└── src/
-    └── main.rs                 # crate aura-cli: clap + ariadne
+│           ├── serialize/
+│           │   └── mod.rs      # Value -> serde_json::Value
+│           └── main.rs         # бинарник `aura` (clap + ariadne)
+│   └── aura-lsp/               # language server (в VS Code-расширении)
 ```
 
 ### 1.2. Поток данных
@@ -658,7 +658,7 @@ pub struct Diagnostic {
 ```
 
 - `SourceCache` реализует `ariadne::Cache`; `Span` → строка/колонка средствами `ariadne`.
-- Ядро возвращает `Vec<Diagnostic>`; рендеринг — только в `aura-cli` (ядро пригодно для WASM/LSP).
+- Ядро возвращает `Vec<Diagnostic>`; рендеринг — только в CLI `main.rs` (библиотека без clap/ariadne, пригодна для WASM/LSP).
 
 ---
 
@@ -675,7 +675,7 @@ pub struct Diagnostic {
 | 6.5 | закрытие пробелов §6.3/§8 | `RecordingResolver`/`RecordingFs`: `--dry-run` логирует прочитанные файлы в отчёт; golden-сравнение stderr `check --strict` на эталонном манифесте |
 | 7 | `D10`–`D13`, `aura fmt`, `aura add` | `=` не экспортируется (D10); `.field`/`."str"`/`xs[i]`/`.get` (D11); `pub def`/`pub type` через модуль, capability исполняется от модуля-происхождения (D12); `now()` запрещён, `parse_duration`/`parse_datetime` (D13); `aura fmt` не меняет поток токенов и идемпотентен; `aura add --from` → offline `eval --frozen` через установленный пакет |
 
-Тестовый инструментарий: `proptest` (лексер — фаззинг и инварианты span'ов), golden-текстовые файлы для отчётов ariadne (без внешнего snapshot-фреймворка), conformance-тесты в `aura-cli/tests/` через реальный бинарник против `examples/*/expected.*`.
+Тестовый инструментарий: `proptest` (лексер — фаззинг и инварианты span'ов), golden-текстовые файлы для отчётов ariadne (без внешнего snapshot-фреймворка), conformance-тесты в `aura-lang/tests/` через реальный бинарник против `examples/*/expected.*`.
 
 ---
 

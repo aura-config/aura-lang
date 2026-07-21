@@ -1,8 +1,8 @@
 //! Phase 2 acceptance criterion (SPEC §8): the reference manifest parses into the expected AST shape.
 
-use aura_core::lexer::Lexer;
-use aura_core::parser::ast::*;
-use aura_core::parser::Parser;
+use aura_lang::lexer::Lexer;
+use aura_lang::parser::ast::*;
+use aura_lang::parser::Parser;
 
 const MANIFEST: &str = include_str!("fixtures/production_deploy.aura");
 

@@ -1,13 +1,13 @@
 //! Stdlib surface for completion/hover, loaded by evaluating `stdlib.aura`.
 //!
-//! Dogfooding: the server runs aura-core on its own Aura manifest to build the
+//! Dogfooding: the server runs aura-lang on its own Aura manifest to build the
 //! completion database. A test (`manifest_matches_registry`) checks the manifest
 //! against the real method registry so documentation and behaviour cannot drift.
 
-use aura_core::eval::{Interpreter, Options};
-use aura_core::lexer::Lexer;
-use aura_core::parser::Parser;
-use aura_core::serialize::to_json;
+use aura_lang::eval::{Interpreter, Options};
+use aura_lang::lexer::Lexer;
+use aura_lang::parser::Parser;
+use aura_lang::serialize::to_json;
 
 /// The manifest is embedded so the server is a single self-contained binary.
 const MANIFEST: &str = include_str!("../stdlib.aura");
@@ -15,7 +15,7 @@ const MANIFEST: &str = include_str!("../stdlib.aura");
 /// Aura keywords offered as completions: the lexer's reserved words (single
 /// source of truth) plus the contextual block-string opener `text` (D16).
 pub fn keywords() -> Vec<&'static str> {
-    aura_core::lexer::token::KEYWORDS
+    aura_lang::lexer::token::KEYWORDS
         .iter()
         .copied()
         .chain(std::iter::once("text"))
@@ -99,8 +99,8 @@ fn eval_manifest(src: &str) -> Option<Vec<Entry>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aura_core::eval::methods::MethodRegistry;
-    use aura_core::eval::value::TypeTag;
+    use aura_lang::eval::methods::MethodRegistry;
+    use aura_lang::eval::value::TypeTag;
     use std::collections::HashSet;
 
     fn receiver_to_tag(name: &str) -> Option<TypeTag> {

@@ -1,7 +1,7 @@
 //! Phase 1 acceptance criterion (SPEC §8): the reference manifest tokenizes without errors,
 //! and the spans correctly cover the source.
 
-use aura_core::lexer::{Lexer, TokenKind};
+use aura_lang::lexer::{Lexer, TokenKind};
 
 const MANIFEST: &str = include_str!("fixtures/production_deploy.aura");
 

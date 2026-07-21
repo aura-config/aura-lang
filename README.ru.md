@@ -366,7 +366,7 @@ json.Unmarshal(out, &config)
 
 Рекомендации для прода: `--frozen` (лок-файл обязателен), права только явные,
 `--format yaml|toml` — если потребителю удобнее другой формат. Для Rust-проектов
-есть прямое встраивание без сабпроцесса — `aura_core::facade::eval_file()`.
+есть прямое встраивание без сабпроцесса — `aura_lang::facade::eval_file()`.
 Мобильные приложения — потребители *результата*: сервер/CI вычисляет `.aura`,
 клиент читает готовый JSON. Нативные обёртки (WASM/npm, PyO3) — в роадмапе.
 
@@ -397,14 +397,16 @@ json.Unmarshal(out, &config)
 
 ```text
 crates/
-├── aura-core          # библиотека: без зависимостей на CLI/рендеринг (готова к WASM/LSP)
+├── aura-lang          # библиотека + CLI `aura` (один публикуемый крейт)
 │   ├── lexer/         # zero-copy ДКА, нормализация переносов строк
 │   ├── parser/        # рекурсивный спуск + Pratt-выражения
 │   ├── analysis/      # dead code, undefined vars, правила shadow
 │   ├── eval/          # tree-walking интерпретатор, Environment, реестр методов
 │   ├── vfs/           # FileResolver, детекция циклов, aura.lock
-│   └── serialize/     # Value -> serde_json (Int без потери точности)
-└── aura-cli           # clap + ariadne
+│   ├── serialize/     # Value -> serde_json (Int без потери точности)
+│   └── main.rs        # бинарник `aura` (clap + ariadne); библиотека остаётся
+│                      #   без clap/ariadne и готова к WASM/LSP
+└── aura-lsp           # language server (поставляется в VS Code-расширении)
 ```
 
 Ключевые инварианты:
@@ -415,7 +417,7 @@ crates/
 
 ## Производительность
 
-Criterion-бенчмарки на эталонном манифесте (`cargo bench -p aura-core`):
+Criterion-бенчмарки на эталонном манифесте (`cargo bench -p aura-lang`):
 
 | Этап                                 | Результат           |
 | ------------------------------------ | ------------------- |

@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use aura_core::lexer::{Lexer, Token, TokenKind};
+use aura_lang::lexer::{Lexer, Token, TokenKind};
 
 use crate::stdlib::Stdlib;
 

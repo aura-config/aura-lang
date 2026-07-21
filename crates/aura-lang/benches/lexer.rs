@@ -11,7 +11,7 @@ fn bench_lexer(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(big.len() as u64));
     group.bench_function("tokenize_manifest_x64", |b| {
         b.iter(|| {
-            aura_core::lexer::Lexer::new(black_box(&big), 0)
+            aura_lang::lexer::Lexer::new(black_box(&big), 0)
                 .tokenize()
                 .unwrap()
         })

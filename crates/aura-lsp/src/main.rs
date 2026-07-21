@@ -2,7 +2,7 @@
 //!
 //! A small synchronous LSP server (rust-analyzer's `lsp-server` stack, no async
 //! runtime) that publishes live diagnostics for `.aura` buffers. Everything
-//! smart lives in `aura-core`; this binary is only the protocol layer.
+//! smart lives in `aura-lang`; this binary is only the protocol layer.
 
 mod diagnostics;
 mod goto;
@@ -284,7 +284,7 @@ fn respond(
 /// Format a document with `aura fmt` as a single whole-document edit, or `None`
 /// if it does not lex (never rewrite a file we cannot tokenize).
 fn format_edits(text: &str) -> Option<Vec<TextEdit>> {
-    let formatted = aura_core::fmt::format_source(text).ok()?;
+    let formatted = aura_lang::fmt::format_source(text).ok()?;
     if formatted == text {
         return Some(Vec::new()); // already canonical: no edit
     }

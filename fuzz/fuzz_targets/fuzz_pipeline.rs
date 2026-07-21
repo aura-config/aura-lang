@@ -5,9 +5,9 @@
 
 use libfuzzer_sys::fuzz_target;
 
-use aura_core::eval::{Interpreter, Options};
-use aura_core::lexer::Lexer;
-use aura_core::parser::Parser;
+use aura_lang::eval::{Interpreter, Options};
+use aura_lang::lexer::Lexer;
+use aura_lang::parser::Parser;
 
 fuzz_target!(|data: &[u8]| {
     let Ok(src) = std::str::from_utf8(data) else {

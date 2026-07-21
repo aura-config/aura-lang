@@ -4,11 +4,11 @@
 
 ```toml
 [dependencies]
-aura-core = { git = "https://github.com/aura-config/aura-lang" }
+aura-lang = { git = "https://github.com/aura-config/aura-lang" }
 ```
 
 ```rust
-use aura_core::facade::{eval_file, EvalOptions};
+use aura_lang::facade::{eval_file, EvalOptions};
 
 let opts = EvalOptions {
     strict: true,

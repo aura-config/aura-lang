@@ -113,7 +113,7 @@ end
 aura/
 ├── Cargo.toml                  # workspace
 ├── crates/
-│   └── aura-core/
+│   ├── aura-lang/                  # library + the `aura` CLI (one crate)
 │       └── src/
 │           ├── lib.rs
 │           ├── span.rs         # Span, SourceId
@@ -143,10 +143,10 @@ aura/
 │           │   ├── mod.rs      # FileResolver, ModuleGraph
 │           │   ├── local.rs    # LocalFsResolver, MemoryResolver
 │           │   └── lockfile.rs # aura.lock
-│           └── serialize/
-│               └── mod.rs      # Value -> serde_json::Value
-└── src/
-    └── main.rs                 # crate aura-cli: clap + ariadne
+│           ├── serialize/
+│           │   └── mod.rs      # Value -> serde_json::Value
+│           └── main.rs         # the `aura` binary (clap + ariadne)
+│   └── aura-lsp/               # language server (ships in the VS Code extension)
 ```
 
 ### 1.2. Data flow
@@ -660,7 +660,7 @@ pub struct Diagnostic {
 ```
 
 - `SourceCache` implements `ariadne::Cache`; `Span` → line/column via `ariadne`.
-- The core returns `Vec<Diagnostic>`; rendering happens only in `aura-cli` (the core is WASM/LSP-ready).
+- The core returns `Vec<Diagnostic>`; rendering happens only in the CLI `main.rs` (the library stays clap/ariadne-free and WASM/LSP-ready).
 
 ---
 
@@ -677,7 +677,7 @@ pub struct Diagnostic {
 | 6.5 | closing the §6.3/§8 gaps | `RecordingResolver`/`RecordingFs`: `--dry-run` logs the files it read into a report; a golden comparison of `check --strict`'s stderr on the reference manifest |
 | 7 | `D10`-`D13`, `aura fmt`, `aura add` | `=` is not exported (D10); `.field`/`."str"`/`xs[i]`/`.get` (D11); `pub def`/`pub type` via the module object, with capabilities running from the origin module (D12); `now()` is forbidden, `parse_duration`/`parse_datetime` work (D13); `aura fmt` never changes the token stream and is idempotent; `aura add --from` → an offline `eval --frozen` through the installed package |
 
-Test tooling: `proptest` (the lexer - fuzzing and span invariants), golden text files for ariadne reports (no external snapshot framework), conformance tests in `aura-cli/tests/` that exercise the real binary against `examples/*/expected.*`.
+Test tooling: `proptest` (the lexer - fuzzing and span invariants), golden text files for ariadne reports (no external snapshot framework), conformance tests in `aura-lang/tests/` that exercise the real binary against `examples/*/expected.*`.
 
 ---
 

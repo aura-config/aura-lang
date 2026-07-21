@@ -17,7 +17,7 @@ name = "aura-lsp"
 path = "src/main.rs"
 
 [dependencies]
-aura-core = { path = "../aura-core" }
+aura-lang = { path = "../aura-lang" }
 lsp-server = "0.7"
 lsp-types = "0.97"
 serde_json = "1"

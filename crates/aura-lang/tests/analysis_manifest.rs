@@ -1,10 +1,10 @@
 //! Phase 5 acceptance criterion (SPEC §8): the reference manifest is expected to detect
 //! `unused_config_version` (and the unused import rust), with no false errors.
 
-use aura_core::analysis::{analyze, has_blocking};
-use aura_core::error::Severity;
-use aura_core::lexer::Lexer;
-use aura_core::parser::Parser;
+use aura_lang::analysis::{analyze, has_blocking};
+use aura_lang::error::Severity;
+use aura_lang::lexer::Lexer;
+use aura_lang::parser::Parser;
 
 const MANIFEST: &str = include_str!("fixtures/production_deploy.aura");
 

@@ -4,10 +4,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use aura_core::eval::value::Value;
-use aura_core::eval::{EnvCap, Interpreter, MemFs, Options};
-use aura_core::lexer::Lexer;
-use aura_core::parser::Parser;
+use aura_lang::eval::value::Value;
+use aura_lang::eval::{EnvCap, Interpreter, MemFs, Options};
+use aura_lang::lexer::Lexer;
+use aura_lang::parser::Parser;
 use indexmap::IndexMap;
 
 const MANIFEST: &str = include_str!("fixtures/production_deploy.aura");

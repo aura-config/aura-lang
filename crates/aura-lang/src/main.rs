@@ -1,6 +1,6 @@
 //! CLI layer (SPEC §7.2) and diagnostic rendering via ariadne (§7.3).
 
-// Diagnostic by value: errors are the cold path (see aura-core/src/lib.rs)
+// Diagnostic by value: errors are the cold path (see aura-lang/src/lib.rs)
 #![allow(clippy::result_large_err)]
 
 use std::path::{Path, PathBuf};
@@ -8,28 +8,20 @@ use std::process::ExitCode;
 
 use clap::{Parser as ClapParser, Subcommand, ValueEnum};
 
-use aura_core::analysis::{analyze, has_blocking};
-use aura_core::error::{Diagnostic, Severity};
-use aura_core::eval::{DenyFs, EnvCap, Interpreter, Options, RealFs};
-use aura_core::lexer::Lexer;
-use aura_core::parser::Parser;
-use aura_core::serialize::{to_json, to_json_flat, to_toml_string, to_yaml_string};
-use aura_core::source::SourceCache;
-use aura_core::span::Span;
-use aura_core::vfs::loader::Loader;
-use aura_core::vfs::lockfile::Lockfile;
-use aura_core::vfs::{ImportSpec, LocalFsResolver};
-
-fn version_string() -> String {
-    format!(
-        "{} (Aura language v{})",
-        env!("CARGO_PKG_VERSION"),
-        aura_core::LANGUAGE_VERSION
-    )
-}
+use aura_lang::analysis::{analyze, has_blocking};
+use aura_lang::error::{Diagnostic, Severity};
+use aura_lang::eval::{DenyFs, EnvCap, Interpreter, Options, RealFs};
+use aura_lang::lexer::Lexer;
+use aura_lang::parser::Parser;
+use aura_lang::serialize::{to_json, to_json_flat, to_toml_string, to_yaml_string};
+use aura_lang::source::SourceCache;
+use aura_lang::span::Span;
+use aura_lang::vfs::loader::Loader;
+use aura_lang::vfs::lockfile::Lockfile;
+use aura_lang::vfs::{ImportSpec, LocalFsResolver};
 
 #[derive(ClapParser)]
-#[command(name = "aura", version = version_string(), about = "Aura configuration language")]
+#[command(name = "aura", version, about = "Aura configuration language")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -223,7 +215,7 @@ fn run_add(package: &str, from: Option<&Path>, registry_dir: Option<PathBuf>) ->
             }
         },
         None => {
-            let url = match aura_core::vfs::registry_url(path, version) {
+            let url = match aura_lang::vfs::registry_url(path, version) {
                 Ok(u) => u,
                 Err(e) => {
                     eprintln!("error: {e}");
@@ -291,10 +283,10 @@ fn run_add(package: &str, from: Option<&Path>, registry_dir: Option<PathBuf>) ->
         },
         Err(_) => Lockfile::default(),
     };
-    let integrity = aura_core::vfs::lockfile::integrity_of(&text);
+    let integrity = aura_lang::vfs::lockfile::integrity_of(&text);
     lock.entries.insert(
         path.to_string(),
-        aura_core::vfs::lockfile::LockEntry {
+        aura_lang::vfs::lockfile::LockEntry {
             version: version_num.to_string(),
             integrity: integrity.clone(),
         },
@@ -325,7 +317,7 @@ fn run_fmt(files: &[PathBuf], check: bool) -> ExitCode {
         };
         let cache = SourceCache::new();
         cache.add(file.display().to_string(), src.clone());
-        let formatted = match aura_core::fmt::format_source(&src) {
+        let formatted = match aura_lang::fmt::format_source(&src) {
             Ok(f) => f,
             Err(d) => {
                 render(&d, &cache);
@@ -381,8 +373,8 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
     // Dry-run (SPEC §6.3): all reads are performed but recorded into a report
     let read_log = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
     let recording;
-    let resolver_ref: &dyn aura_core::vfs::FileResolver = if cfg.dry_run {
-        recording = aura_core::vfs::RecordingResolver {
+    let resolver_ref: &dyn aura_lang::vfs::FileResolver = if cfg.dry_run {
+        recording = aura_lang::vfs::RecordingResolver {
             inner: &resolver,
             log: read_log.clone(),
         };
@@ -418,7 +410,7 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
     }
     if cfg.dry_run {
         let inner = std::mem::replace(&mut interp.fs, Box::new(DenyFs));
-        interp.fs = Box::new(aura_core::eval::RecordingFs {
+        interp.fs = Box::new(aura_lang::eval::RecordingFs {
             inner,
             log: read_log.clone(),
         });
