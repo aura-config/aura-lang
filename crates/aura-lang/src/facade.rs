@@ -1,11 +1,11 @@
 //! A high-level facade for embedding Aura in Rust applications.
 //!
 //! ```no_run
-//! let opts = aura_core::facade::EvalOptions {
+//! let opts = aura_lang::facade::EvalOptions {
 //!     allow_read: vec!["config/".into()],
 //!     ..Default::default()
 //! };
-//! let out = aura_core::facade::eval_file("config/app.aura".as_ref(), &opts).unwrap();
+//! let out = aura_lang::facade::eval_file("config/app.aura".as_ref(), &opts).unwrap();
 //! let cfg: serde_json::Value = out.json; // or serde_json::from_value::<MyConfig>(out.json)
 //! ```
 

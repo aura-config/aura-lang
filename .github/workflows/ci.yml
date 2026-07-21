@@ -22,7 +22,7 @@ jobs:
       # Юниты, интеграционные тесты и conformance-suite (examples/*/expected.*)
       - run: cargo test --workspace
 
-  # Переносимость ядра: aura-core — чистый Rust без C-зависимостей,
+  # Переносимость ядра: aura-lang — чистый Rust без C-зависимостей,
   # cargo check ловит несовместимые зависимости и платформенные дыры.
   # CLI (ureq/rustls) проверяется нативными сборками в test-матрице.
   cross-check:
@@ -41,19 +41,19 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check -p aura-core --target ${{ matrix.target }}
+      - run: cargo check -p aura-lang --target ${{ matrix.target }}
 
   # Enforce the declared MSRV (Cargo.toml rust-version) for the published library,
   # so the promise cannot silently drift as new stdlib APIs are used.
   msrv:
-    name: MSRV (aura-core)
+    name: MSRV (aura-lang)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       # 1.85 is the real floor: the indexmap dependency requires it (edition 2024).
       - uses: dtolnay/rust-toolchain@1.85
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check -p aura-core
+      - run: cargo check -p aura-lang
 
   lint:
     name: Lint
@@ -69,7 +69,7 @@ jobs:
       # Догфуд: все .aura-файлы репозитория канонически отформатированы
       - name: aura fmt --check
         run: |
-          cargo build -p aura-cli
+          cargo build -p aura-lang
           find examples -name '*.aura' -print0 | xargs -0 ./target/debug/aura fmt --check
 
   docs:
@@ -90,7 +90,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build -p aura-cli
+      - run: cargo build -p aura-lang
       # Эталонный манифест обязан вычисляться end-to-end
       - name: Evaluate reference manifest
         working-directory: examples

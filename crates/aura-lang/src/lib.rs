@@ -5,9 +5,6 @@
 // see eval/env.rs); Arc was chosen for future domain-level parallelism.
 #![allow(clippy::arc_with_non_send_sync)]
 
-/// The Aura LANGUAGE version (grammar and semantics per SPEC.md); does not match the crate version.
-pub const LANGUAGE_VERSION: &str = "1.3";
-
 pub mod analysis;
 pub mod error;
 pub mod eval;

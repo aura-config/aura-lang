@@ -5,10 +5,10 @@
 //! core's spans are mapped to LSP positions in UTF-16 code units (the default
 //! LSP position encoding).
 
-use aura_core::analysis::analyze;
-use aura_core::error::{Diagnostic as CoreDiagnostic, Severity};
-use aura_core::lexer::Lexer;
-use aura_core::parser::Parser;
+use aura_lang::analysis::analyze;
+use aura_lang::error::{Diagnostic as CoreDiagnostic, Severity};
+use aura_lang::lexer::Lexer;
+use aura_lang::parser::Parser;
 use lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range};
 
 /// Maps byte offsets to `(line, utf16-character)` positions for one document.

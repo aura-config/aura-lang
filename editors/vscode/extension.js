@@ -1,5 +1,5 @@
 // Aura VSCode client: launches the `aura-lsp` server over stdio and wires it to
-// `.aura` documents. All language intelligence lives in the server (aura-core);
+// `.aura` documents. All language intelligence lives in the server (aura-lang);
 // this file only starts and stops it.
 
 const { workspace } = require("vscode");

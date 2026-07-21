@@ -1,7 +1,7 @@
 //! Lexer property tests (SPEC §8, Phase 1): on ANY input the lexer
 //! never panics, and on a successful parse the span invariants hold.
 
-use aura_core::lexer::{Lexer, TokenKind};
+use aura_lang::lexer::{Lexer, TokenKind};
 use proptest::prelude::*;
 
 proptest! {

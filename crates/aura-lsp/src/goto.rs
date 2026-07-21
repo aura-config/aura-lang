@@ -2,13 +2,13 @@
 //! symbols. Lexical so it works even while the file does not fully parse.
 //! Scope-precise resolution and parameters are a later refinement.
 
-use aura_core::lexer::{Lexer, TokenKind};
+use aura_lang::lexer::{Lexer, TokenKind};
 use lsp_types::{DocumentSymbol, Range, SymbolKind};
 
 use crate::diagnostics::LineIndex;
 
 /// The identifier name whose token span covers `offset`.
-fn ident_at<'a>(toks: &[aura_core::lexer::Token<'a>], offset: u32) -> Option<&'a str> {
+fn ident_at<'a>(toks: &[aura_lang::lexer::Token<'a>], offset: u32) -> Option<&'a str> {
     toks.iter().find_map(|t| match t.kind {
         TokenKind::Ident(n) if t.span.start <= offset && offset <= t.span.end => Some(n),
         _ => None,
@@ -97,7 +97,7 @@ pub fn import_target_path(text: &str, line: u32, character: u32) -> Option<Strin
 }
 
 /// The import path bound to `alias`, if any (file imports only).
-fn import_path_for<'a>(toks: &[aura_core::lexer::Token<'a>], alias: &str) -> Option<&'a str> {
+fn import_path_for<'a>(toks: &[aura_lang::lexer::Token<'a>], alias: &str) -> Option<&'a str> {
     for i in 0..toks.len() {
         if matches!(toks[i].kind, TokenKind::Import) {
             if let (Some(TokenKind::Str(path)), Some(a)) = (

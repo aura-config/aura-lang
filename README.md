@@ -371,7 +371,7 @@ json.Unmarshal(out, &config)
 Recommendations for production: `--frozen` (a lock file is mandatory),
 capabilities only explicit, `--format yaml|toml` if the consumer prefers
 another format. Rust projects can embed Aura directly, without a subprocess,
-via `aura_core::facade::eval_file()`. Mobile apps are consumers of the
+via `aura_lang::facade::eval_file()`. Mobile apps are consumers of the
 *result*: a server/CI evaluates the `.aura` file, the client reads the
 resulting JSON. Native bindings (WASM/npm, PyO3) are on the roadmap.
 
@@ -402,14 +402,16 @@ source ──▶ lexer ──▶ parser ──▶ static analysis ──▶ eval
 
 ```text
 crates/
-├── aura-core          # library: no dependency on the CLI/rendering (ready for WASM/LSP)
+├── aura-lang          # the library + the `aura` CLI (one publishable crate)
 │   ├── lexer/         # zero-copy DFA, newline normalization
 │   ├── parser/        # recursive descent + Pratt expressions
 │   ├── analysis/      # dead code, undefined vars, shadow rules
 │   ├── eval/          # tree-walking interpreter, Environment, method registry
 │   ├── vfs/           # FileResolver, cycle detection, aura.lock
-│   └── serialize/     # Value -> serde_json (Int with no precision loss)
-└── aura-cli           # clap + ariadne
+│   ├── serialize/     # Value -> serde_json (Int with no precision loss)
+│   └── main.rs        # the `aura` binary (clap + ariadne); the library stays
+│                      #   clap/ariadne-free and WASM/LSP-ready
+└── aura-lsp           # language server (ships in the VS Code extension)
 ```
 
 Key invariants:
@@ -420,7 +422,7 @@ Key invariants:
 
 ## Performance
 
-Criterion benchmarks on the reference manifest (`cargo bench -p aura-core`):
+Criterion benchmarks on the reference manifest (`cargo bench -p aura-lang`):
 
 | Stage | Result |
 | --- | --- |

@@ -8,8 +8,8 @@ fuzz_target!(|data: &[u8]| {
     let Ok(src) = std::str::from_utf8(data) else {
         return;
     };
-    if let Ok(once) = aura_core::fmt::format_source(src) {
-        let twice = aura_core::fmt::format_source(&once).expect("re-formatting must succeed");
+    if let Ok(once) = aura_lang::fmt::format_source(src) {
+        let twice = aura_lang::fmt::format_source(&once).expect("re-formatting must succeed");
         assert_eq!(once, twice, "formatter is not idempotent");
     }
 });

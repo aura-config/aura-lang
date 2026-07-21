@@ -12,10 +12,10 @@ fn bench_parser(c: &mut Criterion) {
     group.bench_function("lex_and_parse_manifest_x64", |b| {
         b.iter(|| {
             for _ in 0..64 {
-                let toks = aura_core::lexer::Lexer::new(black_box(MANIFEST), 0)
+                let toks = aura_lang::lexer::Lexer::new(black_box(MANIFEST), 0)
                     .tokenize()
                     .unwrap();
-                black_box(aura_core::parser::Parser::new(toks).parse_module().unwrap());
+                black_box(aura_lang::parser::Parser::new(toks).parse_module().unwrap());
             }
         })
     });

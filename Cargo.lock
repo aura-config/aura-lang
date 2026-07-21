@@ -84,20 +84,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "aura-cli"
+name = "aura-lang"
 version = "0.1.0"
 dependencies = [
  "ariadne",
- "aura-core",
  "clap",
- "serde_json",
- "ureq",
-]
-
-[[package]]
-name = "aura-core"
-version = "0.1.0"
-dependencies = [
  "criterion",
  "indexmap",
  "proptest",
@@ -105,13 +96,14 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "toml",
+ "ureq",
 ]
 
 [[package]]
 name = "aura-lsp"
 version = "0.1.0"
 dependencies = [
- "aura-core",
+ "aura-lang",
  "lsp-server",
  "lsp-types",
  "serde_json",

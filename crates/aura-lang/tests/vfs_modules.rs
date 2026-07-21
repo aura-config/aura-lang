@@ -4,12 +4,12 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use aura_core::eval::value::Value;
-use aura_core::eval::{EnvCap, Interpreter, MemFs, Options};
-use aura_core::source::SourceCache;
-use aura_core::vfs::loader::Loader;
-use aura_core::vfs::lockfile::{integrity_of, LockEntry, Lockfile};
-use aura_core::vfs::{FileResolver, ImportSpec, MemoryResolver, ModuleId};
+use aura_lang::eval::value::Value;
+use aura_lang::eval::{EnvCap, Interpreter, MemFs, Options};
+use aura_lang::source::SourceCache;
+use aura_lang::vfs::loader::Loader;
+use aura_lang::vfs::lockfile::{integrity_of, LockEntry, Lockfile};
+use aura_lang::vfs::{FileResolver, ImportSpec, MemoryResolver, ModuleId};
 
 const MANIFEST: &str = include_str!("fixtures/production_deploy.aura");
 

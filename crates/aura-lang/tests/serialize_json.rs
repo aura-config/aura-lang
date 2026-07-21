@@ -3,12 +3,12 @@
 
 use std::collections::HashMap;
 
-use aura_core::eval::value::Value;
-use aura_core::eval::{EnvCap, Interpreter, MemFs, Options};
-use aura_core::serialize::{to_json, to_json_flat};
-use aura_core::source::SourceCache;
-use aura_core::vfs::loader::Loader;
-use aura_core::vfs::{ImportSpec, MemoryResolver};
+use aura_lang::eval::value::Value;
+use aura_lang::eval::{EnvCap, Interpreter, MemFs, Options};
+use aura_lang::serialize::{to_json, to_json_flat};
+use aura_lang::source::SourceCache;
+use aura_lang::vfs::loader::Loader;
+use aura_lang::vfs::{ImportSpec, MemoryResolver};
 
 const MANIFEST: &str = include_str!("fixtures/production_deploy.aura");
 
@@ -91,8 +91,8 @@ fn flat_format() {
 
 #[test]
 fn function_inside_tree_is_e0601() {
-    use aura_core::lexer::Lexer;
-    use aura_core::parser::Parser;
+    use aura_lang::lexer::Lexer;
+    use aura_lang::parser::Parser;
     // A property holding a lambda ends up in the object's export -> not serializable
     let src = "domain \"d\"\n  hook: (x) -> x end\nend";
     let toks = Lexer::new(src, 0).tokenize().unwrap();

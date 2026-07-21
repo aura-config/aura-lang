@@ -4,8 +4,8 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use indexmap::IndexMap;
 use std::collections::HashMap;
 
-use aura_core::eval::value::Value;
-use aura_core::eval::{EnvCap, Interpreter, MemFs, Options};
+use aura_lang::eval::value::Value;
+use aura_lang::eval::{EnvCap, Interpreter, MemFs, Options};
 
 const MANIFEST: &str = include_str!("../tests/fixtures/production_deploy.aura");
 
@@ -30,10 +30,10 @@ fn interp<'a>() -> Interpreter<'a> {
 fn bench_eval(c: &mut Criterion) {
     c.bench_function("eval/full_pipeline_manifest", |b| {
         b.iter(|| {
-            let toks = aura_core::lexer::Lexer::new(black_box(MANIFEST), 0)
+            let toks = aura_lang::lexer::Lexer::new(black_box(MANIFEST), 0)
                 .tokenize()
                 .unwrap();
-            let module = aura_core::parser::Parser::new(toks).parse_module().unwrap();
+            let module = aura_lang::parser::Parser::new(toks).parse_module().unwrap();
             black_box(interp().eval_module(&module).unwrap());
         })
     });

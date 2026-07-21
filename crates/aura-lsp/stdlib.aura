@@ -1,6 +1,6 @@
 # Aura stdlib surface — the single source of truth for editor completion/hover.
 #
-# The language server EVALUATES this file with aura-core at startup (dogfooding:
+# The language server EVALUATES this file with aura-lang at startup (dogfooding:
 # Aura configuring its own tooling) to build its completion database. A test
 # checks these method names against the real method registry so the two cannot
 # drift. Grouped by receiver type; `builtins` are global functions.

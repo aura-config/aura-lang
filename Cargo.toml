@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/aura-core", "crates/aura-cli", "crates/aura-lsp"]
+members = ["crates/aura-lang", "crates/aura-lsp"]
 exclude = ["examples", "fuzz"]
 resolver = "2"
 

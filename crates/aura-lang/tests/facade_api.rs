@@ -2,8 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
-use aura_core::error::Severity;
-use aura_core::facade::{eval_file, EvalOptions};
+use aura_lang::error::Severity;
+use aura_lang::facade::{eval_file, EvalOptions};
 
 fn examples() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
