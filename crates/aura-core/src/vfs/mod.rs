@@ -65,7 +65,7 @@ pub fn version_satisfies(request: &[u64], exact: &[u64]) -> bool {
 /// the `package.aura` raw file at the repo's `vX.Y.Z` tag.
 pub fn registry_url(path: &str, version: &str) -> Result<String, String> {
     let version = version.strip_prefix('v').unwrap_or(version);
-    if parse_version(version).map_or(true, |v| v.len() != 3) {
+    if parse_version(version).is_none_or(|v| v.len() != 3) {
         return Err(format!(
             "network install requires an exact version (vX.Y.Z), got 'v{version}'"
         ));
@@ -126,7 +126,7 @@ impl FileResolver for LocalFsResolver {
                         continue;
                     };
                     if version_satisfies(&request, &candidate)
-                        && best.as_ref().map_or(true, |b| candidate > *b)
+                        && best.as_ref().is_none_or(|b| candidate > *b)
                     {
                         best = Some(candidate);
                     }
