@@ -100,11 +100,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo install cargo-fuzz --locked
       - name: Smoke-run each target (60s)
-        # -detect_leaks=0: the interpreter has a known Arc-cycle leak (a module's
-        # env holds its functions, whose closure is that same env). Benign for the
-        # run-once CLI (freed at process exit); to be fixed with Weak closures
-        # before long-running/library use, then leak detection re-enabled here.
+        # LeakSanitizer stays on: the interpreter's env arena + Weak closures keep
+        # evaluation leak-free (see eval::env, D9). A regression here is a real leak.
         run: |
           for t in fuzz_lexer fuzz_parser fuzz_pipeline; do
-            cargo fuzz run "$t" -- -rss_limit_mb=1024 -timeout=10 -max_total_time=60 -detect_leaks=0
+            cargo fuzz run "$t" -- -rss_limit_mb=1024 -timeout=10 -max_total_time=60
           done

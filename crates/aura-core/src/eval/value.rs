@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use std::fmt;
 use std::sync::Arc;
 
-use super::env::Env;
+use super::env::WeakEnv;
 use crate::parser::ast::{LambdaBody, ObjectBody, SchemaField};
 
 #[derive(Debug, Clone)]
@@ -31,8 +31,9 @@ pub struct SchemaDef<'a> {
 pub struct FunctionDef<'a> {
     pub params: Vec<&'a str>,
     pub body: FuncBody<'a>,
-    /// Lexical closure (SPEC §4.2).
-    pub closure: Env<'a>,
+    /// Lexical closure (SPEC §4.2). A `WeakEnv` to avoid the env<->function
+    /// Arc cycle; the interpreter's env arena keeps the target env alive.
+    pub closure: WeakEnv<'a>,
     /// D1xD12: the function runs with the capabilities of its origin module,
     /// not the caller's - an exported package function does not gain the root's rights.
     pub defined_in_root: bool,

@@ -3,18 +3,25 @@
 //! D9 implementation: instead of a full chain of frozen prefixes, a frame uses
 //! internal mutability (RefCell) while a block is being built. Values remain
 //! immutable, redefinition within one frame is forbidden (E0301 in the interpreter),
-//! and references only point upward - Arc cycles are impossible. The observable
+//! and data references only point upward. A function's closure would close a
+//! cycle back onto its defining env, so closures hold a `WeakEnv`; the
+//! interpreter's env arena keeps every env alive for the eval instead. The observable
 //! difference from strict freezing: a closure sees bindings from its own block
 //! declared AFTER it, but it cannot be called before they are declared in the deterministic top-down execution order.
 
 use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use super::value::Value;
 
 pub type Env<'a> = Arc<Environment<'a>>;
+
+/// A non-owning reference to an environment. Used by function closures so that
+/// the env->function->closure->env cycle does not leak: the interpreter's env
+/// arena keeps every environment alive for the eval's duration instead (D9).
+pub type WeakEnv<'a> = Weak<Environment<'a>>;
 
 pub struct Environment<'a> {
     vars: RefCell<IndexMap<String, Value<'a>>>,

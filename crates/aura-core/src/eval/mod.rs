@@ -114,6 +114,10 @@ pub struct Interpreter<'a> {
     /// Evaluated modules by alias; populated by the VFS loader (or by tests directly).
     modules: HashMap<String, Value<'a>>,
     call_depth: u32,
+    /// Strong owner of every environment created during evaluation. Closures hold
+    /// only a `WeakEnv`, so this arena is what keeps envs alive; it also breaks the
+    /// env<->function Arc cycle (freed with the interpreter, a DAG that drops cleanly).
+    env_arena: Vec<Env<'a>>,
 }
 
 fn rt(code: &'static str, msg: impl Into<String>, span: Span) -> Diagnostic {
@@ -132,7 +136,14 @@ impl<'a> Interpreter<'a> {
             current_root: true,
             modules: HashMap::new(),
             call_depth: 0,
+            env_arena: Vec::new(),
         }
+    }
+
+    /// Register a freshly created env in the arena (its strong owner) and return it.
+    fn track(&mut self, env: Env<'a>) -> Env<'a> {
+        self.env_arena.push(env.clone());
+        env
     }
 
     pub fn provide_module(&mut self, alias: impl Into<String>, value: Value<'a>) {
@@ -141,7 +152,7 @@ impl<'a> Interpreter<'a> {
 
     /// A module evaluates to an Object of its exported properties and domain blocks.
     pub fn eval_module(&mut self, module: &Module<'a>) -> Result<Value<'a>, Diagnostic> {
-        let env = Environment::root();
+        let env = self.track(Environment::root());
         for imp in &module.imports {
             let v = self.modules.get(imp.alias).cloned().ok_or_else(|| {
                 rt(
@@ -205,7 +216,7 @@ impl<'a> Interpreter<'a> {
                 let v = Value::Function(Arc::new(FunctionDef {
                     params: params.clone(),
                     body: FuncBody::Object(body.clone()),
-                    closure: env.clone(),
+                    closure: Arc::downgrade(env),
                     defined_in_root: self.current_root,
                 }));
                 self.define(env, name, v.clone(), false, *span)?;
@@ -294,7 +305,7 @@ impl<'a> Interpreter<'a> {
         block: &BlockDeclaration<'a>,
         label: &Value<'a>,
     ) -> Result<Value<'a>, Diagnostic> {
-        let env = Environment::child(outer);
+        let env = self.track(Environment::child(outer));
         let mut exports: IndexMap<String, Value<'a>> = IndexMap::new();
         if block.kind == BlockKind::Component {
             exports.insert("name".to_string(), label.clone());
@@ -478,7 +489,7 @@ impl<'a> Interpreter<'a> {
             Expr::Lambda { params, body, .. } => Ok(Value::Function(Arc::new(FunctionDef {
                 params: params.clone(),
                 body: FuncBody::Lambda(body.clone()),
-                closure: env.clone(),
+                closure: Arc::downgrade(env),
                 defined_in_root: self.current_root,
             }))),
             Expr::SchemaInstance {
@@ -732,7 +743,13 @@ impl<'a> Interpreter<'a> {
             self.call_depth -= 1;
             return Err(rt("E0399", "maximum call depth (256) exceeded", span));
         }
-        let env = Environment::child(&def.closure);
+        // The closure's env is kept alive by the interpreter's arena for the whole
+        // eval, so this upgrade always succeeds while a call is in flight.
+        let closure = def.closure.upgrade().ok_or_else(|| {
+            self.call_depth -= 1;
+            rt("E0398", "internal: closure environment was dropped", span)
+        })?;
+        let env = self.track(Environment::child(&closure));
         for (p, a) in def.params.iter().zip(args) {
             env.insert(p, a.clone());
         }
@@ -1041,6 +1058,35 @@ mod tests {
         let src_ok = "x = 1\ndomain \"d\"\n  shadow x = 2\n  y: x\nend";
         let v = eval(src_ok).unwrap();
         assert_eq!(get(&get(&v, "d"), "y"), Value::Int(2));
+    }
+
+    #[test]
+    fn function_envs_are_freed_no_arc_cycle() {
+        // Regression (found by fuzzing under LeakSanitizer): a module's env holds
+        // its functions, whose closure is that same env. With a strong-Arc closure
+        // this formed a cycle that leaked every function-bearing env. Closures now
+        // hold a WeakEnv and the interpreter's arena owns the envs, so dropping the
+        // interpreter must free them (strong_count -> 0).
+        let src =
+            "def greet(who)\n  msg: who\nend\ng = (x) -> x + 1 end\nx: greet(\"hi\").msg\ny: g(2)";
+        let toks = Lexer::new(src, 0).tokenize().unwrap();
+        let module = Parser::new(toks).parse_module().unwrap();
+        let mut interp = Interpreter::new(Options::default());
+        let v = interp.eval_module(&module).unwrap();
+        assert_eq!(get(&v, "x"), Value::Str("hi".into()));
+        assert_eq!(get(&v, "y"), Value::Int(3));
+        // Every created env lives in the arena; nothing else should keep them alive.
+        let weaks: Vec<_> = interp.env_arena.iter().map(Arc::downgrade).collect();
+        assert!(!weaks.is_empty(), "no envs were tracked");
+        drop(v);
+        drop(interp);
+        for w in &weaks {
+            assert_eq!(
+                w.strong_count(),
+                0,
+                "an env survived interpreter drop -> Arc cycle leak is back"
+            );
+        }
     }
 
     #[test]
