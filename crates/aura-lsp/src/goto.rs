@@ -57,6 +57,45 @@ pub fn definition_range(text: &str, line: u32, character: u32) -> Option<Range> 
     })
 }
 
+/// If the cursor is on a file import — its path string, its alias, or any use
+/// of that alias (`lib.Endpoint`) — return the imported file's relative path so
+/// the caller can open it. Registry imports (`org/pkg@v1`) are not resolved.
+pub fn import_target_path(text: &str, line: u32, character: u32) -> Option<String> {
+    let toks = Lexer::new(text, 0).tokenize().ok()?;
+    let index = LineIndex::new(text);
+    let offset = index.offset(text, line, character) as u32;
+
+    // File imports: (alias, path, path token index, alias token index).
+    let mut imports: Vec<(&str, &str, usize, usize)> = Vec::new();
+    for i in 0..toks.len() {
+        if !matches!(toks[i].kind, TokenKind::Import) {
+            continue;
+        }
+        if let (Some(TokenKind::Str(path)), Some(t2), Some(t3)) = (
+            toks.get(i + 1).map(|t| &t.kind),
+            toks.get(i + 2),
+            toks.get(i + 3),
+        ) {
+            if matches!(t2.kind, TokenKind::As) {
+                if let TokenKind::Ident(alias) = t3.kind {
+                    imports.push((alias, path, i + 1, i + 3));
+                }
+            }
+        }
+    }
+    let covers = |idx: usize| toks[idx].span.start <= offset && offset <= toks[idx].span.end;
+    // On the import's own path or alias token.
+    if let Some((_, path, ..)) = imports.iter().find(|(_, _, p, a)| covers(*p) || covers(*a)) {
+        return Some(path.to_string());
+    }
+    // On a use of an import alias elsewhere (`lib.Endpoint`).
+    let name = ident_at(&toks, offset)?;
+    imports
+        .iter()
+        .find(|(alias, ..)| *alias == name)
+        .map(|(_, path, ..)| path.to_string())
+}
+
 /// Every occurrence (declaration + uses) of the identifier under the cursor.
 /// No scoping yet: same-named symbols in other scopes are included.
 pub fn reference_ranges(text: &str, line: u32, character: u32) -> Vec<Range> {
@@ -178,6 +217,15 @@ mod tests {
     fn method_name_has_no_definition() {
         // `.map` is a stdlib method, not a local declaration
         assert_eq!(def_line("y: xs.map\n", 0, 7), None);
+    }
+
+    #[test]
+    fn import_target_resolves_path_alias_and_uses() {
+        let src = "import \"lib.aura\" as lib\nx: lib.foo\n";
+        assert_eq!(import_target_path(src, 0, 10).as_deref(), Some("lib.aura")); // on path
+        assert_eq!(import_target_path(src, 0, 21).as_deref(), Some("lib.aura")); // on alias
+        assert_eq!(import_target_path(src, 1, 3).as_deref(), Some("lib.aura")); // on a use
+        assert_eq!(import_target_path("x = 1\n", 0, 0), None);
     }
 
     #[test]

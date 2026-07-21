@@ -105,21 +105,26 @@ fn main_loop(
                         let p: GotoDefinitionParams = serde_json::from_value(req.params)?;
                         let pos = p.text_document_position_params;
                         let uri = pos.text_document.uri;
-                        let result = docs
-                            .get(&uri.to_string())
-                            .and_then(|text| {
-                                goto::definition_range(
-                                    text,
-                                    pos.position.line,
-                                    pos.position.character,
-                                )
-                            })
-                            .map(|range| {
+                        let (line, ch) = (pos.position.line, pos.position.character);
+                        let result = docs.get(&uri.to_string()).and_then(|text| {
+                            // Cross-file: an import (path, alias, or a use of the
+                            // alias) opens the imported module file.
+                            if let Some(rel) = goto::import_target_path(text, line, ch) {
+                                if let Some(target) = sibling_uri(&uri.to_string(), &rel) {
+                                    return Some(GotoDefinitionResponse::Scalar(Location {
+                                        uri: target,
+                                        range: Range::default(),
+                                    }));
+                                }
+                            }
+                            // Same-file definition.
+                            goto::definition_range(text, line, ch).map(|range| {
                                 GotoDefinitionResponse::Scalar(Location {
                                     uri: uri.clone(),
                                     range,
                                 })
-                            });
+                            })
+                        });
                         respond(connection, req.id, serde_json::to_value(result)?)?;
                     }
                     References::METHOD => {
@@ -211,6 +216,14 @@ fn main_loop(
         }
     }
     Ok(())
+}
+
+/// The URI of a file sibling to `doc_uri`, by replacing its last path segment
+/// with a relative import path. String-only, so it works on every platform
+/// without file-URI/path conversion.
+fn sibling_uri(doc_uri: &str, rel: &str) -> Option<lsp_types::Uri> {
+    let (base, _) = doc_uri.rsplit_once('/')?;
+    format!("{base}/{rel}").parse().ok()
 }
 
 fn respond(
