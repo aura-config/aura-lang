@@ -96,6 +96,68 @@ pub fn import_target_path(text: &str, line: u32, character: u32) -> Option<Strin
         .map(|(_, path, ..)| path.to_string())
 }
 
+/// The import path bound to `alias`, if any (file imports only).
+fn import_path_for<'a>(toks: &[aura_core::lexer::Token<'a>], alias: &str) -> Option<&'a str> {
+    for i in 0..toks.len() {
+        if matches!(toks[i].kind, TokenKind::Import) {
+            if let (Some(TokenKind::Str(path)), Some(a)) = (
+                toks.get(i + 1).map(|t| &t.kind),
+                toks.get(i + 3).map(|t| &t.kind),
+            ) {
+                if matches!(a, TokenKind::Ident(n) if *n == alias) {
+                    return Some(path);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// If the cursor is on `alias.Member` where `alias` is a file import, return the
+/// module's relative path and the member name, so the caller can open the module
+/// and jump to that declaration.
+pub fn imported_member(text: &str, line: u32, character: u32) -> Option<(String, String)> {
+    let toks = Lexer::new(text, 0).tokenize().ok()?;
+    let index = LineIndex::new(text);
+    let offset = index.offset(text, line, character) as u32;
+    let cur = toks.iter().position(|t| {
+        matches!(t.kind, TokenKind::Ident(_)) && t.span.start <= offset && offset <= t.span.end
+    })?;
+    let TokenKind::Ident(member) = toks[cur].kind else {
+        return None;
+    };
+    // Preceded by `.`, and before the `.` an import alias.
+    if cur < 2 || !matches!(toks[cur - 1].kind, TokenKind::Dot) {
+        return None;
+    }
+    let TokenKind::Ident(alias) = toks[cur - 2].kind else {
+        return None;
+    };
+    let path = import_path_for(&toks, alias)?;
+    Some((path.to_string(), member.to_string()))
+}
+
+/// The range of a `def`/`type` declaration named `name` in a module's text
+/// (used to jump into an imported file).
+pub fn declaration_range_in(text: &str, name: &str) -> Option<Range> {
+    let toks = Lexer::new(text, 0).tokenize().ok()?;
+    let index = LineIndex::new(text);
+    for (i, t) in toks.iter().enumerate() {
+        if matches!(t.kind, TokenKind::Ident(n) if n == name)
+            && matches!(
+                i.checked_sub(1).map(|p| &toks[p].kind),
+                Some(TokenKind::Def | TokenKind::Type)
+            )
+        {
+            return Some(Range {
+                start: index.position(text, t.span.start as usize),
+                end: index.position(text, t.span.end as usize),
+            });
+        }
+    }
+    None
+}
+
 /// Every occurrence (declaration + uses) of the identifier under the cursor.
 /// No scoping yet: same-named symbols in other scopes are included.
 pub fn reference_ranges(text: &str, line: u32, character: u32) -> Vec<Range> {
@@ -226,6 +288,18 @@ mod tests {
         assert_eq!(import_target_path(src, 0, 21).as_deref(), Some("lib.aura")); // on alias
         assert_eq!(import_target_path(src, 1, 3).as_deref(), Some("lib.aura")); // on a use
         assert_eq!(import_target_path("x = 1\n", 0, 0), None);
+    }
+
+    #[test]
+    fn imported_member_and_module_declaration() {
+        let src = "import \"lib.aura\" as lib\nx: new lib.Endpoint\n";
+        let (path, member) = imported_member(src, 1, 12).unwrap();
+        assert_eq!((path.as_str(), member.as_str()), ("lib.aura", "Endpoint"));
+        // and locating that declaration inside a module's text
+        let m = "pub type Endpoint\n  host: String\nend\npub def make()\n  x: 1\nend\n";
+        assert_eq!(declaration_range_in(m, "Endpoint").unwrap().start.line, 0);
+        assert_eq!(declaration_range_in(m, "make").unwrap().start.line, 3);
+        assert!(declaration_range_in(m, "nope").is_none());
     }
 
     #[test]

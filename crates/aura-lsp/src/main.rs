@@ -107,6 +107,21 @@ fn main_loop(
                         let uri = pos.text_document.uri;
                         let (line, ch) = (pos.position.line, pos.position.character);
                         let result = docs.get(&uri.to_string()).and_then(|text| {
+                            // Cross-file: `alias.Member` jumps to the member's
+                            // `def`/`type` declaration inside the module file.
+                            if let Some((rel, member)) = goto::imported_member(text, line, ch) {
+                                if let Some(target) = sibling_uri(&uri.to_string(), &rel) {
+                                    let range = uri_to_fs_path(&target.to_string())
+                                        .and_then(|p| std::fs::read_to_string(p).ok())
+                                        .and_then(|m| goto::declaration_range_in(&m, &member));
+                                    if let Some(range) = range {
+                                        return Some(GotoDefinitionResponse::Scalar(Location {
+                                            uri: target,
+                                            range,
+                                        }));
+                                    }
+                                }
+                            }
                             // Cross-file: an import (path, alias, or a use of the
                             // alias) opens the imported module file.
                             if let Some(rel) = goto::import_target_path(text, line, ch) {
@@ -224,6 +239,33 @@ fn main_loop(
 fn sibling_uri(doc_uri: &str, rel: &str) -> Option<lsp_types::Uri> {
     let (base, _) = doc_uri.rsplit_once('/')?;
     format!("{base}/{rel}").parse().ok()
+}
+
+/// Filesystem path for a `file://` URI (to read an imported module). Percent-
+/// decodes and, on Windows, drops the leading slash before a drive letter.
+fn uri_to_fs_path(uri: &str) -> Option<std::path::PathBuf> {
+    let rest = uri.strip_prefix("file://")?;
+    let mut decoded = String::with_capacity(rest.len());
+    let mut bytes = rest.bytes();
+    while let Some(b) = bytes.next() {
+        if b == b'%' {
+            let hi = bytes.next()?;
+            let lo = bytes.next()?;
+            let byte = u8::from_str_radix(&format!("{}{}", hi as char, lo as char), 16).ok()?;
+            decoded.push(byte as char);
+        } else {
+            decoded.push(b as char);
+        }
+    }
+    // "/C:/…" -> "C:/…" on Windows.
+    if cfg!(windows) {
+        if let Some(stripped) = decoded.strip_prefix('/') {
+            if stripped.as_bytes().get(1) == Some(&b':') {
+                decoded = stripped.to_string();
+            }
+        }
+    }
+    Some(std::path::PathBuf::from(decoded))
 }
 
 fn respond(
