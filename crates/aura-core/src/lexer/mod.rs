@@ -319,7 +319,14 @@ impl<'a> Lexer<'a> {
                 // A real '\n' from the source (the byte right before this line).
                 parts.push(StrPart::Lit(&self.src[ls - 1..ls]));
             }
-            let start = (ls + common).min(le);
+            // Strip at most this line's own leading spaces/tabs: `common` is a byte
+            // count, and a line that is Unicode-blank (e.g. a lone NBSP) but has no
+            // ASCII indentation must not have `common` slice into a multi-byte char.
+            let line_ws = self.src[ls..le]
+                .bytes()
+                .take_while(|b| matches!(b, b' ' | b'\t'))
+                .count();
+            let start = ls + common.min(line_ws);
             self.segment_parts(start, le, &mut parts);
         }
         match parts.as_slice() {
@@ -759,5 +766,14 @@ mod tests {
     #[test]
     fn block_string_unterminated_is_e0107() {
         assert_eq!(err("s: text\n  oops\n"), "E0107");
+    }
+
+    #[test]
+    fn block_string_unicode_blank_line_does_not_panic() {
+        // Fuzz regression: a Unicode-only-whitespace line (NBSP) counts as blank
+        // for `common`, but indent stripping is byte-based and must not slice into
+        // the multi-byte char. Previously panicked on a non-char-boundary slice.
+        let src = "a: text\n\u{a0}\n \\\nend\n";
+        assert!(Lexer::new(src, 0).tokenize().is_ok());
     }
 }
