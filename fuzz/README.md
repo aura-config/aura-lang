@@ -4,7 +4,7 @@ Coverage-guided fuzzing of the parser/interpreter with
 [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz) (libFuzzer). This is a
 standalone crate (its own `[workspace]`) kept out of the stable workspace,
 because `cargo-fuzz` requires **nightly Rust** and libFuzzer (Linux/macOS;
-Windows/MSVC is not supported).
+Windows/MSVC is not supported). On Windows, run it from **WSL** (see below).
 
 ## Targets
 
@@ -31,5 +31,21 @@ cargo +nightly fuzz run fuzz_pipeline -- -rss_limit_mb=1024 -timeout=10
 
 A crash writes the offending input to `fuzz/artifacts/<target>/`; reproduce with
 `cargo +nightly fuzz run <target> fuzz/artifacts/<target>/<file>`.
+
+## On Windows: fuzz from WSL
+
+libFuzzer needs a Unix toolchain, so on Windows run the fuzzer inside WSL against
+the repo on `/mnt/c` (needs `cc`/`gcc`, present on Ubuntu by default):
+
+```sh
+rustup toolchain install nightly --component rust-src
+cargo install cargo-fuzz --locked
+cd /mnt/c/…/aura-lang
+cargo +nightly fuzz run fuzz_pipeline -- -max_total_time=90 -rss_limit_mb=2048
+```
+
+This is the fastest local reproducer: two char-boundary panics (a block-string
+NBSP indent strip and `parse_datetime`'s byte-indexed `split_at`) were confirmed
+and fixed this way before relying on the non-blocking CI fuzz job.
 
 CI runs each target for a bounded time on Linux nightly (a non-blocking job).
