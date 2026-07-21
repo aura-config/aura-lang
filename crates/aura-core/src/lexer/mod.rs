@@ -41,7 +41,22 @@ impl<'a> Lexer<'a> {
                     if self.expect_import_path {
                         self.lex_import_path()?
                     } else {
-                        self.lex_ident_or_keyword()
+                        let k = self.lex_ident_or_keyword();
+                        // D16 block strings: `key: text` / `x = text` immediately followed
+                        // by a newline opens a multi-line string captured verbatim until a
+                        // lone `end` at the opener line's indentation. Contextual so that a
+                        // property/field literally named `text` keeps working.
+                        if matches!(k, TokenKind::Ident("text"))
+                            && matches!(
+                                raw.last().map(|t| &t.kind),
+                                Some(TokenKind::Colon | TokenKind::Assign)
+                            )
+                            && self.block_string_follows()
+                        {
+                            self.lex_block_string(start)?
+                        } else {
+                            k
+                        }
                     }
                 }
                 _ => self.lex_operator()?,
@@ -217,6 +232,139 @@ impl<'a> Lexer<'a> {
                 }
                 _ => self.bump(),
             }
+        }
+    }
+
+    /// Lookahead for a D16 block-string opener: after `text`, only spaces/tabs
+    /// then a newline may follow. Does not consume.
+    fn block_string_follows(&self) -> bool {
+        let mut i = self.pos;
+        while matches!(self.src.as_bytes().get(i), Some(b' ' | b'\t')) {
+            i += 1;
+        }
+        matches!(self.src.as_bytes().get(i), Some(b'\n'))
+    }
+
+    /// D16: capture a `text … end` block. `text_start` is the offset of `text`.
+    /// The closing `end` sits at the opener line's indentation; deeper `end`s are
+    /// text. Common leading indentation is stripped. Interpolation `#{…}` and `\`
+    /// escapes work exactly as in quoted strings (applied lazily during eval).
+    fn lex_block_string(&mut self, text_start: usize) -> Result<TokenKind<'a>, Diagnostic> {
+        let bytes = self.src.as_bytes();
+        // Indentation of the opener line = leading whitespace before its first token.
+        let line_start = self.src[..text_start].rfind('\n').map_or(0, |i| i + 1);
+        let key_indent = self.src[line_start..text_start]
+            .bytes()
+            .take_while(|b| matches!(b, b' ' | b'\t'))
+            .count();
+        // Consume the rest of the opener line up to and including the newline.
+        while matches!(self.peek(), Some(b' ' | b'\t')) {
+            self.pos += 1;
+        }
+        self.pos += 1; // the '\n' guaranteed by block_string_follows
+
+        // Collect content line ranges; stop at the terminator `end`.
+        let mut lines: Vec<(usize, usize)> = Vec::new(); // (content-start, content-end) sans \r
+        loop {
+            let ls = self.pos;
+            let mut le = ls;
+            while !matches!(bytes.get(le), None | Some(b'\n')) {
+                le += 1;
+            }
+            let indent = self.src[ls..le]
+                .bytes()
+                .take_while(|b| matches!(b, b' ' | b'\t'))
+                .count();
+            let content_end = if le > ls && bytes[le - 1] == b'\r' {
+                le - 1
+            } else {
+                le
+            };
+            let trimmed = &self.src[ls + indent..content_end];
+            if indent <= key_indent && trimmed == "end" {
+                // Terminator: leave self.pos at its newline so the main loop emits it.
+                self.pos = le;
+                return Ok(self.build_block_string(&lines));
+            }
+            if bytes.get(le).is_none() {
+                return Err(Diagnostic::error(
+                    "E0107",
+                    "unterminated block string",
+                    Span::new(self.source, text_start, le),
+                    "missing closing `end` at the opener's indentation",
+                ));
+            }
+            lines.push((ls, content_end));
+            self.pos = le + 1;
+        }
+    }
+
+    /// Assemble the captured content lines into a string token: strip the common
+    /// leading indentation, join by newline, split each line on `#{…}`.
+    fn build_block_string(&self, lines: &[(usize, usize)]) -> TokenKind<'a> {
+        let common = lines
+            .iter()
+            .filter(|(s, e)| !self.src[*s..*e].trim().is_empty())
+            .map(|(s, e)| {
+                self.src[*s..*e]
+                    .bytes()
+                    .take_while(|b| matches!(b, b' ' | b'\t'))
+                    .count()
+            })
+            .min()
+            .unwrap_or(0);
+        let mut parts: Vec<StrPart<'a>> = Vec::new();
+        for (idx, &(ls, le)) in lines.iter().enumerate() {
+            if idx > 0 {
+                // A real '\n' from the source (the byte right before this line).
+                parts.push(StrPart::Lit(&self.src[ls - 1..ls]));
+            }
+            let start = (ls + common).min(le);
+            self.segment_parts(start, le, &mut parts);
+        }
+        match parts.as_slice() {
+            [] => TokenKind::Str(&self.src[self.pos..self.pos]), // empty block -> ""
+            [StrPart::Lit(s)] => TokenKind::Str(s),
+            _ => TokenKind::InterpStr(parts),
+        }
+    }
+
+    /// Split `[start,end)` into `Lit`/`Interp` parts, mirroring quoted-string rules:
+    /// `\x` escapes are left raw (unescaped by eval); `#{…}` becomes an `Interp` part.
+    fn segment_parts(&self, start: usize, end: usize, parts: &mut Vec<StrPart<'a>>) {
+        let bytes = self.src.as_bytes();
+        let mut i = start;
+        let mut lit_start = start;
+        while i < end {
+            match bytes[i] {
+                b'\\' => i += 2, // skip the escape pair; eval unescapes later
+                b'#' if bytes.get(i + 1) == Some(&b'{') => {
+                    if lit_start < i {
+                        parts.push(StrPart::Lit(&self.src[lit_start..i]));
+                    }
+                    let expr_start = i + 2;
+                    let mut depth = 1u32;
+                    let mut j = expr_start;
+                    while j < end && depth > 0 {
+                        match bytes[j] {
+                            b'{' => depth += 1,
+                            b'}' => depth -= 1,
+                            _ => {}
+                        }
+                        if depth == 0 {
+                            break;
+                        }
+                        j += 1;
+                    }
+                    parts.push(StrPart::Interp(&self.src[expr_start..j]));
+                    i = j + 1; // past the closing '}'
+                    lit_start = i;
+                }
+                _ => i += 1,
+            }
+        }
+        if lit_start < end {
+            parts.push(StrPart::Lit(&self.src[lit_start..end]));
         }
     }
 
@@ -560,5 +708,56 @@ mod tests {
     #[test]
     fn keywords_v12() {
         assert_eq!(kinds("new assert shadow"), vec![New, Assert, Shadow, Eof]);
+    }
+
+    #[test]
+    fn block_string_d16_basic() {
+        // Common indent stripped; joined by '\n'; single Str when no interpolation.
+        assert_eq!(
+            kinds("s: text\n  a\n  b\nend"),
+            vec![
+                Ident("s"),
+                Colon,
+                InterpStr(vec![
+                    StrPart::Lit("a"),
+                    StrPart::Lit("\n"),
+                    StrPart::Lit("b"),
+                ]),
+                Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn block_string_d16_interpolation_and_inner_end() {
+        // `#{}` works; a deeper `end` is content, not the terminator.
+        assert_eq!(
+            kinds("x = text\n    echo #{v}\n    if y; end\nend"),
+            vec![
+                Ident("x"),
+                Assign,
+                InterpStr(vec![
+                    StrPart::Lit("echo "),
+                    StrPart::Interp("v"),
+                    StrPart::Lit("\n"),
+                    StrPart::Lit("if y; end"),
+                ]),
+                Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn text_as_property_key_is_not_a_block() {
+        // `text` left of `:` is an ordinary key, not a block opener.
+        assert_eq!(
+            kinds("text: \"hi\""),
+            vec![Ident("text"), Colon, Str("hi"), Eof]
+        );
+    }
+
+    #[test]
+    fn block_string_unterminated_is_e0107() {
+        assert_eq!(err("s: text\n  oops\n"), "E0107");
     }
 }

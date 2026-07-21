@@ -52,6 +52,21 @@ pub fn format_source(src: &str) -> Result<String, Diagnostic> {
         }
     }
 
+    // D16 block strings are single string tokens spanning several physical lines.
+    // Their content (and closing `end`) is captured verbatim by the lexer, so the
+    // formatter must emit those lines untouched — reindenting them would change the
+    // string value. Only the opener line (`key: text`) is formatted normally.
+    let mut verbatim_line = vec![false; line_starts.len()];
+    for t in &tokens {
+        if matches!(t.kind, TokenKind::Str(_) | TokenKind::InterpStr(_)) {
+            let start = line_of(t.span.start);
+            let end = line_of(t.span.end.saturating_sub(1));
+            for ln in verbatim_line.iter_mut().take(end + 1).skip(start + 1) {
+                *ln = true;
+            }
+        }
+    }
+
     let mut infos = vec![LineInfo::default(); line_starts.len()];
     for t in &tokens {
         let line = line_of(t.span.start);
@@ -104,6 +119,18 @@ pub fn format_source(src: &str) -> Result<String, Diagnostic> {
     let mut wrote_any = false;
     let mut prev_continues = false;
     for (idx, line) in src.lines().enumerate() {
+        // Verbatim block-string interior: emit exactly as written, no reindent.
+        if verbatim_line[idx] {
+            if pending_blank {
+                out.push('\n');
+                pending_blank = false;
+            }
+            out.push_str(line);
+            out.push('\n');
+            wrote_any = true;
+            prev_continues = false;
+            continue;
+        }
         let text = line.trim();
         if text.is_empty() {
             // at most one blank line, and never at the start of the file
@@ -189,6 +216,19 @@ mod tests {
             "xs = [\n\"a\"\n\"b\"\n]\napps: xs.map (n, i) ->\ncomponent n\nimage: n\nend\nend\n";
         let want = "xs = [\n  \"a\"\n  \"b\"\n]\napps: xs.map (n, i) ->\n  component n\n    image: n\n  end\nend\n";
         assert_eq!(format_source(messy).unwrap(), want);
+    }
+
+    #[test]
+    fn block_string_interior_is_preserved() {
+        // The opener line is reindented; the verbatim content and `end` are untouched.
+        let messy =
+            "domain \"d\"\n      script: text\n    #!/bin/sh\n    echo hi\n  end\nx: 1\nend\n";
+        let want = "domain \"d\"\n  script: text\n    #!/bin/sh\n    echo hi\n  end\n  x: 1\nend\n";
+        assert_eq!(format_source(messy).unwrap(), want);
+        // Idempotent and token-stream preserving.
+        let once = format_source(messy).unwrap();
+        assert_eq!(format_source(&once).unwrap(), once);
+        assert_eq!(kinds(messy), kinds(&once));
     }
 
     #[test]

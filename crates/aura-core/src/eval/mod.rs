@@ -1090,6 +1090,24 @@ mod tests {
     }
 
     #[test]
+    fn block_string_d16_evaluates() {
+        // Multi-line value with interpolation; common indent stripped, joined by '\n'.
+        let src = "app = \"web\"\nscript: text\n  #!/bin/sh\n  echo \"#{app}\"\nend";
+        let v = eval(src).unwrap();
+        assert_eq!(
+            get(&v, "script"),
+            Value::Str("#!/bin/sh\necho \"web\"".into())
+        );
+    }
+
+    #[test]
+    fn block_string_d16_escaped_interpolation() {
+        // `\#{` is a literal `#{`, exactly as in quoted strings.
+        let v = eval("s: text\n  price is \\#{5}\nend").unwrap();
+        assert_eq!(get(&v, "s"), Value::Str("price is #{5}".into()));
+    }
+
+    #[test]
     fn capability_denied_by_default_d1() {
         assert_eq!(
             eval("x = read_file(\"/etc/passwd\")").unwrap_err().code,

@@ -211,6 +211,26 @@ end
 The left of each `->` must be `Bool`; the right is any expression. No pattern
 destructuring - deliberately simpler than a `match`.
 
+### Multi-line values with `text … end`
+
+A `text … end` block is an ordinary string, just multi-line - so any property
+takes either a `"one-liner"` or a block. Interpolation `#{}` and escapes work as
+usual; the common indentation is stripped and lines join with `\n`:
+
+```ruby
+domain "worker"
+  entrypoint: text
+    #!/bin/sh
+    echo "starting #{app_name}"
+    exec ./server --port #{port}
+  end
+end
+```
+
+The closing `end` sits at the `entrypoint:` indentation; content is indented
+deeper, so an embedded `end` (a shell/Ruby block) is just text. For many or large
+scripts prefer `read_file(...)` over an inline block.
+
 ### Time - deterministic only
 
 `now()` does not exist in Aura and never will (D13) - an unreproducible config
@@ -411,7 +431,7 @@ Criterion benchmarks on the reference manifest (`cargo bench -p aura-core`):
 ## Development
 
 ```console
-cargo test    # 108 tests: units, conformance suite, property tests, golden snapshots
+cargo test    # 116 tests: units, conformance suite, property tests, golden snapshots
 cargo bench   # lexer, parser, full-pipeline benchmarks
 ```
 
