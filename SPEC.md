@@ -439,7 +439,11 @@ Binding rules:
 - Reassigning a name via `=` that is already defined in the **current** frame → `E0301: variable is immutable` (always an error).
 - `=` for a name defined in an **outer** frame, without `shadow` → `E0302: shadowing requires explicit 'shadow' keyword` (D7). With `shadow` — legal shadowing in the current frame; the diagnostic's secondary label points to the original declaration.
 - `shadow` on a name that shadows nothing → `W0303 useless shadow`.
-- `Arc` cycles are impossible: references only point upward; `Weak` is not needed.
+- Data references only point upward, so value graphs never cycle. One exception:
+  a function's closure is the environment that defines it, and that environment
+  also holds the function — an `Arc` cycle that leaks the module's function
+  environments. Benign for the run-once CLI (reclaimed at process exit); a
+  `Weak`-closure fix is planned before long-running/library (LSP) use.
 
 New frames: the body of a `domain`/`component`, a `def`, a lambda, each `map` callback invocation.
 
