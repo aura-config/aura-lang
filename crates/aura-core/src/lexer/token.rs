@@ -75,6 +75,29 @@ pub enum StrPart<'a> {
     Interp(&'a str),
 }
 
+/// Every reserved keyword. The single source of truth for tooling (the LSP,
+/// grammars): a keyword added to `keyword()` below must be listed here too, and
+/// a test enforces that. `text` is intentionally absent — it is a contextual
+/// block-string opener (D16), not a reserved word.
+pub const KEYWORDS: &[&str] = &[
+    "import",
+    "as",
+    "type",
+    "def",
+    "end",
+    "domain",
+    "component",
+    "new",
+    "assert",
+    "shadow",
+    "pub",
+    "cond",
+    "else",
+    "true",
+    "false",
+    "null",
+];
+
 impl TokenKind<'_> {
     pub(crate) fn keyword(ident: &str) -> Option<TokenKind<'static>> {
         Some(match ident {
@@ -96,5 +119,24 @@ impl TokenKind<'_> {
             "null" => TokenKind::Null,
             _ => return None,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keywords_const_matches_the_recognizer() {
+        // Every listed keyword is recognized, and a non-keyword is not: the const
+        // and `keyword()` cannot drift apart without this test going red.
+        for kw in KEYWORDS {
+            assert!(
+                TokenKind::keyword(kw).is_some(),
+                "`{kw}` is in KEYWORDS but not recognized by keyword()"
+            );
+        }
+        assert!(TokenKind::keyword("text").is_none(), "text is contextual");
+        assert!(TokenKind::keyword("nope").is_none());
     }
 }

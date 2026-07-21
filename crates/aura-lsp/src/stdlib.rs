@@ -12,26 +12,15 @@ use aura_core::serialize::to_json;
 /// The manifest is embedded so the server is a single self-contained binary.
 const MANIFEST: &str = include_str!("../stdlib.aura");
 
-/// Aura keywords (contextual `text` included) offered as completions.
-pub const KEYWORDS: &[&str] = &[
-    "import",
-    "as",
-    "type",
-    "def",
-    "end",
-    "domain",
-    "component",
-    "new",
-    "assert",
-    "shadow",
-    "pub",
-    "cond",
-    "else",
-    "true",
-    "false",
-    "null",
-    "text",
-];
+/// Aura keywords offered as completions: the lexer's reserved words (single
+/// source of truth) plus the contextual block-string opener `text` (D16).
+pub fn keywords() -> Vec<&'static str> {
+    aura_core::lexer::token::KEYWORDS
+        .iter()
+        .copied()
+        .chain(std::iter::once("text"))
+        .collect()
+}
 
 /// One method or builtin: `receiver` is a type name (`String`, `List`, …) or
 /// `builtins` for a global function.
