@@ -207,7 +207,9 @@ pub fn format_source(src: &str) -> Result<String, Diagnostic> {
                     pending_blank = false;
                 }
                 match other {
-                    Line::Verbatim(s) => out.push_str(s),
+                    // Drop a trailing bare `\r`: `str::lines()` keeps it only at EOF,
+                    // and re-emitting `\r\n` would then collapse it (non-idempotent).
+                    Line::Verbatim(s) => out.push_str(s.strip_suffix('\r').unwrap_or(s)),
                     Line::Comment { level, text } => {
                         push_indent(&mut out, *level);
                         out.push_str(text);
@@ -463,6 +465,16 @@ mod tests {
         // returns the input unchanged rather than corrupt the token stream.
         let src = "x =text";
         assert_eq!(format_source(src).unwrap(), src);
+    }
+
+    #[test]
+    fn verbatim_line_with_trailing_cr_is_idempotent() {
+        // Fuzz regression: a block-string terminator line ending in a bare `\r`
+        // (no `\n`) is emitted verbatim; without stripping it, `\r\n` on the first
+        // pass collapses on the second -> non-idempotent.
+        let once = format_source("k: text\n  body\nend\r").unwrap();
+        assert!(!once.contains('\r'));
+        assert_eq!(format_source(&once).unwrap(), once);
     }
 
     #[test]
