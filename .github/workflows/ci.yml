@@ -41,7 +41,7 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check -p aura-lang --target ${{ matrix.target }}
+      - run: cargo check -p aura-lang --no-default-features --target ${{ matrix.target }}
 
   # Enforce the declared MSRV (Cargo.toml rust-version) for the published library,
   # so the promise cannot silently drift as new stdlib APIs are used.
@@ -53,7 +53,7 @@ jobs:
       # 1.85 is the real floor: the indexmap dependency requires it (edition 2024).
       - uses: dtolnay/rust-toolchain@1.85
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check -p aura-lang
+      - run: cargo check -p aura-lang --no-default-features
 
   lint:
     name: Lint
