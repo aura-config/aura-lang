@@ -212,6 +212,18 @@ fn security_demo_denies_import_io() {
     );
 }
 
+/// Full-language showcase: every core construct in one manifest end-to-end.
+#[test]
+fn showcase_all_constructs() {
+    check_ok(
+        "showcase",
+        "showcase.aura",
+        &["--allow-read=.", "--allow-env=APP_ENV"],
+        &[],
+        "expected.json",
+    );
+}
+
 #[test]
 fn reference_manifest() {
     check_ok(

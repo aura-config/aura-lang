@@ -6,8 +6,8 @@ Aura compiles readable manifests into JSON — with schemas, modules, static
 analysis, and a capability model for accessing the environment. No curly
 braces, no significant indentation, no surprises in production.
 
-![Rust 1.75+](https://img.shields.io/badge/rust-1.75%2B-orange)
-![Tests](https://img.shields.io/badge/tests-100%20passing-brightgreen)
+![Rust 1.85+](https://img.shields.io/badge/rust-1.85%2B-orange)
+![Tests](https://img.shields.io/badge/tests-117%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)
 ![Status](https://img.shields.io/badge/status-v0.1%20preview-blue)
 
@@ -431,7 +431,7 @@ Criterion benchmarks on the reference manifest (`cargo bench -p aura-core`):
 ## Development
 
 ```console
-cargo test    # 116 tests: units, conformance suite, property tests, golden snapshots
+cargo test    # 117 tests: units, conformance suite, property tests, golden snapshots
 cargo bench   # lexer, parser, full-pipeline benchmarks
 ```
 

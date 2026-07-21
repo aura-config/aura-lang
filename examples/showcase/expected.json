@@ -1,0 +1,110 @@
+{
+  "numbers": {
+    "sum": 14,
+    "max": 5,
+    "min": 1,
+    "sorted": [
+      1,
+      1,
+      3,
+      4,
+      5
+    ],
+    "unique": [
+      3,
+      1,
+      4,
+      5
+    ],
+    "doubled": [
+      6,
+      2,
+      8,
+      2,
+      10
+    ],
+    "big_only": [
+      3,
+      4,
+      5
+    ],
+    "int_div": 3,
+    "float_div": 3.5,
+    "modulo": 6,
+    "rounded": 3.14,
+    "logic": false,
+    "ternary": "prod",
+    "fallback": 60,
+    "first_w": 3
+  },
+  "home_region": "frankfurt",
+  "unset": null,
+  "shard_ids": [
+    "checkout-shard-0",
+    "checkout-shard-1",
+    "checkout-shard-2"
+  ],
+  "loud": "CHECKOUT",
+  "parts": [
+    "a",
+    "b",
+    "c"
+  ],
+  "joined": "x/y/z",
+  "ttl_seconds": 5400,
+  "ttl_human": "1h30m",
+  "released_at": 1784592000,
+  "entrypoint": "#!/bin/sh\nset -e\necho \"starting checkout in eu-central\"\nfor i in 1 2 3; do echo \"worker $i\"; done\nexec ./server --port 8000",
+  "checkout-eu": {
+    "listen_port": 8443,
+    "security": {
+      "tls": true,
+      "ciphers": [
+        "TLS_AES_256",
+        "TLS_CHACHA20"
+      ],
+      "min_version": "1.3"
+    },
+    "quota": {
+      "cpu": 4,
+      "burst": 8
+    },
+    "endpoint": {
+      "host": "checkout.internal",
+      "port": 443,
+      "scheme": "https"
+    },
+    "services": [
+      {
+        "name": "auth",
+        "port": 8443,
+        "id": "svc-auth",
+        "labels": {
+          "app": "auth",
+          "role": "backend",
+          "managed_by": "aura-showcase"
+        }
+      },
+      {
+        "name": "cart",
+        "port": 8444,
+        "id": "svc-cart",
+        "labels": {
+          "app": "cart",
+          "role": "backend",
+          "managed_by": "aura-showcase"
+        }
+      },
+      {
+        "name": "pay",
+        "port": 8445,
+        "id": "svc-pay",
+        "labels": {
+          "app": "pay",
+          "role": "backend",
+          "managed_by": "aura-showcase"
+        }
+      }
+    ]
+  }
+}
