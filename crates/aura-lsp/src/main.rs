@@ -16,13 +16,17 @@ use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification as _,
     PublishDiagnostics,
 };
-use lsp_types::request::{Completion, Formatting, GotoDefinition, HoverRequest, Request as _};
+use lsp_types::request::{
+    Completion, DocumentSymbolRequest, Formatting, GotoDefinition, HoverRequest, References,
+    Request as _,
+};
 use lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionOptions, CompletionResponse,
+    CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentFormattingParams, Documentation, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-    HoverContents, HoverParams, HoverProviderCapability, Location, MarkupContent, MarkupKind,
-    OneOf, Position, PublishDiagnosticsParams, Range, ServerCapabilities,
+    DocumentFormattingParams, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
+    HoverProviderCapability, Location, MarkupContent, MarkupKind, OneOf, Position,
+    PublishDiagnosticsParams, Range, ReferenceParams, ServerCapabilities,
     TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
 };
 
@@ -44,6 +48,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
         // explicit "Format Document" command, reusing `aura fmt`.
         document_formatting_provider: Some(OneOf::Left(true)),
         definition_provider: Some(OneOf::Left(true)),
+        references_provider: Some(OneOf::Left(true)),
+        document_symbol_provider: Some(OneOf::Left(true)),
         ..Default::default()
     };
     connection.initialize(serde_json::to_value(capabilities)?)?;
@@ -70,9 +76,19 @@ fn main_loop(
                 }
                 match req.method.as_str() {
                     Completion::METHOD => {
-                        // Context-free for now: offer the whole stdlib surface plus
-                        // keywords; the editor filters by the typed prefix.
-                        let items = completion_items(stdlib);
+                        let p: CompletionParams = serde_json::from_value(req.params)?;
+                        let pos = p.text_document_position;
+                        let items = docs
+                            .get(&pos.text_document.uri.to_string())
+                            .map(|text| {
+                                let offset = diagnostics::LineIndex::new(text).offset(
+                                    text,
+                                    pos.position.line,
+                                    pos.position.character,
+                                );
+                                completion_items(stdlib, text, offset)
+                            })
+                            .unwrap_or_default();
                         let result = serde_json::to_value(CompletionResponse::Array(items))?;
                         respond(connection, req.id, result)?;
                     }
@@ -104,6 +120,35 @@ fn main_loop(
                                 })
                             });
                         respond(connection, req.id, serde_json::to_value(result)?)?;
+                    }
+                    References::METHOD => {
+                        let p: ReferenceParams = serde_json::from_value(req.params)?;
+                        let pos = p.text_document_position;
+                        let uri = pos.text_document.uri;
+                        let locations: Vec<Location> = docs
+                            .get(&uri.to_string())
+                            .map(|text| {
+                                goto::reference_ranges(
+                                    text,
+                                    pos.position.line,
+                                    pos.position.character,
+                                )
+                                .into_iter()
+                                .map(|range| Location {
+                                    uri: uri.clone(),
+                                    range,
+                                })
+                                .collect()
+                            })
+                            .unwrap_or_default();
+                        respond(connection, req.id, serde_json::to_value(locations)?)?;
+                    }
+                    DocumentSymbolRequest::METHOD => {
+                        let p: DocumentSymbolParams = serde_json::from_value(req.params)?;
+                        let symbols = docs.get(&p.text_document.uri.to_string()).map(|text| {
+                            DocumentSymbolResponse::Nested(goto::document_symbols(text))
+                        });
+                        respond(connection, req.id, serde_json::to_value(symbols)?)?;
                     }
                     HoverRequest::METHOD => {
                         let p: HoverParams = serde_json::from_value(req.params)?;
@@ -197,16 +242,19 @@ fn format_edits(text: &str) -> Option<Vec<TextEdit>> {
     }])
 }
 
-/// Completion items for the whole stdlib surface: methods (deduped by name),
-/// builtin functions, and keywords. Each carries a signature and doc.
-fn completion_items(stdlib: &Stdlib) -> Vec<CompletionItem> {
+/// Context-aware completion. After a `.` only stdlib methods are offered; at any
+/// other position: builtins, keywords, and the file's declared names.
+fn completion_items(stdlib: &Stdlib, text: &str, offset: usize) -> Vec<CompletionItem> {
     let mut items = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    for e in stdlib.methods() {
-        // A name shared across receivers (to_str, get, …) is offered once.
-        if seen.insert(e.name.clone()) {
-            items.push(stdlib_item(e, CompletionItemKind::METHOD));
+    if goto::is_method_context(text, offset) {
+        let mut seen = std::collections::HashSet::new();
+        for e in stdlib.methods() {
+            // A name shared across receivers (to_str, get, …) is offered once.
+            if seen.insert(e.name.clone()) {
+                items.push(stdlib_item(e, CompletionItemKind::METHOD));
+            }
         }
+        return items;
     }
     for e in stdlib.builtins() {
         items.push(stdlib_item(e, CompletionItemKind::FUNCTION));
@@ -215,6 +263,13 @@ fn completion_items(stdlib: &Stdlib) -> Vec<CompletionItem> {
         items.push(CompletionItem {
             label: kw.to_string(),
             kind: Some(CompletionItemKind::KEYWORD),
+            ..Default::default()
+        });
+    }
+    for name in goto::local_names(text) {
+        items.push(CompletionItem {
+            label: name,
+            kind: Some(CompletionItemKind::VARIABLE),
             ..Default::default()
         });
     }
