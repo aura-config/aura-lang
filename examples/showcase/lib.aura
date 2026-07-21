@@ -3,13 +3,13 @@
 
 pub type Endpoint
   host: String
-  port: Int = 443            # D15: optional field with a default
-  scheme: String = "https"   # default may be any expression
+  port: Int      = 443     # D15: optional field with a default
+  scheme: String = "https" # default may be any expression
 end
 
 pub def label(app, role)
-  app: app
-  role: role
+  app:        app
+  role:       role
   managed_by: "aura-showcase"
 end
 

@@ -622,16 +622,22 @@ aura eval <file.aura> [--strict] [--dry-run] [--frozen]
                       [--format json|json-flat|yaml|toml] [-o out.json]
                       [--registry-dir=<dir>]
 aura check <file.aura> [--strict]        # lex + parse + analysis
-aura fmt <files...> [--check]            # indentation canonicalization
+aura fmt <files...> [--check]            # canonical formatter
 aura add <path>@vX.Y.Z [--from <file>] [--registry-dir=<dir>]  # package install (the D12 package, §5.2)
 ```
 
-`aura fmt` is line-oriented: it normalizes indentation (2 spaces/level by
-token-depth: `domain`/`component`/`def`/`type`/`new`/`->`/`[`/`(`/a trailing
-`key:` open a level, `end`/`]`/`)` close one; continuation lines after
-`,`/`=`/an operator get +1), trailing whitespace and blank lines (≤1 in a
-row); comments and intra-line alignment are preserved. Invariant: the token
-stream is unchanged before/after; it's idempotent.
+`aura fmt` is a canonical, whitespace-only formatter. It (1) normalizes
+indentation (2 spaces/level by token-depth: `domain`/`component`/`def`/`type`/
+`new`/`->`/`[`/`(`/a trailing `key:` open a level, `end`/`]`/`)` close one;
+continuation lines after `,`/`=`/an operator get +1); (2) canonicalizes
+intra-line spacing (runs of spaces/tabs between tokens collapse to a single
+space; strings and trailing comments are untouched); and (3) column-aligns
+consecutive `name = value`, `key: value` and `cond` arms (`cond -> value`)
+together with their trailing `# comments` — a blank line, a comment line, a
+different construct or an indent change ends a run, and the `else` arm is left
+unaligned. Block-string interiors (D16) are emitted verbatim. Invariants: the
+non-trivia token stream is never changed (a backstop leaves a pathological input
+untouched rather than corrupt it), and formatting is idempotent.
 
 `--format yaml|toml` uses the emitters from §4.4 (the D11 package);
 `--registry-dir` sets the local package cache (default `~/.aura/registry`),

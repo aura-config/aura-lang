@@ -7,306 +7,306 @@
 
 String:
   upper:
-    params: []
+    params:  []
     returns: "String"
-    doc: "Uppercase every character."
+    doc:     "Uppercase every character."
   end
   lower:
-    params: []
+    params:  []
     returns: "String"
-    doc: "Lowercase every character."
+    doc:     "Lowercase every character."
   end
   len:
-    params: []
+    params:  []
     returns: "Int"
-    doc: "Number of characters."
+    doc:     "Number of characters."
   end
   trim:
-    params: []
+    params:  []
     returns: "String"
-    doc: "Remove leading and trailing whitespace."
+    doc:     "Remove leading and trailing whitespace."
   end
   split:
-    params: ["sep"]
+    params:  ["sep"]
     returns: "List"
-    doc: "Split on a non-empty separator into a list of strings."
+    doc:     "Split on a non-empty separator into a list of strings."
   end
   replace:
-    params: ["from", "to"]
+    params:  ["from", "to"]
     returns: "String"
-    doc: "Replace every occurrence of a substring."
+    doc:     "Replace every occurrence of a substring."
   end
   starts_with:
-    params: ["prefix"]
+    params:  ["prefix"]
     returns: "Bool"
-    doc: "True if the string begins with the prefix."
+    doc:     "True if the string begins with the prefix."
   end
   ends_with:
-    params: ["suffix"]
+    params:  ["suffix"]
     returns: "Bool"
-    doc: "True if the string ends with the suffix."
+    doc:     "True if the string ends with the suffix."
   end
   contains:
-    params: ["substr"]
+    params:  ["substr"]
     returns: "Bool"
-    doc: "True if the substring occurs anywhere."
+    doc:     "True if the substring occurs anywhere."
   end
   to_int:
-    params: []
+    params:  []
     returns: "Int"
-    doc: "Parse an integer (E0314 on failure)."
+    doc:     "Parse an integer (E0314 on failure)."
   end
   to_float:
-    params: []
+    params:  []
     returns: "Float"
-    doc: "Parse a float (E0314 on failure)."
+    doc:     "Parse a float (E0314 on failure)."
   end
   to_str:
-    params: []
+    params:  []
     returns: "String"
-    doc: "The string itself (universal to_str)."
+    doc:     "The string itself (universal to_str)."
   end
   parse_json:
-    params: []
+    params:  []
     returns: "Object"
-    doc: "Parse a JSON document into a value."
+    doc:     "Parse a JSON document into a value."
   end
   parse_yaml:
-    params: []
+    params:  []
     returns: "Object"
-    doc: "Parse a YAML document into a value."
+    doc:     "Parse a YAML document into a value."
   end
   parse_toml:
-    params: []
+    params:  []
     returns: "Object"
-    doc: "Parse a TOML document into a value."
+    doc:     "Parse a TOML document into a value."
   end
   parse_duration:
-    params: []
+    params:  []
     returns: "Int"
-    doc: "Duration string (d/h/m/s) to seconds; E0319 on error."
+    doc:     "Duration string (d/h/m/s) to seconds; E0319 on error."
   end
   parse_datetime:
-    params: []
+    params:  []
     returns: "Int"
-    doc: "RFC3339 timestamp to epoch seconds UTC; E0320 on error."
+    doc:     "RFC3339 timestamp to epoch seconds UTC; E0320 on error."
   end
 end
 
 Int:
   abs:
-    params: []
+    params:  []
     returns: "Int"
-    doc: "Absolute value."
+    doc:     "Absolute value."
   end
   to_str:
-    params: []
+    params:  []
     returns: "String"
-    doc: "Decimal string form."
+    doc:     "Decimal string form."
   end
   format_duration:
-    params: []
+    params:  []
     returns: "String"
-    doc: "Seconds to a duration string (d/h/m/s)."
+    doc:     "Seconds to a duration string (d/h/m/s)."
   end
   format_datetime:
-    params: []
+    params:  []
     returns: "String"
-    doc: "Epoch seconds to an RFC3339 UTC timestamp."
+    doc:     "Epoch seconds to an RFC3339 UTC timestamp."
   end
 end
 
 Float:
   abs:
-    params: []
+    params:  []
     returns: "Float"
-    doc: "Absolute value."
+    doc:     "Absolute value."
   end
   to_str:
-    params: []
+    params:  []
     returns: "String"
-    doc: "Decimal string form."
+    doc:     "Decimal string form."
   end
 end
 
 Bool:
   to_str:
-    params: []
+    params:  []
     returns: "String"
-    doc: "\"true\" or \"false\"."
+    doc:     "\"true\" or \"false\"."
   end
 end
 
 List:
   len:
-    params: []
+    params:  []
     returns: "Int"
-    doc: "Number of elements."
+    doc:     "Number of elements."
   end
   first:
-    params: []
+    params:  []
     returns: "Any"
-    doc: "First element (E0317 if empty)."
+    doc:     "First element (E0317 if empty)."
   end
   last:
-    params: []
+    params:  []
     returns: "Any"
-    doc: "Last element (E0317 if empty)."
+    doc:     "Last element (E0317 if empty)."
   end
   get:
-    params: ["index"]
+    params:  ["index"]
     returns: "Any"
-    doc: "Element at an Int index, or a default via .get(i, default)."
+    doc:     "Element at an Int index, or a default via .get(i, default)."
   end
   contains:
-    params: ["item"]
+    params:  ["item"]
     returns: "Bool"
-    doc: "True if the element is present."
+    doc:     "True if the element is present."
   end
   compact:
-    params: []
+    params:  []
     returns: "List"
-    doc: "Drop null elements."
+    doc:     "Drop null elements."
   end
   uniq:
-    params: []
+    params:  []
     returns: "List"
-    doc: "Remove duplicates, keeping first occurrence."
+    doc:     "Remove duplicates, keeping first occurrence."
   end
   map:
-    params: ["fn"]
+    params:  ["fn"]
     returns: "List"
-    doc: "Apply (element, index) -> value to each element."
+    doc:     "Apply (element, index) -> value to each element."
   end
   filter:
-    params: ["fn"]
+    params:  ["fn"]
     returns: "List"
-    doc: "Keep elements where (element, index) -> Bool is true."
+    doc:     "Keep elements where (element, index) -> Bool is true."
   end
   join:
-    params: ["sep"]
+    params:  ["sep"]
     returns: "String"
-    doc: "Join scalar elements with a separator."
+    doc:     "Join scalar elements with a separator."
   end
   sort:
-    params: []
+    params:  []
     returns: "List"
-    doc: "Ascending sort of mutually-comparable scalars."
+    doc:     "Ascending sort of mutually-comparable scalars."
   end
   reverse:
-    params: []
+    params:  []
     returns: "List"
-    doc: "Elements in reverse order."
+    doc:     "Elements in reverse order."
   end
   sum:
-    params: []
+    params:  []
     returns: "Int"
-    doc: "Sum of numbers (Float if any Float)."
+    doc:     "Sum of numbers (Float if any Float)."
   end
   min:
-    params: []
+    params:  []
     returns: "Any"
-    doc: "Smallest element (E0317 if empty)."
+    doc:     "Smallest element (E0317 if empty)."
   end
   max:
-    params: []
+    params:  []
     returns: "Any"
-    doc: "Largest element (E0317 if empty)."
+    doc:     "Largest element (E0317 if empty)."
   end
   flatten:
-    params: []
+    params:  []
     returns: "List"
-    doc: "Spread one level of nested lists."
+    doc:     "Spread one level of nested lists."
   end
   slice:
-    params: ["start", "end"]
+    params:  ["start", "end"]
     returns: "List"
-    doc: "Half-open sub-list; indices are clamped."
+    doc:     "Half-open sub-list; indices are clamped."
   end
   to_json:
-    params: []
+    params:  []
     returns: "String"
-    doc: "Serialize to a JSON string."
+    doc:     "Serialize to a JSON string."
   end
   to_yaml:
-    params: []
+    params:  []
     returns: "String"
-    doc: "Serialize to a YAML string."
+    doc:     "Serialize to a YAML string."
   end
   to_toml:
-    params: []
+    params:  []
     returns: "String"
-    doc: "Serialize to a TOML string."
+    doc:     "Serialize to a TOML string."
   end
 end
 
 Object:
   len:
-    params: []
+    params:  []
     returns: "Int"
-    doc: "Number of keys."
+    doc:     "Number of keys."
   end
   keys:
-    params: []
+    params:  []
     returns: "List"
-    doc: "Keys in declaration order."
+    doc:     "Keys in declaration order."
   end
   values:
-    params: []
+    params:  []
     returns: "List"
-    doc: "Values in declaration order."
+    doc:     "Values in declaration order."
   end
   contains:
-    params: ["key"]
+    params:  ["key"]
     returns: "Bool"
-    doc: "True if the key is present."
+    doc:     "True if the key is present."
   end
   get:
-    params: ["key", "default"]
+    params:  ["key", "default"]
     returns: "Any"
-    doc: "Value for a key, or a default if absent."
+    doc:     "Value for a key, or a default if absent."
   end
   merge:
-    params: ["other"]
+    params:  ["other"]
     returns: "Object"
-    doc: "Shallow merge; the argument wins on key conflicts."
+    doc:     "Shallow merge; the argument wins on key conflicts."
   end
   to_json:
-    params: []
+    params:  []
     returns: "String"
-    doc: "Serialize to a JSON string."
+    doc:     "Serialize to a JSON string."
   end
   to_yaml:
-    params: []
+    params:  []
     returns: "String"
-    doc: "Serialize to a YAML string."
+    doc:     "Serialize to a YAML string."
   end
   to_toml:
-    params: []
+    params:  []
     returns: "String"
-    doc: "Serialize to a TOML string."
+    doc:     "Serialize to a TOML string."
   end
 end
 
 builtins:
   range:
-    params: ["n"]
+    params:  ["n"]
     returns: "List"
-    doc: "The list [0, 1, ..., n-1]."
+    doc:     "The list [0, 1, ..., n-1]."
   end
   env:
-    params: ["name", "default"]
+    params:  ["name", "default"]
     returns: "String"
-    doc: "Environment variable value or a default (needs --allow-env)."
+    doc:     "Environment variable value or a default (needs --allow-env)."
   end
   read_file:
-    params: ["path"]
+    params:  ["path"]
     returns: "String"
-    doc: "File contents as a string (needs --allow-read)."
+    doc:     "File contents as a string (needs --allow-read)."
   end
   fail:
-    params: ["message"]
+    params:  ["message"]
     returns: "Any"
-    doc: "Abort evaluation with a message (E0530)."
+    doc:     "Abort evaluation with a message (E0530)."
   end
 end

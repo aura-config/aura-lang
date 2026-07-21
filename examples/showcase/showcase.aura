@@ -8,17 +8,17 @@
 import "lib.aura" as lib
 
 # --- Private bindings (`=`, D10): computed, never exported.
-app_name     = "checkout"
-base_port    = 8000
-pi           = 3.14                      # Float
-enabled      = true                      # Bool
-default_burst = 8                        # referenced by a schema default below
-is_prod      = env("APP_ENV", "production") == "production"
+app_name      = "checkout"
+base_port     = 8000
+pi            = 3.14 # Float
+enabled       = true # Bool
+default_burst = 8    # referenced by a schema default below
+is_prod       = env("APP_ENV", "production") == "production"
 
 # --- Capability I/O (D1): reading is explicit; parse into a value.
 cfg     = read_file("data.json").parse_json()
-region  = cfg.region                     # field access
-weights = cfg.weights                    # a list from JSON
+region  = cfg.region  # field access
+weights = cfg.weights # a list from JSON
 
 # --- assert as a statement (D5).
 assert app_name.len() > 0, "app name must not be empty"
@@ -26,26 +26,26 @@ assert app_name.len() > 0, "app name must not be empty"
 # --- Local schema with a required + optional-with-default field (D15).
 type Quota
   cpu: Int
-  burst: Int = default_burst             # default may reference a module var
+  burst: Int = default_burst # default may reference a module var
 end
 
 # --- Arithmetic / comparison / boolean / ternary, plus stdlib methods.
 numbers:
-  sum:        weights.sum()
-  max:        weights.max()
-  min:        weights.min()
-  sorted:     weights.sort()
-  unique:     weights.uniq()
-  doubled:    weights.map (w, i) -> w * 2 end
-  big_only:   weights.filter (w, i) -> w >= 3 end
-  int_div:    7 / 2
-  float_div:  7.0 / 2
-  modulo:     base_port % 7
-  rounded:    pi
-  logic:      enabled && !is_prod || false
-  ternary:    is_prod ? "prod" : "dev"
-  fallback:   cfg.get("ttl", 60)          # .get with default
-  first_w:    weights[0]                   # list indexing
+  sum:       weights.sum()
+  max:       weights.max()
+  min:       weights.min()
+  sorted:    weights.sort()
+  unique:    weights.uniq()
+  doubled:   weights.map (w, i) -> w * 2 end
+  big_only:  weights.filter (w, i) -> w >= 3 end
+  int_div:   7 / 2
+  float_div: 7.0 / 2
+  modulo:    base_port % 7
+  rounded:   pi
+  logic:     enabled && !is_prod || false
+  ternary:   is_prod ? "prod" : "dev"
+  fallback:  cfg.get("ttl", 60) # .get with default
+  first_w:   weights[0]         # list indexing
 end
 
 # --- cond multi-way expression (D14).
@@ -56,16 +56,16 @@ home_region: cond
 end
 
 # --- Null value in a property, plus range()/string methods/interpolation.
-unset: null
+unset:     null
 shard_ids: range(3).map (i, _) -> "#{app_name}-shard-#{i}" end
 loud:      app_name.upper()
 parts:     "a,b,c".split(",")
 joined:    ["x", "y", "z"].join("/")
 
 # --- Deterministic time (D13): durations and dates, never now().
-ttl_seconds:  "1h30m".parse_duration()
-ttl_human:    "1h30m".parse_duration().format_duration()
-released_at:  "2026-07-21T00:00:00Z".parse_datetime()
+ttl_seconds: "1h30m".parse_duration()
+ttl_human:   "1h30m".parse_duration().format_duration()
+released_at: "2026-07-21T00:00:00Z".parse_datetime()
 
 # --- Multi-line block string (D16): interpolation + verbatim shell `end`.
 entrypoint: text
@@ -79,12 +79,12 @@ end
 # --- Domain block with shadowing, nested objects, schema instance, and a
 # component list built from a lambda over imported data (D7, D12).
 domain "checkout-eu"
-  shadow base_port = 8443                 # legal shadow of the outer binding
+  shadow base_port = 8443 # legal shadow of the outer binding
   listen_port: base_port
 
   security:
-    tls: true
-    ciphers: ["TLS_AES_256", "TLS_CHACHA20"]
+    tls:         true
+    ciphers:     ["TLS_AES_256", "TLS_CHACHA20"]
     min_version: "1.3"
   end
 
@@ -98,8 +98,8 @@ domain "checkout-eu"
 
   services: ["auth", "cart", "pay"].map (name, index) ->
     component name
-      port: base_port + index
-      id: lib.service_id(name).id
+      port:   base_port + index
+      id:     lib.service_id(name).id
       labels: lib.label(name, "backend")
     end
   end

@@ -93,7 +93,7 @@ enum Cmd {
         #[arg(long = "registry-dir", value_name = "DIR")]
         registry_dir: Option<PathBuf>,
     },
-    /// Canonicalize indentation and blank lines (rewrites files in place)
+    /// Canonical formatter: indentation, spacing, and column alignment (rewrites files in place)
     Fmt {
         files: Vec<PathBuf>,
         /// Do not modify files, only check (exit 1 on differences)

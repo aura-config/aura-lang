@@ -7,12 +7,12 @@ bot_name = "aura_demo_bot"
 is_prod  = env("BOT_ENV", "dev") == "production"
 
 type Command
-  command: String
+  command:     String
   description: String
 end
 
 def cmd(name, description)
-  command: name
+  command:     name
   description: description
 end
 
@@ -28,7 +28,7 @@ bot:
 
   mode: is_prod ? "webhook" : "long_polling"
   webhook:
-    url: "https://bots.example.com/hooks/#{bot_name}"
+    url:           "https://bots.example.com/hooks/#{bot_name}"
     secret_header: "X-Telegram-Bot-Api-Secret-Token"
   end
 
@@ -36,7 +36,7 @@ bot:
 
   # Готовый payload для setMyCommands; схема ловит опечатку в поле
   menu_button: new Command
-    command: "help"
+    command:     "help"
     description: "Список команд"
   end
   commands: [
@@ -47,11 +47,11 @@ bot:
 
   limits:
     messages_per_minute: is_prod ? 20 : 100
-    max_file_mb: 50
+    max_file_mb:         50
   end
 
   messages:
-    "start.greeting": "Привет! Я @#{bot_name}. Наберите /help."
+    "start.greeting":      "Привет! Я @#{bot_name}. Наберите /help."
     "errors.rate_limited": "Слишком часто. Подождите минуту."
   end
 end

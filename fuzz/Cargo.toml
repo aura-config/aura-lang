@@ -39,3 +39,9 @@ path = "fuzz_targets/fuzz_pipeline.rs"
 test = false
 doc = false
 bench = false
+[[bin]]
+name = "fuzz_fmt"
+path = "fuzz_targets/fuzz_fmt.rs"
+test = false
+doc = false
+bench = false
