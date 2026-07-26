@@ -1,5 +1,5 @@
 //! Value -> serde_json serialization (SPEC §7.1).
-//! Int -> JSON integer with no precision loss (D6); a Schema/Function deep in the tree is E0601 with a key path.
+//! Int -> JSON integer with no precision loss (D6); a Schema/Function/Enum deep in the tree is E0601 with a key path.
 
 use crate::error::Diagnostic;
 use crate::eval::value::Value;
@@ -40,7 +40,9 @@ fn go(v: &Value<'_>, path: &mut Vec<String>) -> Result<serde_json::Value, Diagno
             for (k, item) in m.iter() {
                 // D12: a top-level pub def/type is API for importers,
                 // silently excluded from the root JSON; deeper it is still an E0601 error
-                if path.is_empty() && matches!(item, Value::Schema(_) | Value::Function(_)) {
+                if path.is_empty()
+                    && matches!(item, Value::Schema(_) | Value::Function(_) | Value::Enum(_))
+                {
                     continue;
                 }
                 path.push(k.clone());
@@ -49,7 +51,7 @@ fn go(v: &Value<'_>, path: &mut Vec<String>) -> Result<serde_json::Value, Diagno
             }
             J::Object(out)
         }
-        Value::Schema(_) | Value::Function(_) => {
+        Value::Schema(_) | Value::Function(_) | Value::Enum(_) => {
             return Err(err(
                 "E0601",
                 format!(

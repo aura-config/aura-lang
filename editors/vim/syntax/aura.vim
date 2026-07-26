@@ -5,7 +5,7 @@ if exists("b:current_syntax")
   finish
 endif
 
-syn keyword auraKeyword import as type def end domain new assert shadow pub
+syn keyword auraKeyword import as type enum def end domain new assert shadow pub
 syn keyword auraBoolean true false null
 syn keyword auraBuiltin env read_file fail
 

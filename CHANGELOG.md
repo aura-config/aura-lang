@@ -8,6 +8,11 @@ still change the language.
 ## [Unreleased]
 
 ### Added
+- **`enum` (D18)** — a closed set of allowed string values, usable as a schema
+  field type. A member stays an ordinary `String`, so output is unchanged; a
+  non-member is `E0514` with a did-you-mean suggestion and the member list.
+  `pub enum` is exported (D12), and members resolve where the schema is declared,
+  so an imported schema validates against its own module's enum.
 - **`aura-lang` crate** — the library and the `aura` CLI are now a single
   publishable crate (`cargo add aura-lang` to embed, `cargo install aura-lang`
   for the CLI). Replaces the internal `aura-core` + `aura-cli` split.

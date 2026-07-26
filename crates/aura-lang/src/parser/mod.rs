@@ -324,6 +324,7 @@ impl<'a> Parser<'a> {
     fn parse_stmt_impl(&mut self) -> Result<Stmt<'a>, Diagnostic> {
         match self.peek() {
             TokenKind::Type => self.parse_type_decl(false),
+            TokenKind::Enum => self.parse_enum_decl(false),
             TokenKind::Def => self.parse_func_decl(false),
             // D12: `pub` is only allowed before def/type
             TokenKind::Pub => {
@@ -331,9 +332,10 @@ impl<'a> Parser<'a> {
                 match self.peek() {
                     TokenKind::Def => self.parse_func_decl(true),
                     TokenKind::Type => self.parse_type_decl(true),
+                    TokenKind::Enum => self.parse_enum_decl(true),
                     _ => Err(self.err(
                         "E0206",
-                        "`pub` is only allowed before `def` or `type`",
+                        "`pub` is only allowed before `def`, `type` or `enum`",
                         "properties are exported by default; `=` bindings are always private",
                     )),
                 }
@@ -484,6 +486,57 @@ impl<'a> Parser<'a> {
                 ));
             }
         }
+    }
+
+    /// D18: `enum Name` + one string member per line, until `end`.
+    fn parse_enum_decl(&mut self, public: bool) -> Result<Stmt<'a>, Diagnostic> {
+        let start = self.span();
+        self.bump(); // enum
+        let (name, _) = self.expect_ident("enum name")?;
+        self.expect(&TokenKind::Newline, "newline after enum name")?;
+        let mut members: Vec<&'a str> = Vec::new();
+        loop {
+            self.skip_newlines();
+            if self.eat(&TokenKind::End) {
+                break;
+            }
+            let TokenKind::Str(m) = self.peek() else {
+                return Err(self.err(
+                    "E0211",
+                    "expected an enum member",
+                    "members are quoted strings, one per line",
+                ));
+            };
+            if members.contains(m) {
+                return Err(self.err(
+                    "E0212",
+                    format!("duplicate enum member '{m}'"),
+                    "each member must be listed once",
+                ));
+            }
+            members.push(m);
+            self.bump();
+            if !matches!(self.peek(), TokenKind::Newline | TokenKind::End) {
+                return Err(self.err(
+                    "E0205",
+                    "expected end of enum member",
+                    "members are separated by newlines",
+                ));
+            }
+        }
+        if members.is_empty() {
+            return Err(self.err(
+                "E0213",
+                "enum has no members",
+                "an empty enum could never be satisfied",
+            ));
+        }
+        Ok(Stmt::EnumDecl(EnumDeclaration {
+            name,
+            members,
+            public,
+            span: self.join(start),
+        }))
     }
 
     fn parse_type_decl(&mut self, public: bool) -> Result<Stmt<'a>, Diagnostic> {
@@ -1018,6 +1071,54 @@ mod tests {
         // realistic nesting (10 levels of parens) stays well under the cap
         let ok = format!("x: {}1{}", "(".repeat(10), ")".repeat(10));
         module(&ok);
+    }
+
+    #[test]
+    fn enum_parses_d18() {
+        let m = module(
+            "enum Tier
+  \"frontend\"
+  \"backend\"
+end
+",
+        );
+        let Stmt::EnumDecl(e) = &m.stmts[0] else {
+            panic!("expected an enum declaration")
+        };
+        assert_eq!(e.name, "Tier");
+        assert_eq!(e.members, vec!["frontend", "backend"]);
+        assert!(!e.public);
+    }
+
+    #[test]
+    fn enum_errors_are_specific() {
+        assert_eq!(
+            first_err(
+                "enum T
+  bare
+end
+"
+            ),
+            "E0211"
+        ); // not a string
+        assert_eq!(
+            first_err(
+                "enum T
+  \"a\"
+  \"a\"
+end
+"
+            ),
+            "E0212"
+        ); // duplicate
+        assert_eq!(
+            first_err(
+                "enum T
+end
+"
+            ),
+            "E0213"
+        ); // empty
     }
 
     #[test]

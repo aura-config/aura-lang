@@ -1,0 +1,21 @@
+enum Tier
+  "frontend"
+  "backend"
+  "cache"
+end
+
+pub enum Scheme
+  "https"
+  "http"
+end
+
+type Service
+  name: String
+  tier: Tier
+  proto: Scheme = "https"
+end
+
+svc: new Service
+  name: "api"
+  tier: "backend"
+end

@@ -162,6 +162,33 @@ api: new Service
 end
 ```
 
+### Закрытые наборы через `enum`
+
+Поле `String` принимает любую строку, поэтому опечатка `"backand"` доезжала до
+прода. `enum` делает набор закрытым — при этом член остаётся обычной строкой, и
+JSON не меняется:
+
+```ruby
+enum Tier
+  "frontend"
+  "backend"
+  "cache"
+end
+
+type Service
+  name: String
+  tier: Tier
+end
+
+svc: new Service
+  name: "api"
+  tier: "backand" # E0514: did you mean "backend"? members: ...
+end
+```
+
+`pub enum` пересекает границу модуля (D12), а члены резолвятся там, где объявлена
+схема — импортированная схема валидируется против enum своего модуля.
+
 ### Функции, лямбды, методы
 
 ```ruby
