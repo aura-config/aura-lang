@@ -17,8 +17,8 @@ app_name = "hello"
 port     = 8080
 
 service:
-  name: app_name
-  url: "http://localhost:#{port}"
+  name:     app_name
+  url:      "http://localhost:#{port}"
   replicas: 2
 end
 ```

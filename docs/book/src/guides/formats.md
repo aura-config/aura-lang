@@ -10,7 +10,7 @@ team  = read_file("./team.json").parse_json()
 lint  = read_file("./.rules.yaml").parse_yaml()
 
 service:
-  name: cargo.package.name
+  name:  cargo.package.name
   owner: team.teams[0].lead
 end
 ```

@@ -10,8 +10,8 @@
 | `domain "name" ... end` | блок | **да** (ключ = имя) |
 
 ```ruby
-base = 8000                 # вычисление
-port: base + 80             # вывод: {"port": 8080}
+base = 8000     # вычисление
+port: base + 80 # вывод: {"port": 8080}
 ```
 
 Благодаря этому анализ мёртвого кода точен: неиспользуемая `=`-переменная —
@@ -23,7 +23,7 @@ port: base + 80             # вывод: {"port": 8080}
 
 ```ruby
 x = 1
-x = 2      # E0301: variable 'x' is immutable
+x = 2 # E0301: variable 'x' is immutable
 ```
 
 ## Явное затенение
@@ -34,9 +34,9 @@ x = 2      # E0301: variable 'x' is immutable
 log_path = "/var/log/app.log"
 
 domain "debug"
-  log_path = "/tmp/debug.log"          # E0302: требуется shadow
-  shadow log_path = "/tmp/debug.log"   # ок — намерение видно в diff'е
-  path: log_path                       # → "/tmp/debug.log"
+  log_path        = "/tmp/debug.log" # E0302: требуется shadow
+  shadow log_path = "/tmp/debug.log" # ок — намерение видно в diff'е
+  path: log_path                     # → "/tmp/debug.log"
 end
 ```
 
@@ -47,7 +47,7 @@ end
 
 ```ruby
 name = "auth"
-image: "company/#{name}:v#{1 + 1}"     # → "company/auth:v2"
+image: "company/#{name}:v#{1 + 1}" # → "company/auth:v2"
 ```
 
 Внутри `#{...}` — обычный синтаксис выражений: кавычки вложенных строк
@@ -58,11 +58,11 @@ image: "company/#{name}:v#{1 + 1}"     # → "company/auth:v2"
 Точка — для полей, скобки — только для индексов списков:
 
 ```ruby
-version:  cfg.package.version          # обычные ключи
-special:  cfg."ключ с пробелом"        # любой ключ — строкой
-dynamic:  cfg.envs."#{region}"         # динамический ключ
-first:    apps[0].name                 # индекс (за границами — E0317)
-optional: cfg.get("maybe", "default")  # промах → default, не ошибка
+version:  cfg.package.version         # обычные ключи
+special:  cfg."ключ с пробелом"       # любой ключ — строкой
+dynamic:  cfg.envs."#{region}"        # динамический ключ
+first:    apps[0].name                # индекс (за границами — E0317)
+optional: cfg.get("maybe", "default") # промах → default, не ошибка
 ```
 
 Опечатка в имени поля — ошибка `E0308` с точной позицией, а не молчаливый `null`.

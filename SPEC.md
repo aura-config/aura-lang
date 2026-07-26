@@ -30,8 +30,8 @@ end
 unused_config_version = "v1.2.0"
 
 def build_labels(app_name, tier)
-  name: app_name
-  tier: tier
+  name:       app_name
+  tier:       tier
   managed_by: "aura-engine"
 end
 
@@ -73,7 +73,7 @@ domain "production-eu"
 
   apps = active_services.map (name, index) ->
     component name
-      image: "company/#{name}:#{app_version}"
+      image:  "company/#{name}:#{app_version}"
       labels: build_labels(name, "backend").merge(defaults.global_labels)
     end
   end

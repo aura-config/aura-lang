@@ -6,9 +6,9 @@
 
 ```ruby
 def make_env(name, replicas, debug)
-  replicas: replicas
+  replicas:  replicas
   log_level: debug ? "debug" : "warn"
-  db_url: "postgres://db.#{name}.internal:5432/app"
+  db_url:    "postgres://db.#{name}.internal:5432/app"
 end
 
 environments:
@@ -24,7 +24,7 @@ end
 
 ```ruby
 double = (x) -> x * 2 end
-up: ["a", "b"].map (s, i) -> s.upper() end     # trailing-лямбда
+up: ["a", "b"].map (s, i) -> s.upper() end # trailing-лямбда
 ```
 
 Колбэк `map`/`filter` получает элемент и индекс; лишние параметры можно

@@ -1,0 +1,6 @@
+a: "hello world".sha256()
+b: "hello".base64()
+c: "aGVsbG8=".base64_decode()
+d: "".base64().base64_decode()
+e: "Zm9vYmFy".base64_decode()
+f: "a".base64().base64_decode().sha256()

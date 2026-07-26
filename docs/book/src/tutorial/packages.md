@@ -3,8 +3,8 @@
 ## Импорты
 
 ```ruby
-import "templates/defaults.aura" as defaults      # файл, относительно текущего
-import github/acme/aura-k8s@v1.2 as k8s           # пакет из registry, версия обязательна
+import "templates/defaults.aura" as defaults # файл, относительно текущего
+import github/acme/aura-k8s@v1.2 as k8s      # пакет из registry, версия обязательна
 ```
 
 Циклические импорты обнаруживаются с полной цепочкой:
@@ -16,12 +16,12 @@ import github/acme/aura-k8s@v1.2 as k8s           # пакет из registry, в
 
 ```ruby
 # validators.aura
-pub type Service            # схема — часть API
+pub type Service # схема — часть API
   name: String
   port: Int
 end
 
-def valid_port(p)           # приватный хелпер: импортёру невидим
+def valid_port(p) # приватный хелпер: импортёру невидим
   ok: p > 0 && p < 65536
 end
 
@@ -35,7 +35,7 @@ end
 # использование
 import "validators.aura" as v
 
-api: v.service("api", 8080)
+api:    v.service("api", 8080)
 worker: new v.Service
   name: "worker"
   port: 9000
