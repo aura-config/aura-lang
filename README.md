@@ -182,7 +182,8 @@ Built-in methods: `upper` `lower` `len` `trim` `split` `replace` `starts_with`
 `reverse` `sum` `min` `max` `flatten` `slice` `first` `last` `get` `contains`
 `join` `merge` `keys` `values` `abs` `parse_toml` `parse_json` `parse_yaml`
 `to_json` `to_yaml` `to_toml` `parse_duration` `format_duration` `parse_datetime`
-`format_datetime`. The registry grows without touching the parser.
+`format_datetime` `sha256` `base64` `base64_decode`. The registry grows without
+touching the parser.
 
 The global `range(n)` generates `[0, 1, ..., n-1]` — handy for producing N items
 (shards, replicas) instead of listing them by hand:
