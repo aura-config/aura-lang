@@ -29,7 +29,7 @@ Aura компилирует читаемые манифесты в JSON — со
 ```ruby
 import "templates/k8s_defaults.aura" as defaults
 
-base_port = 8000                                  # приватное вычисление
+base_port = 8000 # приватное вычисление
 is_prod   = env("APP_ENV", "production") == "production"
 
 type ServiceMeta
@@ -38,13 +38,13 @@ type ServiceMeta
 end
 
 def build_labels(app_name, tier)
-  name: app_name
-  tier: tier
+  name:       app_name
+  tier:       tier
   managed_by: "aura-engine"
 end
 
 domain "production-eu"
-  replicas: is_prod ? 3 : 1                       # свойство — попадает в JSON
+  replicas: is_prod ? 3 : 1 # свойство — попадает в JSON
 
   cargo_data  = read_file("./Cargo.toml").parse_toml()
   app_version = cargo_data.package.version
@@ -59,7 +59,7 @@ domain "production-eu"
 
   apps: active.map (name, index) ->
     component name
-      image: "company/#{name}:#{app_version}"
+      image:  "company/#{name}:#{app_version}"
       labels: build_labels(name, "backend").merge(defaults.global_labels)
     end
   end
@@ -111,8 +111,8 @@ aura check production_deploy.aura --strict
 Ключевое правило Aura (аналог locals vs outputs в Terraform):
 
 ```ruby
-tmp = base * 2        #  =  приватная переменная: НЕ попадает в JSON
-port: tmp + 1         #  :  свойство: попадает в JSON
+tmp = base * 2 #  =  приватная переменная: НЕ попадает в JSON
+port: tmp + 1  #  :  свойство: попадает в JSON
 ```
 
 Благодаря этому анализ мёртвого кода точен: неиспользуемая `=`‑переменная — это
@@ -124,8 +124,8 @@ port: tmp + 1         #  :  свойство: попадает в JSON
 path = "/etc/global.config"
 
 domain "prod"
-  path = "/var/log"          # E0302: затенение требует ключевого слова
-  shadow path = "/var/log"   # ок — намерение явное
+  path        = "/var/log" # E0302: затенение требует ключевого слова
+  shadow path = "/var/log" # ок — намерение явное
 end
 ```
 
@@ -141,7 +141,7 @@ end
 
 meta: new ServiceMeta
   name: "auth"
-  port: "8001"      # E0512: ожидался Int
+  port: "8001" # E0512: ожидался Int
 end
 ```
 
@@ -154,23 +154,23 @@ end
 ```ruby
 type Service
   name: String
-  port: Int = 8080          # опционально: пропущено → 8080
+  port: Int    = 8080 # опционально: пропущено → 8080
   tier: String = "backend"
 end
 
 api: new Service
-  name: "api"               # port и tier берут дефолты
+  name: "api" # port и tier берут дефолты
 end
 ```
 
 ### Функции, лямбды, методы
 
 ```ruby
-def labels(app)              # def возвращает объект
+def labels(app) # def возвращает объект
   app: app
 end
 
-up = (s) -> s.upper() end    # лямбда-выражение
+up = (s) -> s.upper() end # лямбда-выражение
 
 xs.compact().uniq().map (item, index) ->
   "#{index}: #{item}"
@@ -238,10 +238,10 @@ end
 невозможно написать по построению. Зато длительности и даты — первоклассные:
 
 ```ruby
-ttl = "1h30m".parse_duration()                       # → 5400 (секунды)
-refresh: (ttl / 3).format_duration()                 # → "30m"
+ttl = "1h30m".parse_duration()             # → 5400 (секунды)
+refresh:    (ttl / 3).format_duration()    # → "30m"
 window_end: ("2026-07-18T22:00:00Z".parse_datetime()
-  + "4h".parse_duration()).format_datetime()         # → "2026-07-19T02:00:00Z"
++ "4h".parse_duration()).format_datetime() # → "2026-07-19T02:00:00Z"
 ```
 
 Время сборки, если оно нужно, передаёт хост: `env("BUILD_TIME", ...)` под `--allow-env`.
@@ -253,11 +253,11 @@ window_end: ("2026-07-18T22:00:00Z".parse_datetime()
 ```ruby
 loaded = read_file("./data.json").parse_json()
 
-version:  loaded.package.version           # обычные ключи
-port:     loaded.servers."eu west".port    # ключ с пробелом/точкой — строка
-dynamic:  loaded.envs."#{region}".url      # динамический ключ
-first:    loaded.apps[0].name              # индекс списка (за границами — E0317)
-optional: loaded.get("maybe", "fallback")  # безопасный доступ без ошибки
+version:  loaded.package.version          # обычные ключи
+port:     loaded.servers."eu west".port   # ключ с пробелом/точкой — строка
+dynamic:  loaded.envs."#{region}".url     # динамический ключ
+first:    loaded.apps[0].name             # индекс списка (за границами — E0317)
+optional: loaded.get("maybe", "fallback") # безопасный доступ без ошибки
 ```
 
 Опечатка в ключе — ошибка `E0308` с позицией, а не молчаливый `null`.
@@ -281,7 +281,7 @@ aura eval convert.aura --allow-read=. --format yaml   # TOML → YAML
 ### Модули
 
 ```ruby
-import github/actions/rust-cache@v1.2 as rust    # версия обязательна
+import github/actions/rust-cache@v1.2 as rust # версия обязательна
 import "templates/k8s_defaults.aura" as defaults
 ```
 

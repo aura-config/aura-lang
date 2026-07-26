@@ -21,10 +21,10 @@ type Service
   port: Int
 end
 
-base_port = 8000                      # приватное вычисление
+base_port = 8000 # приватное вычисление
 is_prod   = env("APP_ENV", "dev") == "production"
 
-api: new Service                      # свойство — попадает в вывод
+api: new Service # свойство — попадает в вывод
   name: "api"
   port: base_port + 1
 end

@@ -29,7 +29,7 @@ braces, no significant indentation, no surprises in production.
 ```ruby
 import "templates/k8s_defaults.aura" as defaults
 
-base_port = 8000                                  # private computation
+base_port = 8000 # private computation
 is_prod   = env("APP_ENV", "production") == "production"
 
 type ServiceMeta
@@ -38,13 +38,13 @@ type ServiceMeta
 end
 
 def build_labels(app_name, tier)
-  name: app_name
-  tier: tier
+  name:       app_name
+  tier:       tier
   managed_by: "aura-engine"
 end
 
 domain "production-eu"
-  replicas: is_prod ? 3 : 1                       # a property - ends up in JSON
+  replicas: is_prod ? 3 : 1 # a property - ends up in JSON
 
   cargo_data  = read_file("./Cargo.toml").parse_toml()
   app_version = cargo_data.package.version
@@ -59,7 +59,7 @@ domain "production-eu"
 
   apps: active.map (name, index) ->
     component name
-      image: "company/#{name}:#{app_version}"
+      image:  "company/#{name}:#{app_version}"
       labels: build_labels(name, "backend").merge(defaults.global_labels)
     end
   end
@@ -111,8 +111,8 @@ aura check production_deploy.aura --strict
 Aura's central rule (the same idea as locals vs. outputs in Terraform):
 
 ```ruby
-tmp = base * 2        #  =  a private variable: does NOT end up in JSON
-port: tmp + 1         #  :  a property: ends up in JSON
+tmp = base * 2 #  =  a private variable: does NOT end up in JSON
+port: tmp + 1  #  :  a property: ends up in JSON
 ```
 
 This is what makes dead-code analysis precise: an unused `=` variable is
@@ -124,8 +124,8 @@ always genuine cruft (`W0501`), never "maybe someone needs this output."
 path = "/etc/global.config"
 
 domain "prod"
-  path = "/var/log"          # E0302: shadowing requires the keyword
-  shadow path = "/var/log"   # OK - the intent is explicit
+  path        = "/var/log" # E0302: shadowing requires the keyword
+  shadow path = "/var/log" # OK - the intent is explicit
 end
 ```
 
@@ -141,7 +141,7 @@ end
 
 meta: new ServiceMeta
   name: "auth"
-  port: "8001"      # E0512: expected Int
+  port: "8001" # E0512: expected Int
 end
 ```
 
@@ -154,23 +154,23 @@ reference module vars). No nullable fields: optionality never introduces a `null
 ```ruby
 type Service
   name: String
-  port: Int = 8080          # optional: omitted -> 8080
+  port: Int    = 8080 # optional: omitted -> 8080
   tier: String = "backend"
 end
 
 api: new Service
-  name: "api"               # port and tier take their defaults
+  name: "api" # port and tier take their defaults
 end
 ```
 
 ### Functions, lambdas, methods
 
 ```ruby
-def labels(app)              # def returns an object
+def labels(app) # def returns an object
   app: app
 end
 
-up = (s) -> s.upper() end    # a lambda expression
+up = (s) -> s.upper() end # a lambda expression
 
 xs.compact().uniq().map (item, index) ->
   "#{index}: #{item}"
@@ -239,10 +239,10 @@ cannot be written by construction. Durations and dates, on the other hand, are
 first-class:
 
 ```ruby
-ttl = "1h30m".parse_duration()                       # -> 5400 (seconds)
-refresh: (ttl / 3).format_duration()                 # -> "30m"
+ttl = "1h30m".parse_duration()             # -> 5400 (seconds)
+refresh:    (ttl / 3).format_duration()    # -> "30m"
 window_end: ("2026-07-18T22:00:00Z".parse_datetime()
-  + "4h".parse_duration()).format_datetime()         # -> "2026-07-19T02:00:00Z"
++ "4h".parse_duration()).format_datetime() # -> "2026-07-19T02:00:00Z"
 ```
 
 If a build timestamp is needed, the host supplies it: `env("BUILD_TIME", ...)` under `--allow-env`.
@@ -254,11 +254,11 @@ Dot for fields, brackets only for list indices - one operator per operation:
 ```ruby
 loaded = read_file("./data.json").parse_json()
 
-version:  loaded.package.version           # ordinary keys
-port:     loaded.servers."eu west".port    # a key with a space/dot - a string
-dynamic:  loaded.envs."#{region}".url      # a dynamic key
-first:    loaded.apps[0].name              # list index (out of bounds - E0317)
-optional: loaded.get("maybe", "fallback")  # safe access, no error
+version:  loaded.package.version          # ordinary keys
+port:     loaded.servers."eu west".port   # a key with a space/dot - a string
+dynamic:  loaded.envs."#{region}".url     # a dynamic key
+first:    loaded.apps[0].name             # list index (out of bounds - E0317)
+optional: loaded.get("maybe", "fallback") # safe access, no error
 ```
 
 A typo in a key is an `E0308` error with a position, not a silent `null`.
@@ -282,7 +282,7 @@ and add `assert` checks along the way - conversion with guarantees.
 ### Modules
 
 ```ruby
-import github/actions/rust-cache@v1.2 as rust    # a version is mandatory
+import github/actions/rust-cache@v1.2 as rust # a version is mandatory
 import "templates/k8s_defaults.aura" as defaults
 ```
 

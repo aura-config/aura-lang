@@ -6,15 +6,15 @@
 
 ```ruby
 type Container
-  name: String
+  name:  String
   image: String
-  port: Int
+  port:  Int
 end
 
 main: new Container
-  name: "gateway"
+  name:  "gateway"
   image: "company/gateway:2.4.1"
-  port: 8080
+  port:  8080
 end
 ```
 

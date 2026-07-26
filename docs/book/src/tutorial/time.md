@@ -24,10 +24,10 @@ BUILD_TIME=$(date -u +%FT%TZ) aura eval app.aura --allow-env=BUILD_TIME
 Таймауты и TTL — строки с единицами `d`/`h`/`m`/`s`, парсятся в секунды (Int):
 
 ```ruby
-ttl = "1h30m".parse_duration()          # → 5400
+ttl = "1h30m".parse_duration() # → 5400
 cache:
-  ttl_seconds: ttl
-  refresh_every: (ttl / 3).format_duration()   # → "30m"
+  ttl_seconds:   ttl
+  refresh_every: (ttl / 3).format_duration() # → "30m"
 end
 ```
 
