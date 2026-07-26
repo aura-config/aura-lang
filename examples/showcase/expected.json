@@ -51,6 +51,9 @@
     "c"
   ],
   "joined": "x/y/z",
+  "name_digest": "c7761e58969f7edd498186641b2021e8477e1bcd230de4cf3435242da4a40d14",
+  "secret_b64": "czNjcjN0",
+  "decoded": "s3cr3t",
   "ttl_seconds": 5400,
   "ttl_human": "1h30m",
   "released_at": 1784592000,
@@ -74,6 +77,10 @@
       "port": 443,
       "scheme": "https"
     },
+    "api": {
+      "name": "api",
+      "tier": "backend"
+    },
     "services": [
       {
         "name": "auth",
@@ -87,7 +94,7 @@
       },
       {
         "name": "cart",
-        "port": 8444,
+        "port": 8453,
         "id": "svc-cart",
         "labels": {
           "app": "cart",
@@ -97,7 +104,7 @@
       },
       {
         "name": "pay",
-        "port": 8445,
+        "port": 8463,
         "id": "svc-pay",
         "labels": {
           "app": "pay",
