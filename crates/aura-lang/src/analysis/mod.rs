@@ -216,7 +216,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 for p in params {
                     self.declare(p, *span, DeclKind::Param, false);
                 }
-                self.walk_object_body(body);
+                self.walk_stmt_body(body);
                 self.pop_scope();
             }
             Stmt::Block(block) => self.walk_block(block),
@@ -231,6 +231,13 @@ impl<'a> SemanticAnalyzer<'a> {
             self.walk_stmt(stmt);
         }
         self.pop_scope();
+    }
+
+    /// A code body (D17): statements in the caller's freshly pushed scope.
+    fn walk_stmt_body(&mut self, body: &[Stmt<'a>]) {
+        for stmt in body {
+            self.walk_stmt(stmt);
+        }
     }
 
     fn walk_object_body(&mut self, body: &ObjectBody<'a>) {
@@ -320,7 +327,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 }
                 match body {
                     LambdaBody::Expr(e) => self.walk_expr(e),
-                    LambdaBody::Object(b) => self.walk_object_body(b),
+                    LambdaBody::Block(b) => self.walk_stmt_body(b),
                 }
                 self.pop_scope();
             }
@@ -337,7 +344,6 @@ impl<'a> SemanticAnalyzer<'a> {
                 }
                 self.walk_object_body(body);
             }
-            Expr::Block(b) => self.walk_block(b),
         }
     }
 

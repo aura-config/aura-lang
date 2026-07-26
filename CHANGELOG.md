@@ -18,6 +18,30 @@ still change the language.
   built by evaluating an Aura manifest with the language itself (dogfooding).
 
 ### Changed
+- **BREAKING (D17): `component` is removed, and every code body is a scope.**
+  A `def` body and a lambda body now accept statements (`=`, `shadow`,
+  `assert`), like a module or a `domain` — so a function can finally name a
+  subexpression. A list item is written as ordinary properties inside the `map`
+  lambda, with `name:` spelled out instead of injected by the keyword:
+
+  ```ruby
+  # before
+  services: names.map (n, i) ->
+    component n
+      port: 8000 + i
+    end
+  end
+
+  # after
+  services: names.map (n, i) ->
+    name: n
+    port: 8000 + i
+  end
+  ```
+
+  A block in expression position went with it. An object literal
+  (`key:` … `end`) stays data-only. Evaluated output is unchanged — the pinned
+  conformance snapshots still match byte for byte.
 - **`aura fmt` is now a canonical formatter**: besides indentation it
   canonicalizes intra-line spacing and column-aligns runs of `name = value`,
   `key: value`, and `cond` arms together with their trailing comments. Strings

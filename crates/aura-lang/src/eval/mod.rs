@@ -181,7 +181,7 @@ impl<'a> Interpreter<'a> {
     ) -> Result<(), Diagnostic> {
         match stmt {
             // D10: `=` is a private computation and is never exported; only
-            // `key:` properties and domain/component blocks are.
+            // `key:` properties and `domain` blocks are.
             Stmt::Assign {
                 name,
                 shadow,
@@ -215,7 +215,7 @@ impl<'a> Interpreter<'a> {
             } => {
                 let v = Value::Function(Arc::new(FunctionDef {
                     params: params.clone(),
-                    body: FuncBody::Object(body.clone()),
+                    body: FuncBody::Block(body.clone()),
                     closure: Arc::downgrade(env),
                     defined_in_root: self.current_root,
                 }));
@@ -227,7 +227,7 @@ impl<'a> Interpreter<'a> {
             }
             Stmt::Block(block) => {
                 let label = self.eval_expr(env, &block.label)?;
-                let obj = self.eval_block(env, block, &label)?;
+                let obj = self.eval_block(env, block)?;
                 let key = match &label {
                     Value::Str(s) => s.to_string(),
                     other => {
@@ -298,18 +298,14 @@ impl<'a> Interpreter<'a> {
         Ok(())
     }
 
-    /// domain/component body → Object; a component additionally gets "name" = label.
+    /// A `domain` body → Object (its label becomes the key at the call site).
     fn eval_block(
         &mut self,
         outer: &Env<'a>,
         block: &BlockDeclaration<'a>,
-        label: &Value<'a>,
     ) -> Result<Value<'a>, Diagnostic> {
         let env = self.track(Environment::child(outer));
         let mut exports: IndexMap<String, Value<'a>> = IndexMap::new();
-        if block.kind == BlockKind::Component {
-            exports.insert("name".to_string(), label.clone());
-        }
         for stmt in &block.body {
             self.exec_stmt(&env, stmt, &mut exports)?;
         }
@@ -528,11 +524,21 @@ impl<'a> Interpreter<'a> {
                 self.validate_schema(&def, &obj, *span)?;
                 Ok(obj)
             }
-            Expr::Block(block) => {
-                let label = self.eval_expr(env, &block.label)?;
-                self.eval_block(env, block, &label)
-            }
         }
+    }
+
+    /// A code body (D17): statements in their own scope; `key:` properties are
+    /// exported, `=` bindings stay private — the same rule as a module or block.
+    fn eval_stmt_body(
+        &mut self,
+        env: &Env<'a>,
+        body: &[Stmt<'a>],
+    ) -> Result<Value<'a>, Diagnostic> {
+        let mut exports: IndexMap<String, Value<'a>> = IndexMap::new();
+        for stmt in body {
+            self.exec_stmt(env, stmt, &mut exports)?;
+        }
+        Ok(Value::object(exports))
     }
 
     fn eval_object_body(
@@ -757,9 +763,9 @@ impl<'a> Interpreter<'a> {
         let saved_root = self.current_root;
         self.current_root = def.defined_in_root;
         let result = match &def.body {
-            FuncBody::Object(body) => self.eval_object_body(&env, body),
+            FuncBody::Block(body) => self.eval_stmt_body(&env, body),
             FuncBody::Lambda(LambdaBody::Expr(e)) => self.eval_expr(&env, e),
-            FuncBody::Lambda(LambdaBody::Object(body)) => self.eval_object_body(&env, body),
+            FuncBody::Lambda(LambdaBody::Block(body)) => self.eval_stmt_body(&env, body),
         };
         self.current_root = saved_root;
         self.call_depth -= 1;

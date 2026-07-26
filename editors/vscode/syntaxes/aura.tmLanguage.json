@@ -60,7 +60,7 @@
       "patterns": [
         {
           "name": "keyword.control.aura",
-          "match": "\\b(import|as|type|def|end|domain|component|new|assert|shadow|pub|cond|else)\\b"
+          "match": "\\b(import|as|type|def|end|domain|new|assert|shadow|pub|cond|else)\\b"
         }
       ]
     },

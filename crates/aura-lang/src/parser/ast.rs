@@ -53,7 +53,8 @@ pub enum Stmt<'a> {
     FuncDecl {
         name: &'a str,
         params: Vec<&'a str>,
-        body: ObjectBody<'a>,
+        /// D17: a code body — statements, like a module or a block.
+        body: Vec<Stmt<'a>>,
         public: bool,
         span: Span,
     },
@@ -94,7 +95,6 @@ pub enum TypeName<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockKind {
     Domain,
-    Component,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -209,8 +209,6 @@ pub enum Expr<'a> {
         body: ObjectBody<'a>,
         span: Span,
     },
-    /// `component name ... end` in expression position (inside map)
-    Block(Box<BlockDeclaration<'a>>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -221,5 +219,6 @@ pub struct ObjectBody<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum LambdaBody<'a> {
     Expr(Box<Expr<'a>>),
-    Object(ObjectBody<'a>),
+    /// D17: a code body — statements, like a `def` body.
+    Block(Vec<Stmt<'a>>),
 }

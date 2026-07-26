@@ -58,10 +58,9 @@ domain "production-eu"
   end
 
   apps: active.map (name, index) ->
-    component name
-      image:  "company/#{name}:#{app_version}"
-      labels: build_labels(name, "backend").merge(defaults.global_labels)
-    end
+    name:   name
+    image:  "company/#{name}:#{app_version}"
+    labels: build_labels(name, "backend").merge(defaults.global_labels)
   end
 
   assert active.len() >= 1, "Domain must have at least 1 service"
@@ -190,9 +189,8 @@ end
 
 ```ruby
 shards: range(3).map (i, _) ->
-  component "shard-#{i}"
-    replica_of: "primary"
-  end
+  name:       "shard-#{i}"
+  replica_of: "primary"
 end
 ```
 

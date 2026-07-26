@@ -110,7 +110,6 @@ pub fn format_source(src: &str) -> Result<String, Diagnostic> {
         toks_on[line].push(t);
         let d: i32 = match t.kind {
             TokenKind::Domain
-            | TokenKind::Component
             | TokenKind::Def
             | TokenKind::Type
             | TokenKind::New

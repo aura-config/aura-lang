@@ -339,7 +339,6 @@ impl<'a> Parser<'a> {
                 }
             }
             TokenKind::Domain => Ok(Stmt::Block(self.parse_block(BlockKind::Domain)?)),
-            TokenKind::Component => Ok(Stmt::Block(self.parse_block(BlockKind::Component)?)),
             TokenKind::Assert => self.parse_assert(),
             TokenKind::Shadow => {
                 let start = self.span();
@@ -422,6 +421,40 @@ impl<'a> Parser<'a> {
     }
 
     /// Properties up to a closing `end` (def body / nested object / new Schema).
+    /// A code body: statements until `end` (D17). Shared by blocks, `def`
+    /// bodies and lambda bodies, so all three are scopes that accept `=`,
+    /// `shadow` and `assert` — unlike an object literal, which is data only.
+    fn parse_stmt_body(&mut self, what: &'static str) -> Result<Vec<Stmt<'a>>, Diagnostic> {
+        self.enter()?;
+        let r = self.parse_stmt_body_impl(what);
+        self.leave();
+        r
+    }
+
+    fn parse_stmt_body_impl(&mut self, what: &'static str) -> Result<Vec<Stmt<'a>>, Diagnostic> {
+        let mut body = Vec::new();
+        loop {
+            self.skip_newlines();
+            if self.eat(&TokenKind::End) {
+                return Ok(body);
+            }
+            if matches!(self.peek(), TokenKind::Eof) {
+                return Err(self.err(
+                    "E0203",
+                    "missing `end`",
+                    match what {
+                        "block" => "block is not closed",
+                        "function" => "function body is not closed",
+                        _ => "lambda body is not closed",
+                    },
+                ));
+            }
+            let stmt = self.parse_stmt()?;
+            self.eat_separator()?;
+            body.push(stmt);
+        }
+    }
+
     fn parse_object_body(&mut self) -> Result<ObjectBody<'a>, Diagnostic> {
         self.enter()?;
         let r = self.parse_object_body_impl();
@@ -503,7 +536,7 @@ impl<'a> Parser<'a> {
         self.expect(&TokenKind::LParen, "`(` after function name")?;
         let params = self.parse_param_list()?;
         self.expect(&TokenKind::Newline, "newline after function signature")?;
-        let body = self.parse_object_body()?;
+        let body = self.parse_stmt_body("function")?;
         Ok(Stmt::FuncDecl {
             name,
             params,
@@ -549,19 +582,7 @@ impl<'a> Parser<'a> {
         self.bump(); // domain | component
         let label = self.parse_expr(0)?;
         self.expect(&TokenKind::Newline, "newline after block label")?;
-        let mut body = Vec::new();
-        loop {
-            self.skip_newlines();
-            if self.eat(&TokenKind::End) {
-                break;
-            }
-            if matches!(self.peek(), TokenKind::Eof) {
-                return Err(self.err("E0203", "missing `end`", "block is not closed"));
-            }
-            let stmt = self.parse_stmt()?;
-            self.eat_separator()?;
-            body.push(stmt);
-        }
+        let body = self.parse_stmt_body("block")?;
         Ok(BlockDeclaration {
             kind,
             label,
@@ -742,10 +763,6 @@ impl<'a> Parser<'a> {
                     span: self.join(sp),
                 })
             }
-            TokenKind::Domain => Ok(Expr::Block(Box::new(self.parse_block(BlockKind::Domain)?))),
-            TokenKind::Component => Ok(Expr::Block(Box::new(
-                self.parse_block(BlockKind::Component)?,
-            ))),
             TokenKind::Cond => self.parse_cond(),
             _ => Err(self.err(
                 "E0204",
@@ -787,11 +804,23 @@ impl<'a> Parser<'a> {
         self.bump(); // (
         let params = self.parse_param_list()?;
         self.expect(&TokenKind::Arrow, "`->` in lambda")?;
-        // `(x) -> key: v ... end` — an object body; otherwise a single expression + `end`
-        let body = if matches!(self.peek(), TokenKind::Ident(_))
-            && matches!(self.peek_at(1), TokenKind::Colon)
-        {
-            LambdaBody::Object(self.parse_object_body()?)
+        // A statement body (`key: v`, `x = e`, `assert ...`) or a single expression.
+        let stmt_body = matches!(
+            (self.peek(), self.peek_at(1)),
+            (TokenKind::Ident(_) | TokenKind::Str(_), TokenKind::Colon)
+                | (TokenKind::Ident(_), TokenKind::Assign)
+                | (
+                    TokenKind::Shadow
+                        | TokenKind::Assert
+                        | TokenKind::Def
+                        | TokenKind::Type
+                        | TokenKind::Pub
+                        | TokenKind::Domain,
+                    _
+                )
+        );
+        let body = if stmt_body {
+            LambdaBody::Block(self.parse_stmt_body("lambda")?)
         } else {
             let e = self.parse_expr(0)?;
             self.skip_newlines();

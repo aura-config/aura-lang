@@ -1,0 +1,20 @@
+outer = 100
+
+def build(a, b)
+  total = a + b
+  sum:    total
+  double: total * 2
+end
+
+svcs: ["api", "web"].map (n, i) ->
+  base = 8000
+  shadow outer = base + i
+  assert n.len() > 0, "named"
+  name: n
+  port: outer
+end
+
+domain "prod"
+  x = 1
+  v: build(x, 2).sum
+end

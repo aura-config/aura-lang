@@ -17,6 +17,6 @@ locales:
 end
 
 stats:
-  total_keys: en.len()
+  total_keys:    en.len()
   translated_ru: ru.len()
 end

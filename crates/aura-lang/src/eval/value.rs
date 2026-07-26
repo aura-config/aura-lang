@@ -6,7 +6,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use super::env::WeakEnv;
-use crate::parser::ast::{LambdaBody, ObjectBody, SchemaField};
+use crate::parser::ast::{LambdaBody, SchemaField, Stmt};
 
 #[derive(Debug, Clone)]
 pub enum Value<'a> {
@@ -42,8 +42,8 @@ pub struct FunctionDef<'a> {
 #[derive(Clone)]
 pub enum FuncBody<'a> {
     Lambda(LambdaBody<'a>),
-    /// A `def` body - an object literal.
-    Object(ObjectBody<'a>),
+    /// A `def` body — statements (D17), like a block.
+    Block(Vec<Stmt<'a>>),
 }
 
 impl fmt::Debug for FunctionDef<'_> {

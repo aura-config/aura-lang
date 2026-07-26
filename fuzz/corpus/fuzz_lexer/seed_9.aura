@@ -5,8 +5,8 @@ cargo = read_file("./Cargo.toml").parse_toml()
 team  = read_file("./team.json").parse_json()
 
 service:
-  name: cargo.package.name
+  name:    cargo.package.name
   version: cargo.package.version
-  owner: team.teams[0].lead
-  oncall: team.get("oncall", "platform-team")
+  owner:   team.teams[0].lead
+  oncall:  team.get("oncall", "platform-team")
 end

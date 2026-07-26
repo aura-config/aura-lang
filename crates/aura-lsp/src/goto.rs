@@ -179,7 +179,7 @@ pub fn reference_ranges(text: &str, line: u32, character: u32) -> Vec<Range> {
 }
 
 /// A flat outline of the declarations in a file: `def`, `type`, `domain`,
-/// `component`, and import aliases.
+/// and import aliases.
 pub fn document_symbols(text: &str) -> Vec<DocumentSymbol> {
     let Ok(toks) = Lexer::new(text, 0).tokenize() else {
         return Vec::new();
@@ -192,11 +192,8 @@ pub fn document_symbols(text: &str) -> Vec<DocumentSymbol> {
             (TokenKind::Ident(n), Some(TokenKind::Def)) => (*n, SymbolKind::FUNCTION),
             (TokenKind::Ident(n), Some(TokenKind::Type)) => (*n, SymbolKind::STRUCT),
             (TokenKind::Ident(n), Some(TokenKind::As)) => (*n, SymbolKind::MODULE),
-            // domain "name" / component name — the label follows the keyword.
-            (TokenKind::Str(n), Some(TokenKind::Domain | TokenKind::Component)) => {
-                (*n, SymbolKind::NAMESPACE)
-            }
-            (TokenKind::Ident(n), Some(TokenKind::Component)) => (*n, SymbolKind::NAMESPACE),
+            // `domain "name"` — the label follows the keyword.
+            (TokenKind::Str(n), Some(TokenKind::Domain)) => (*n, SymbolKind::NAMESPACE),
             _ => continue,
         };
         let range = Range {
