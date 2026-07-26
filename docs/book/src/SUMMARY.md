@@ -6,7 +6,7 @@
 
 - [Быстрый старт](tutorial/quick-start.md)
 - [Вычисления и вывод: `=` против `:`](tutorial/bindings.md)
-- [Блоки: `domain` и `component`](tutorial/blocks.md)
+- [Блоки и области видимости](tutorial/blocks.md)
 - [Схемы и валидация](tutorial/schemas.md)
 - [Функции и методы](tutorial/functions.md)
 - [Модули и пакеты](tutorial/packages.md)

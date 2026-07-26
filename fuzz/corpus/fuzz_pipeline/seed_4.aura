@@ -2,27 +2,27 @@
 # Запуск: aura eval k8s_deploy.aura --format yaml
 
 type Container
-  name: String
+  name:  String
   image: String
-  port: Int
+  port:  Int
 end
 
 app_name = "gateway"
 version  = "2.4.1"
 
 main_container = new Container
-  name: app_name
+  name:  app_name
   image: "company/#{app_name}:#{version}"
-  port: 8080
+  port:  8080
 end
 
 apiVersion: "apps/v1"
-kind: "Deployment"
+kind:       "Deployment"
 
 metadata:
   name: app_name
   labels:
-    "app.kubernetes.io/name": app_name
+    "app.kubernetes.io/name":    app_name
     "app.kubernetes.io/version": version
   end
 end

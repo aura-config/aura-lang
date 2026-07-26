@@ -70,7 +70,7 @@ fn manifest_structure() {
         }
     )));
 
-    // apps: active_services.map (name, index) -> component ... end end
+    // apps: active_services.map (name, index) -> name: name ... end (D17)
     let apps = domain.body.iter().find_map(|s| match s {
         Stmt::Property {
             key: "apps", value, ..
@@ -87,14 +87,17 @@ fn manifest_structure() {
     };
     let Expr::Lambda {
         params,
-        body: LambdaBody::Expr(inner),
+        body: LambdaBody::Block(stmts),
         ..
     } = l.as_ref()
     else {
-        panic!()
+        panic!("lambda body must be a statement body (D17)")
     };
     assert_eq!(params, &["name", "index"]);
-    assert!(matches!(inner.as_ref(), Expr::Block(b) if b.kind == BlockKind::Component));
+    // The item's own `name` is now an ordinary property, not injected by a keyword.
+    assert!(stmts
+        .iter()
+        .any(|s| matches!(s, Stmt::Property { key: "name", .. })));
 
     // assert ... , "..." (D5)
     assert!(domain.body.iter().any(|s| matches!(

@@ -5,9 +5,8 @@ rust_versions = ["1.75", "stable", "beta"]
 targets       = ["x86_64-unknown-linux-gnu", "aarch64-apple-darwin"]
 
 jobs: rust_versions.map (rv, i) ->
-  component "rust-#{rv}"
-    order: i
-    toolchain: rv
-    targets: targets
-  end
+  name:      "rust-#{rv}"
+  order:     i
+  toolchain: rv
+  targets:   targets
 end

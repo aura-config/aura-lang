@@ -72,10 +72,9 @@ domain "production-eu"
   end
 
   apps = active_services.map (name, index) ->
-    component name
-      image:  "company/#{name}:#{app_version}"
-      labels: build_labels(name, "backend").merge(defaults.global_labels)
-    end
+    name:   name
+    image:  "company/#{name}:#{app_version}"
+    labels: build_labels(name, "backend").merge(defaults.global_labels)
   end
 
   assert active_services.len() >= 1, "Domain must have at least 1 service"
@@ -102,6 +101,7 @@ end
 | D14 | — | **Adopted**: a `cond` multi-way expression — `cond (bool -> value)+ else -> value end`. The left of each `->` must be `Bool` (E0306 otherwise, like a ternary condition); the right is any expression; `else` is mandatory (a missing `else` is the parse error E0207). First true arm wins. No value destructuring. | Fills the 3+ branch gap where nested ternaries become unreadable; deliberately simpler than a pattern-matching `match` |
 | D15 | Every schema field is required | **Adopted**: `name: Type = default` makes a field optional — if omitted at `new`, the default expression is evaluated in the instantiation scope (it may reference module vars, e.g. `= base + 1`) and inserted after the provided fields; the default is type-checked like any value (E0512). A field with no default is still required (E0511). No nullable (`?`) fields — optionality never introduces a `null`. **Limitation:** a default is evaluated in the instantiation scope only — it cannot reference sibling fields (`burst: Int = cpu * 2` is E0504); dependent defaults are a `def` constructor's job (`def quota(cpu) … burst: cpu * 2 … end`). A future D17 may add in-schema dependent defaults (field order + cycle detection) if demand appears. | Fills the biggest schema gap (real configs need optional-with-default) with zero new null: every field always has a value, shape stays stable |
 | D16 | One-line quoted strings only | **Adopted**: a `text … end` block string in value position (`key: text` / `x = text` immediately followed by a newline). Yields an ordinary `String`, so any property/field accepts either a quoted `"one-liner"` or a block. Interpolation `#{…}` and `\` escapes behave exactly as in quoted strings; the common leading indentation is stripped and content lines are joined by `\n` (no trailing newline). Terminator rule: the closing `end` sits at the opener line's indentation (`indent ≤ key`); content must be indented deeper, so an embedded `end` (Ruby/shell) is text — this resolves the heredoc collision by indent. An opener with no closing `end` is `E0107`. `text` stays an ordinary identifier everywhere except this contextual opener (a property named `text` is unaffected). No `raw` variant at launch. | Real configs embed short scripts/templates; the inline/block duality keeps “quotes = string” intact and needs no `exec`/wrapper type |
+| D17 | `component` injected a `name` field; only blocks were scopes | **Adopted**: `component` is removed, and every code body is a scope — a `def` body and a lambda body now accept statements (`=`, `shadow`, `assert`), like a module or a `domain`. A list item is written as ordinary properties inside the `map` lambda (`name: n` is now explicit), and a block in expression position is gone with it. An object literal (`key:` … `end`) stays data-only. | The implicit `name` contradicted the explicitness of D4/D7 (`new`, `shadow`); a function that cannot name a subexpression was a real limitation. Net: −1 keyword, −1 grammar branch, −1 implicit rule |
 
 ---
 
@@ -241,7 +241,7 @@ Zero-copy invariant: `TokenKind` contains no `String`; every text field is a sli
 
 ### 2.4. Keywords, identifiers, import paths
 
-- An identifier: `[a-zA-Z_][a-zA-Z0-9_]*`, then checked against the keyword table (`import as type def end domain component new assert shadow true false null`).
+- An identifier: `[a-zA-Z_][a-zA-Z0-9_]*`, then checked against the keyword table (`import as type def end domain new assert shadow true false null`).
 - An import path is a contextual mode after `Import` (if the next character is not `"`): `[a-zA-Z0-9_\-]+ ("/" [a-zA-Z0-9_\-]+)* "@" "v" [0-9]+ ("." [0-9]+){0,2}`. A missing `@vX` is an `E0104: registry import requires a version` error (D8). File imports (`"..."`) do not require a version.
 - A comment: `#` outside a string — runs to the end of the line.
 
@@ -284,7 +284,7 @@ pub enum ImportSource<'a> {
 
 pub enum Stmt<'a> {
     Assign { name: &'a str, shadow: bool, value: Expr<'a>, span: Span }, // [shadow] x = expr (D7)
-    Property { key: &'a str, value: Expr<'a>, span: Span },              // key: expr | key: <object block> - inside domain/component
+    Property { key: &'a str, value: Expr<'a>, span: Span },              // key: expr | key: <object block>
     Assert { cond: Expr<'a>, message: Option<Expr<'a>>, span: Span },    // assert cond, "msg" (D5)
     TypeDecl(SchemaDeclaration<'a>),
     FuncDecl { name: &'a str, params: Vec<&'a str>, body: ObjectBody<'a>, span: Span },
@@ -317,7 +317,6 @@ pub enum Expr<'a> {
     ListLiteral(Vec<Expr<'a>>, Span),
     Lambda { params: Vec<&'a str>, body: LambdaBody<'a>, span: Span },
     SchemaInstance { schema: &'a str, body: ObjectBody<'a>, span: Span }, // ONLY via `new` (D4)
-    Block(Box<BlockDeclaration<'a>>),  // component inside map
 }
 
 pub struct ObjectBody<'a> { pub props: Vec<(&'a str, Expr<'a>, Span)> }
@@ -446,7 +445,7 @@ Binding rules:
   hold a `Weak` reference; the interpreter's env arena owns every environment for
   the eval's duration and drops the whole DAG cleanly afterward. No leak.
 
-New frames: the body of a `domain`/`component`, a `def`, a lambda, each `map` callback invocation.
+New frames: the body of a `domain`, a `def`, a lambda, each `map` callback invocation (D17: all code bodies are scopes).
 
 Implementation note (v0.1): instead of an explicit builder/freeze pair, a frame uses internal mutability (`RefCell<IndexMap>`) while a block is being built; the E0301/E0302 invariants and the strictly-upward references are preserved. Observable difference from strict freezing: a closure sees bindings from its own block declared after it - it just cannot be called before they are declared, given top-down execution.
 
@@ -510,7 +509,7 @@ pub struct EvalCtx {
 }
 ```
 
-A module evaluates to a `Value::Object` built only from `key:` properties and `domain` blocks (key = label); `=` bindings, `def`, `type` are private (D10). A block's body exports its properties and nested blocks under the same rule; a `component` additionally gets the key `name` = label.
+A module evaluates to a `Value::Object` built only from `key:` properties and `domain` blocks (key = label); `=` bindings, `def`, `type` are private (D10). A block's body exports its properties and nested blocks under the same rule. `def` and lambda bodies follow it too (D17): `key:` is the result object's field, `=` stays private.
 
 ---
 
@@ -627,7 +626,7 @@ aura add <path>@vX.Y.Z [--from <file>] [--registry-dir=<dir>]  # package install
 ```
 
 `aura fmt` is a canonical, whitespace-only formatter. It (1) normalizes
-indentation (2 spaces/level by token-depth: `domain`/`component`/`def`/`type`/
+indentation (2 spaces/level by token-depth: `domain`/`def`/`type`/
 `new`/`->`/`[`/`(`/a trailing `key:` open a level, `end`/`]`/`)` close one;
 continuation lines after `,`/`=`/an operator get +1); (2) canonicalizes
 intra-line spacing (runs of spaces/tabs between tokens collapse to a single

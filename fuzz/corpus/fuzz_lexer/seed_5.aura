@@ -15,8 +15,8 @@ end
 unused_config_version = "v1.2.0"
 
 def build_labels(app_name, tier)
-  name: app_name
-  tier: tier
+  name:       app_name
+  tier:       tier
   managed_by: "aura-engine"
 end
 
@@ -59,10 +59,9 @@ domain "production-eu"
   end
 
   apps: active_services.map (name, index) ->
-    component name
-      image: "company/#{name}:#{app_version}"
-      labels: build_labels(name, "backend").merge(defaults.global_labels)
-    end
+    name:   name
+    image:  "company/#{name}:#{app_version}"
+    labels: build_labels(name, "backend").merge(defaults.global_labels)
   end
 
   assert active_services.len() >= 1, "Domain must have at least 1 service"

@@ -59,10 +59,9 @@ domain "production-eu"
   end
 
   apps: active_services.map (name, index) ->
-    component name
-      image:  "company/#{name}:#{app_version}"
-      labels: build_labels(name, "backend").merge(defaults.global_labels)
-    end
+    name:   name
+    image:  "company/#{name}:#{app_version}"
+    labels: build_labels(name, "backend").merge(defaults.global_labels)
   end
 
   assert active_services.len() >= 1, "Domain must have at least 1 service"

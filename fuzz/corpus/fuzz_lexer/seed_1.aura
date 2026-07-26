@@ -2,9 +2,9 @@
 # Запуск: aura eval environments.aura
 
 def make_env(name, replicas, debug)
-  replicas: replicas
+  replicas:  replicas
   log_level: debug ? "debug" : "warn"
-  db_url: "postgres://db.#{name}.internal:5432/app"
+  db_url:    "postgres://db.#{name}.internal:5432/app"
 end
 
 environments:

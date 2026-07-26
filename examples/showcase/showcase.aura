@@ -97,11 +97,10 @@ domain "checkout-eu"
   end
 
   services: ["auth", "cart", "pay"].map (name, index) ->
-    component name
-      port:   base_port + index
-      id:     lib.service_id(name).id
-      labels: lib.label(name, "backend")
-    end
+    name:   name
+    port:   base_port + index
+    id:     lib.service_id(name).id
+    labels: lib.label(name, "backend")
   end
 
   assert region.starts_with("eu"), "checkout-eu must run in an eu region"
