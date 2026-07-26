@@ -80,6 +80,10 @@ impl<'a> MethodRegistry<'a> {
         r.register(TypeTag::Str, "ends_with", m_str_ends_with);
         r.register(TypeTag::Str, "to_int", m_str_to_int);
         r.register(TypeTag::Str, "to_float", m_str_to_float);
+        // Pure, deterministic digests/codecs (no I/O): safe under D1/D13.
+        r.register(TypeTag::Str, "sha256", m_str_sha256);
+        r.register(TypeTag::Str, "base64", m_str_base64);
+        r.register(TypeTag::Str, "base64_decode", m_str_base64_decode);
         // stdlib extension: List
         r.register(TypeTag::List, "sort", m_list_sort);
         r.register(TypeTag::List, "reverse", m_list_reverse);
@@ -793,6 +797,94 @@ fn m_str_to_float<'a>(
         .parse::<f64>()
         .map(Value::Float)
         .map_err(|_| rt("E0314", format!("cannot parse '{s}' as Float"), sp))
+}
+
+// ---- stdlib extension: digests and codecs ----
+//
+// These are pure functions of their input: no I/O, no clock, no randomness, so
+// they keep the capability model (D1) and determinism (D13) intact. That is why
+// they belong in the core rather than in loadable native plugins, which could
+// not offer the same guarantees.
+
+const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/// `"text".sha256()` → the lowercase hex digest (config-checksum annotations).
+fn m_str_sha256<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    _sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Str(s) = recv else { unreachable!() };
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(s.as_bytes());
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for b in digest {
+        hex.push_str(&format!("{b:02x}"));
+    }
+    Ok(Value::str(hex))
+}
+
+/// `"text".base64()` → standard base64 with padding (e.g. k8s Secret data).
+fn m_str_base64<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    _sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Str(s) = recv else { unreachable!() };
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(B64[((n >> (18 - 6 * i)) & 0x3f) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    Ok(Value::str(out))
+}
+
+/// `"aGk=".base64_decode()` → the decoded String; E0321 if it is not valid
+/// base64 or does not decode to UTF-8.
+fn m_str_base64_decode<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Str(s) = recv else { unreachable!() };
+    let err = || rt("E0321", format!("'{s}' is not valid base64"), sp);
+    let src: Vec<u8> = s.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
+    if src.len() % 4 != 0 {
+        return Err(err());
+    }
+    let mut out: Vec<u8> = Vec::with_capacity(src.len() / 4 * 3);
+    for chunk in src.chunks(4) {
+        let pad = chunk.iter().filter(|&&b| b == b'=').count();
+        // Padding is only legal at the very end, at most two characters.
+        if pad > 2 || (pad > 0 && chunk[4 - pad..].iter().any(|&b| b != b'=')) {
+            return Err(err());
+        }
+        let mut n = 0u32;
+        for &b in &chunk[..4 - pad] {
+            let v = B64.iter().position(|&c| c == b).ok_or_else(err)? as u32;
+            n = (n << 6) | v;
+        }
+        n <<= 6 * pad as u32;
+        for i in 0..(3 - pad) {
+            out.push(((n >> (16 - 8 * i)) & 0xff) as u8);
+        }
+    }
+    String::from_utf8(out).map(Value::str).map_err(|_| err())
 }
 
 // ---- stdlib extension: List ----

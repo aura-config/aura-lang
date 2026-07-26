@@ -1209,6 +1209,49 @@ mod tests {
     }
 
     #[test]
+    fn digest_and_codec_methods() {
+        // Known vectors: NIST for SHA-256, RFC 4648 §10 for base64.
+        let v = eval(concat!(
+            "empty: \"\".sha256()\n",
+            "abc: \"abc\".sha256()\n",
+            "b0: \"\".base64()\n",
+            "b1: \"f\".base64()\n",
+            "b2: \"fo\".base64()\n",
+            "b3: \"foo\".base64()\n",
+            "b6: \"foobar\".base64()\n",
+            "round: \"hello world\".base64().base64_decode()\n",
+            "utf8: \"привет\".base64().base64_decode()\n",
+        ))
+        .unwrap();
+        assert_eq!(
+            get(&v, "empty"),
+            Value::str("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+        );
+        assert_eq!(
+            get(&v, "abc"),
+            Value::str("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+        );
+        assert_eq!(get(&v, "b0"), Value::str(""));
+        assert_eq!(get(&v, "b1"), Value::str("Zg=="));
+        assert_eq!(get(&v, "b2"), Value::str("Zm8="));
+        assert_eq!(get(&v, "b3"), Value::str("Zm9v"));
+        assert_eq!(get(&v, "b6"), Value::str("Zm9vYmFy"));
+        assert_eq!(get(&v, "round"), Value::str("hello world"));
+        assert_eq!(get(&v, "utf8"), Value::str("привет"));
+    }
+
+    #[test]
+    fn invalid_base64_is_e0321() {
+        for bad in ["\"Zg\"", "\"Zg=x\"", "\"====\"", "\"Z!==\""] {
+            assert_eq!(
+                eval(&format!("x: {bad}.base64_decode()")).unwrap_err().code,
+                "E0321",
+                "expected E0321 for {bad}"
+            );
+        }
+    }
+
+    #[test]
     fn stdlib_string_and_numeric_methods() {
         let src = concat!(
             "parts: \"a,b,c\".split(\",\")\n",

@@ -91,6 +91,21 @@ String:
     returns: "Int"
     doc:     "RFC3339 timestamp to epoch seconds UTC; E0320 on error."
   end
+  sha256:
+    params:  []
+    returns: "String"
+    doc:     "SHA-256 digest as lowercase hex (config checksums)."
+  end
+  base64:
+    params:  []
+    returns: "String"
+    doc:     "Standard base64 with padding (e.g. Kubernetes Secret data)."
+  end
+  base64_decode:
+    params:  []
+    returns: "String"
+    doc:     "Decode standard base64 to a String; E0321 if invalid."
+  end
 end
 
 Int:

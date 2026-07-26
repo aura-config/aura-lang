@@ -182,7 +182,8 @@ end
 `reverse` `sum` `min` `max` `flatten` `slice` `first` `last` `get` `contains`
 `join` `merge` `keys` `values` `abs` `parse_toml` `parse_json` `parse_yaml`
 `to_json` `to_yaml` `to_toml` `parse_duration` `format_duration` `parse_datetime`
-`format_datetime`. Реестр расширяем без изменений парсера.
+`format_datetime` `sha256` `base64` `base64_decode`. Реестр расширяем без
+изменений парсера.
 
 Глобальная `range(n)` порождает `[0, 1, ..., n-1]` — удобно генерировать N штук
 (шарды, реплики), а не перечислять руками:
