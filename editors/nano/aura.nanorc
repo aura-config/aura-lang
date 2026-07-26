@@ -1,32 +1,32 @@
-# Подсветка Aura для nano.
-# Установка: включите в ~/.nanorc строку
-#   include "/путь/до/aura-lang/editors/nano/aura.nanorc"
+# Aura syntax highlighting for nano.
+# Install: add this line to ~/.nanorc
+#   include "/path/to/aura-lang/editors/nano/aura.nanorc"
 
 syntax aura "\.aura$"
 comment "#"
 
-# Числа
+# Numbers
 color brightmagenta "\<[0-9]+(\.[0-9]+)?\>"
 
-# Ключевые слова
-color brightblue "\<(import|as|type|enum|def|end|domain|new|assert|shadow|pub)\>"
+# Keywords
+color brightblue "\<(import|as|type|enum|def|end|domain|new|assert|shadow|pub|cond|else)\>"
 color brightcyan "\<(true|false|null)\>"
 
-# Встроенные функции
-color cyan "\<(env|read_file|fail)\("
+# Builtin functions
+color cyan "\<(env|read_file|fail|range)\("
 
-# Типы схем (Заглавные идентификаторы)
+# Schema and enum names (capitalized identifiers)
 color yellow "\<[A-Z][A-Za-z0-9_]*\>"
 
-# Свойства (ключ до двоеточия)
+# Properties (the key before the colon)
 color green "^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:"
 
-# Операторы
+# Operators
 color brightyellow "(\+|-|\*|/|%|==|!=|<=|>=|<|>|&&|\|\||!|\?|->)"
 
-# Строки и интерполяция
+# Strings and interpolation
 color brightgreen ""([^"\]|\\.)*""
 color brightred "#\{[^}]*\}"
 
-# Комментарии — последними, чтобы перекрывали всё внутри
+# Comments last, so they override anything inside them
 color brightblack "(^|[[:space:]])#([^{].*)?$"

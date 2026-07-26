@@ -1,13 +1,13 @@
-" Подсветка Aura для Vim/Neovim.
-" Установка: скопируйте editors/vim/* в ~/.vim/ (или ~/.config/nvim/)
+" Aura syntax highlighting for Vim/Neovim.
+" Install: copy editors/vim/* into ~/.vim/ (or ~/.config/nvim/)
 
 if exists("b:current_syntax")
   finish
 endif
 
-syn keyword auraKeyword import as type enum def end domain new assert shadow pub
+syn keyword auraKeyword import as type enum def end domain new assert shadow pub cond else
 syn keyword auraBoolean true false null
-syn keyword auraBuiltin env read_file fail
+syn keyword auraBuiltin env read_file fail range
 
 syn match auraNumber "\<\d\+\(\.\d\+\)\?\>"
 syn match auraOperator "\(+\|-\|\*\|/\|%\|==\|!=\|<=\|>=\|<\|>\|&&\|||\|!\|?\|->\)"

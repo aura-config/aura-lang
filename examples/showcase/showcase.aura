@@ -29,6 +29,18 @@ type Quota
   burst: Int = default_burst # default may reference a module var
 end
 
+# --- Closed set of string values (D18): only a listed member is accepted.
+enum Tier
+  "frontend"
+  "backend"
+  "cache"
+end
+
+type Service
+  name: String
+  tier: Tier # a plain String constrained to the members above
+end
+
 # --- Arithmetic / comparison / boolean / ternary, plus stdlib methods.
 numbers:
   sum:       weights.sum()
@@ -62,6 +74,11 @@ loud:      app_name.upper()
 parts:     "a,b,c".split(",")
 joined:    ["x", "y", "z"].join("/")
 
+# --- Pure digests and codecs: no I/O and no clock, so D1/D13 still hold.
+name_digest: app_name.sha256()
+secret_b64:  "s3cr3t".base64()
+decoded:     "czNjcjN0".base64_decode()
+
 # --- Deterministic time (D13): durations and dates, never now().
 ttl_seconds: "1h30m".parse_duration()
 ttl_human:   "1h30m".parse_duration().format_duration()
@@ -76,8 +93,8 @@ entrypoint: text
   exec ./server --port #{base_port}
 end
 
-# --- Domain block with shadowing, nested objects, schema instance, and a
-# component list built from a lambda over imported data (D7, D12).
+# --- Domain block: shadowing, nested objects, schema instances, and a list
+# built from a lambda over imported data (D7, D12, D17).
 domain "checkout-eu"
   shadow base_port = 8443 # legal shadow of the outer binding
   listen_port: base_port
@@ -96,9 +113,17 @@ domain "checkout-eu"
     host: "checkout.internal"
   end
 
+  # D18: an enum-typed field rejects anything outside the set.
+  api: new Service
+    name: "api"
+    tier: "backend"
+  end
+
+  # D17: a lambda body is a scope, so `=` works inside it.
   services: ["auth", "cart", "pay"].map (name, index) ->
+    offset = index * 10
     name:   name
-    port:   base_port + index
+    port:   base_port + offset
     id:     lib.service_id(name).id
     labels: lib.label(name, "backend")
   end
