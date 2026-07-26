@@ -184,6 +184,13 @@ impl<'a> SemanticAnalyzer<'a> {
                     self.walk_expr(m);
                 }
             }
+            Stmt::EnumDecl(en) => {
+                self.declare(en.name, en.span, DeclKind::Type, false);
+                // D12: pub is the module's API, not dead code
+                if en.public {
+                    self.mark_used(en.name, en.span);
+                }
+            }
             Stmt::TypeDecl(schema) => {
                 for f in &schema.fields {
                     if let TypeName::Custom(name) = f.ty {

@@ -112,6 +112,7 @@ pub fn format_source(src: &str) -> Result<String, Diagnostic> {
             TokenKind::Domain
             | TokenKind::Def
             | TokenKind::Type
+            | TokenKind::Enum
             | TokenKind::New
             | TokenKind::Cond
             | TokenKind::LBracket

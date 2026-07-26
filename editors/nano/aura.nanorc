@@ -9,7 +9,7 @@ comment "#"
 color brightmagenta "\<[0-9]+(\.[0-9]+)?\>"
 
 # Ключевые слова
-color brightblue "\<(import|as|type|def|end|domain|new|assert|shadow|pub)\>"
+color brightblue "\<(import|as|type|enum|def|end|domain|new|assert|shadow|pub)\>"
 color brightcyan "\<(true|false|null)\>"
 
 # Встроенные функции

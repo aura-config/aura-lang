@@ -49,6 +49,8 @@ pub enum Stmt<'a> {
         span: Span,
     },
     TypeDecl(SchemaDeclaration<'a>),
+    /// D18: `[pub] enum Name` — a closed set of allowed string values
+    EnumDecl(EnumDeclaration<'a>),
     /// `[pub] def ...` - public is exported to the module's importers (D12)
     FuncDecl {
         name: &'a str,
@@ -60,6 +62,17 @@ pub enum Stmt<'a> {
     },
     Block(BlockDeclaration<'a>),
     Expr(Expr<'a>),
+}
+
+/// D18: `enum Tier "frontend" "backend" end` — a validation constraint, not a
+/// wrapper type: values stay ordinary strings and serialize as such.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumDeclaration<'a> {
+    pub name: &'a str,
+    pub members: Vec<&'a str>,
+    /// `pub enum` — visible to the module's importers (D12)
+    pub public: bool,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]

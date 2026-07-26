@@ -162,6 +162,33 @@ api: new Service
 end
 ```
 
+### Closed sets with `enum`
+
+A `String` field accepts any string, so `"backand"` used to reach production. An
+`enum` makes the set closed — and a member is still an ordinary string, so the
+JSON output does not change:
+
+```ruby
+enum Tier
+  "frontend"
+  "backend"
+  "cache"
+end
+
+type Service
+  name: String
+  tier: Tier
+end
+
+svc: new Service
+  name: "api"
+  tier: "backand" # E0514: did you mean "backend"? members: ...
+end
+```
+
+`pub enum` crosses the module boundary (D12), and members are resolved where the
+schema is declared — an imported schema validates against its own module's enum.
+
 ### Functions, lambdas, methods
 
 ```ruby

@@ -28,6 +28,7 @@ pub enum TokenKind<'a> {
     Import,
     As,
     Type,
+    Enum,
     Def,
     End,
     Domain,
@@ -79,8 +80,8 @@ pub enum StrPart<'a> {
 /// a test enforces that. `text` is intentionally absent — it is a contextual
 /// block-string opener (D16), not a reserved word.
 pub const KEYWORDS: &[&str] = &[
-    "import", "as", "type", "def", "end", "domain", "new", "assert", "shadow", "pub", "cond",
-    "else", "true", "false", "null",
+    "import", "as", "type", "enum", "def", "end", "domain", "new", "assert", "shadow", "pub",
+    "cond", "else", "true", "false", "null",
 ];
 
 impl TokenKind<'_> {
@@ -89,6 +90,7 @@ impl TokenKind<'_> {
             "import" => TokenKind::Import,
             "as" => TokenKind::As,
             "type" => TokenKind::Type,
+            "enum" => TokenKind::Enum,
             "def" => TokenKind::Def,
             "end" => TokenKind::End,
             "domain" => TokenKind::Domain,

@@ -19,13 +19,26 @@ pub enum Value<'a> {
     /// IndexMap: key order = declaration order (deterministic JSON).
     Object(Arc<IndexMap<String, Value<'a>>>),
     Schema(Arc<SchemaDef<'a>>),
+    /// D18: a declared enum — a closed set of allowed string values.
+    Enum(Arc<EnumDef<'a>>),
     Function(Arc<FunctionDef<'a>>),
+}
+
+/// D18. Members keep declaration order so diagnostics list them predictably.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumDef<'a> {
+    pub name: &'a str,
+    pub members: Vec<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SchemaDef<'a> {
     pub name: &'a str,
     pub fields: Vec<SchemaField<'a>>,
+    /// D18: for each field typed by an enum, the enum resolved **at declaration
+    /// time** — so an imported schema validates against the enum that was in
+    /// scope in its own module, not one that happens to exist at the call site.
+    pub field_enums: std::collections::HashMap<&'a str, Arc<EnumDef<'a>>>,
 }
 
 pub struct FunctionDef<'a> {
@@ -62,6 +75,7 @@ pub enum TypeTag {
     List,
     Object,
     Schema,
+    Enum,
     Function,
 }
 
@@ -76,6 +90,7 @@ impl<'a> Value<'a> {
             Value::List(_) => TypeTag::List,
             Value::Object(_) => TypeTag::Object,
             Value::Schema(_) => TypeTag::Schema,
+            Value::Enum(_) => TypeTag::Enum,
             Value::Function(_) => TypeTag::Function,
         }
     }
@@ -90,6 +105,7 @@ impl<'a> Value<'a> {
             TypeTag::List => "List",
             TypeTag::Object => "Object",
             TypeTag::Schema => "Schema",
+            TypeTag::Enum => "Enum",
             TypeTag::Function => "Function",
         }
     }

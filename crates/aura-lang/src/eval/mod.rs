@@ -18,7 +18,7 @@ use crate::parser::Parser;
 use crate::span::Span;
 use env::{Env, Environment};
 use methods::MethodRegistry;
-use value::{FuncBody, FunctionDef, SchemaDef, Value};
+use value::{EnumDef, FuncBody, FunctionDef, SchemaDef, Value};
 
 const MAX_CALL_DEPTH: u32 = 256;
 
@@ -120,6 +120,33 @@ pub struct Interpreter<'a> {
     env_arena: Vec<Env<'a>>,
 }
 
+/// The closest member within a small edit distance, for a "did you mean" hint.
+fn nearest<'m>(members: &[&'m str], got: &str) -> Option<&'m str> {
+    let limit = 1 + got.len() / 4;
+    members
+        .iter()
+        .map(|m| (*m, edit_distance(m, got)))
+        .filter(|(_, d)| *d <= limit)
+        .min_by_key(|(_, d)| *d)
+        .map(|(m, _)| m)
+}
+
+/// Levenshtein distance over chars (inputs here are short enum members).
+fn edit_distance(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut cur = vec![0usize; b.len() + 1];
+    for (i, ca) in a.chars().enumerate() {
+        cur[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cost = usize::from(ca != *cb);
+            cur[j + 1] = (prev[j] + cost).min(prev[j + 1] + 1).min(cur[j] + 1);
+        }
+        std::mem::swap(&mut prev, &mut cur);
+    }
+    prev[b.len()]
+}
+
 fn rt(code: &'static str, msg: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic::error(code, msg, span, "evaluated here")
 }
@@ -195,10 +222,31 @@ impl<'a> Interpreter<'a> {
                 let v = self.eval_expr(env, value)?;
                 exports.insert(key.to_string(), v);
             }
+            Stmt::EnumDecl(en) => {
+                let v = Value::Enum(Arc::new(EnumDef {
+                    name: en.name,
+                    members: en.members.clone(),
+                }));
+                self.define(env, en.name, v.clone(), false, en.span)?;
+                // D12: pub enum is visible to importers via the module object
+                if en.public {
+                    exports.insert(en.name.to_string(), v);
+                }
+            }
             Stmt::TypeDecl(schema) => {
+                // D18: bind each enum-typed field to the enum visible here.
+                let mut field_enums = HashMap::new();
+                for f in &schema.fields {
+                    if let TypeName::Custom(tname) = f.ty {
+                        if let Some(Value::Enum(en)) = env.get(tname) {
+                            field_enums.insert(f.name, en);
+                        }
+                    }
+                }
                 let v = Value::Schema(Arc::new(SchemaDef {
                     name: schema.name,
                     fields: schema.fields.clone(),
+                    field_enums,
                 }));
                 self.define(env, schema.name, v.clone(), false, schema.span)?;
                 // D12: pub type is visible to importers via the module object
@@ -903,6 +951,47 @@ impl<'a> Interpreter<'a> {
                     span,
                 ));
             };
+            // D18: a `Custom` name may be an enum — then the field is a plain
+            // String constrained to the declared members.
+            {
+                if let Some(en) = def.field_enums.get(f.name) {
+                    let Value::Str(got) = v else {
+                        return Err(rt(
+                            "E0512",
+                            format!(
+                                "field '{}' of schema {} expects enum {}, got {}",
+                                f.name,
+                                def.name,
+                                en.name,
+                                v.type_name()
+                            ),
+                            span,
+                        ));
+                    };
+                    if !en.members.iter().any(|m| *m == got.as_ref()) {
+                        let listed = en
+                            .members
+                            .iter()
+                            .map(|m| format!("\"{m}\""))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        let mut d = rt(
+                            "E0514",
+                            format!(
+                                "'{got}' is not a member of enum {} (field '{}')",
+                                en.name, f.name
+                            ),
+                            span,
+                        );
+                        d.help = Some(match nearest(&en.members, got.as_ref()) {
+                            Some(sug) => format!("did you mean \"{sug}\"? members: {listed}"),
+                            None => format!("members: {listed}"),
+                        });
+                        return Err(d);
+                    }
+                    continue;
+                }
+            }
             let ok = match f.ty {
                 TypeName::String => matches!(v, Value::Str(_)),
                 TypeName::Int => matches!(v, Value::Int(_)),
@@ -1123,6 +1212,89 @@ mod tests {
                 .code,
             "E0320"
         );
+    }
+
+    #[test]
+    fn enum_field_accepts_a_member_and_stays_a_string() {
+        // D18: an enum is a constraint, not a wrapper — the value serializes as a
+        // plain string, so nothing downstream changes.
+        let v = eval(concat!(
+            "enum Tier
+  \"frontend\"
+  \"backend\"
+end
+",
+            "type Service
+  tier: Tier
+end
+",
+            "svc: new Service
+  tier: \"backend\"
+end
+",
+        ))
+        .unwrap();
+        assert_eq!(get(&get(&v, "svc"), "tier"), Value::str("backend"));
+    }
+
+    #[test]
+    fn enum_field_rejects_a_non_member_with_e0514() {
+        let err = eval(concat!(
+            "enum Tier
+  \"frontend\"
+  \"backend\"
+end
+",
+            "type Service
+  tier: Tier
+end
+",
+            "svc: new Service
+  tier: \"backand\"
+end
+",
+        ))
+        .unwrap_err();
+        assert_eq!(err.code, "E0514");
+        // the hint carries a suggestion and the member list
+        let help = err.help.unwrap_or_default();
+        assert!(help.contains("backend"), "{help}");
+    }
+
+    #[test]
+    fn enum_field_rejects_a_non_string() {
+        let err = eval(concat!(
+            "enum Tier
+  \"a\"
+end
+",
+            "type S
+  t: Tier
+end
+",
+            "x: new S
+  t: 42
+end
+",
+        ))
+        .unwrap_err();
+        assert_eq!(err.code, "E0512");
+    }
+
+    #[test]
+    fn enum_declaration_is_not_serializable_data() {
+        // Like a schema, a top-level enum is API, not output (D12).
+        let v = eval(
+            "enum Tier
+  \"a\"
+end
+x: 1
+",
+        )
+        .unwrap();
+        let json = crate::serialize::to_json(&v).unwrap();
+        assert!(json.get("Tier").is_none(), "{json}");
+        assert_eq!(json.get("x").and_then(|x| x.as_i64()), Some(1));
     }
 
     #[test]

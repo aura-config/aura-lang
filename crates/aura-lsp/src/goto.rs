@@ -146,7 +146,7 @@ pub fn declaration_range_in(text: &str, name: &str) -> Option<Range> {
         if matches!(t.kind, TokenKind::Ident(n) if n == name)
             && matches!(
                 i.checked_sub(1).map(|p| &toks[p].kind),
-                Some(TokenKind::Def | TokenKind::Type)
+                Some(TokenKind::Def | TokenKind::Type | TokenKind::Enum)
             )
         {
             return Some(Range {
@@ -178,8 +178,8 @@ pub fn reference_ranges(text: &str, line: u32, character: u32) -> Vec<Range> {
         .collect()
 }
 
-/// A flat outline of the declarations in a file: `def`, `type`, `domain`,
-/// and import aliases.
+/// A flat outline of the declarations in a file: `def`, `type`, `enum`,
+/// `domain`, and import aliases.
 pub fn document_symbols(text: &str) -> Vec<DocumentSymbol> {
     let Ok(toks) = Lexer::new(text, 0).tokenize() else {
         return Vec::new();
@@ -191,6 +191,7 @@ pub fn document_symbols(text: &str) -> Vec<DocumentSymbol> {
         let (name, kind) = match (&t.kind, prev) {
             (TokenKind::Ident(n), Some(TokenKind::Def)) => (*n, SymbolKind::FUNCTION),
             (TokenKind::Ident(n), Some(TokenKind::Type)) => (*n, SymbolKind::STRUCT),
+            (TokenKind::Ident(n), Some(TokenKind::Enum)) => (*n, SymbolKind::ENUM),
             (TokenKind::Ident(n), Some(TokenKind::As)) => (*n, SymbolKind::MODULE),
             // `domain "name"` — the label follows the keyword.
             (TokenKind::Str(n), Some(TokenKind::Domain)) => (*n, SymbolKind::NAMESPACE),
