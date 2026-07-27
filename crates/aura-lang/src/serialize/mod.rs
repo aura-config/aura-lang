@@ -79,6 +79,25 @@ pub fn to_yaml_string(v: &Value<'_>) -> Result<String, Diagnostic> {
     Ok(out)
 }
 
+/// Emit already-serialized JSON as YAML. Hosts that hold an `Evaluated` (whose
+/// `json` is the JSON form) need this without going back to an Aura value.
+pub fn json_to_yaml_string(json: &serde_json::Value) -> String {
+    let mut out = String::new();
+    emit_yaml(json, 0, &mut out);
+    out
+}
+
+/// The TOML counterpart of [`json_to_yaml_string`].
+pub fn json_to_toml_string(json: &serde_json::Value) -> Result<String, Diagnostic> {
+    if !json.is_object() {
+        return Err(err(
+            "E0603",
+            "TOML requires an object at the top level".to_string(),
+        ));
+    }
+    toml::to_string_pretty(json).map_err(|e| err("E0603", format!("cannot emit TOML: {e}")))
+}
+
 /// Emit `v` at `indent` spaces. Mappings nest by two spaces; a sequence sits at
 /// the same indentation as the key that introduced it, which is the conventional
 /// (and previously emitted) layout.

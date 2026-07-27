@@ -1,4 +1,6 @@
-/target
+# Any crate's build directory: aura-wasm keeps its own workspace, so the
+# root-anchored form would have missed it.
+target/
 
 # cargo-fuzz parallel job logs
 fuzz-*.log

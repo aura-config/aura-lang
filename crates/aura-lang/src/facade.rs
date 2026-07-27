@@ -33,6 +33,9 @@ pub struct EvalOptions {
     pub registry_dir: Option<PathBuf>,
     /// Resolve strictly via aura.lock (E0403 on a mismatch).
     pub frozen: bool,
+    /// Values `env()` sees before the process environment is consulted. A host
+    /// without a process environment — wasm in a browser — supplies them here.
+    pub env_overrides: HashMap<String, String>,
 }
 
 /// A plain-form diagnostic: the host renders it itself, with no dependency on ariadne.
@@ -161,6 +164,7 @@ fn run(
     interp.fs = fs;
     interp.env_cap = opts.allow_env.clone();
     interp.allow_imports_io = opts.allow_imports_io;
+    interp.env_overrides = opts.env_overrides.clone();
 
     let result = interp_eval(&mut loader, &mut interp, file_name);
 

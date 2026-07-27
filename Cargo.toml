@@ -1,6 +1,9 @@
 [workspace]
 members = ["crates/aura-lang", "crates/aura-lsp"]
-exclude = ["examples", "fuzz"]
+# aura-wasm keeps its own workspace so its size-tuned release profile
+# (opt-level "z", LTO, panic=abort) actually applies — profiles in a non-root
+# package are ignored — and so `cargo test --workspace` need not build it.
+exclude = ["examples", "fuzz", "crates/aura-wasm"]
 resolver = "2"
 
 [workspace.package]
