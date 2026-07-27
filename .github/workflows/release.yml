@@ -40,15 +40,12 @@ jobs:
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             native: false
-          # DEBUG: macOS legs are commented out while the workflow is being
-          # validated on a throwaway tag — macOS minutes bill at 10x. Restore
-          # both before the first real release.
-          # - target: aarch64-apple-darwin
-          #   os: macos-latest
-          #   native: true
-          # - target: x86_64-apple-darwin
-          #   os: macos-latest
-          #   native: false # arm64-раннер: Rosetta не гарантирована
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            native: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            native: false # arm64-раннер: Rosetta не гарантирована
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             native: true
@@ -135,7 +132,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest] # DEBUG: macOS omitted, see above
+        os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
