@@ -1,0 +1,26 @@
+# Imported module (D12): only `pub` type/def cross the module boundary.
+# Imported code runs with NO I/O capability by default (D1).
+
+# D18: a closed set of allowed string values; `pub` exports it (D12).
+pub enum Scheme
+  "https"
+  "http"
+end
+
+pub type Endpoint
+  host: String
+  port: Int      = 443     # D15: optional field with a default
+  scheme: Scheme = "https" # D18: only a Scheme member is accepted
+end
+
+pub def label(app, role)
+  app:        app
+  role:       role
+  managed_by: "aura-showcase"
+end
+
+# A private helper is invisible to importers.
+prefix = "svc"
+pub def service_id(name)
+  id: "#{prefix}-#{name}"
+end

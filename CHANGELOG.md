@@ -8,6 +8,16 @@ still change the language.
 ## [Unreleased]
 
 ### Added
+- **Rename in the LSP (F2)**, built on scope-precise name resolution. A new
+  `resolve` module in the core answers *which binding* an identifier refers to,
+  so `x` in a lambda and `x` at the top level are no longer conflated, and uses
+  inside `#{...}` are found. Go-to-definition and find-references use it too,
+  falling back to the old lexical sweep only while a file does not parse.
+  Rename never guesses: it refuses, with a reason, on a file with syntax errors,
+  on anything that is not a binding, on a keyword or malformed new name, on a
+  name already bound in an overlapping scope, and on `pub` items whose importers
+  are not visible. A test renames every binding in `examples/showcase` and
+  asserts the evaluated JSON stays byte-identical.
 - **`aura types`** — generate host-language types from a manifest's `type` and
   `enum` declarations: `aura types config.aura --lang rust|ts|go`. One schema
   then both validates the config and types the service consuming its JSON. An

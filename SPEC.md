@@ -140,6 +140,8 @@ aura/
 │           │   ├── mod.rs      # SemanticAnalyzer
 │           │   ├── dead_code.rs
 │           │   └── schema_check.rs
+│           ├── resolve/
+│           │   └── mod.rs      # name resolution: bindings + their uses (for tooling)
 │           ├── vfs/
 │           │   ├── mod.rs      # FileResolver, ModuleGraph
 │           │   ├── local.rs    # LocalFsResolver, MemoryResolver

@@ -13,6 +13,7 @@ pub mod facade;
 pub mod fmt;
 pub mod lexer;
 pub mod parser;
+pub mod resolve;
 pub mod serialize;
 pub mod source;
 pub mod span;

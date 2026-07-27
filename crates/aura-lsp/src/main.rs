@@ -8,6 +8,7 @@ mod diagnostics;
 mod goto;
 mod hover;
 mod infer;
+mod rename;
 mod signature;
 mod stdlib;
 
@@ -19,8 +20,8 @@ use lsp_types::notification::{
     PublishDiagnostics,
 };
 use lsp_types::request::{
-    Completion, DocumentSymbolRequest, Formatting, GotoDefinition, HoverRequest, References,
-    Request as _, SignatureHelpRequest,
+    Completion, DocumentSymbolRequest, Formatting, GotoDefinition, HoverRequest,
+    PrepareRenameRequest, References, Rename, Request as _, SignatureHelpRequest,
 };
 use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
@@ -28,9 +29,11 @@ use lsp_types::{
     DocumentFormattingParams, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
     GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
     HoverProviderCapability, Location, MarkupContent, MarkupKind, OneOf, ParameterInformation,
-    ParameterLabel, Position, PublishDiagnosticsParams, Range, ReferenceParams, ServerCapabilities,
-    SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
+    ParameterLabel, Position, PrepareRenameResponse, PublishDiagnosticsParams, Range,
+    ReferenceParams, RenameOptions, RenameParams, ServerCapabilities, SignatureHelp,
+    SignatureHelpOptions, SignatureHelpParams, SignatureInformation, TextDocumentPositionParams,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, WorkDoneProgressOptions,
+    WorkspaceEdit,
 };
 
 use stdlib::Stdlib;
@@ -53,6 +56,12 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
         definition_provider: Some(OneOf::Left(true)),
         references_provider: Some(OneOf::Left(true)),
         document_symbol_provider: Some(OneOf::Left(true)),
+        // `prepare_provider` lets the editor refuse before prompting for a name,
+        // so an impossible rename is reported up front instead of after typing.
+        rename_provider: Some(OneOf::Right(RenameOptions {
+            prepare_provider: Some(true),
+            work_done_progress_options: WorkDoneProgressOptions::default(),
+        })),
         signature_help_provider: Some(SignatureHelpOptions {
             trigger_characters: Some(vec!["(".to_string(), ",".to_string()]),
             ..Default::default()
@@ -147,6 +156,58 @@ fn main_loop(
                             })
                         });
                         respond(connection, req.id, serde_json::to_value(result)?)?;
+                    }
+                    PrepareRenameRequest::METHOD => {
+                        let p: TextDocumentPositionParams = serde_json::from_value(req.params)?;
+                        let text = docs.get(&p.text_document.uri.to_string());
+                        match text
+                            .map(|t| rename::prepare(t, p.position.line, p.position.character))
+                        {
+                            Some(Ok(range)) => {
+                                let r = PrepareRenameResponse::Range(range);
+                                respond(connection, req.id, serde_json::to_value(r)?)?;
+                            }
+                            // A refusal is an error response: that is what makes the
+                            // editor say why instead of opening a rename box.
+                            Some(Err(refusal)) => {
+                                respond_err(connection, req.id, &refusal.message())?
+                            }
+                            None => respond(connection, req.id, serde_json::Value::Null)?,
+                        }
+                    }
+                    Rename::METHOD => {
+                        let p: RenameParams = serde_json::from_value(req.params)?;
+                        let pos = p.text_document_position;
+                        let uri = pos.text_document.uri;
+                        let text = docs.get(&uri.to_string());
+                        let result = text.map(|t| {
+                            rename::edits(t, pos.position.line, pos.position.character, &p.new_name)
+                        });
+                        match result {
+                            Some(Ok(ranges)) => {
+                                let edits: Vec<TextEdit> = ranges
+                                    .into_iter()
+                                    .map(|range| TextEdit {
+                                        range,
+                                        new_text: p.new_name.clone(),
+                                    })
+                                    .collect();
+                                // The key type is dictated by lsp_types' WorkspaceEdit;
+                                // `Uri` only looks interior-mutable to clippy.
+                                #[allow(clippy::mutable_key_type)]
+                                let mut changes = HashMap::new();
+                                changes.insert(uri, edits);
+                                let edit = WorkspaceEdit {
+                                    changes: Some(changes),
+                                    ..Default::default()
+                                };
+                                respond(connection, req.id, serde_json::to_value(edit)?)?;
+                            }
+                            Some(Err(refusal)) => {
+                                respond_err(connection, req.id, &refusal.message())?
+                            }
+                            None => respond(connection, req.id, serde_json::Value::Null)?,
+                        }
                     }
                     References::METHOD => {
                         let p: ReferenceParams = serde_json::from_value(req.params)?;
@@ -317,6 +378,24 @@ fn respond(
         id,
         result: Some(result),
         error: None,
+    }))?;
+    Ok(())
+}
+
+/// Refuse a request with a message the editor shows to the user.
+fn respond_err(
+    connection: &Connection,
+    id: lsp_server::RequestId,
+    message: &str,
+) -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
+    connection.sender.send(Message::Response(Response {
+        id,
+        result: None,
+        error: Some(lsp_server::ResponseError {
+            code: lsp_server::ErrorCode::RequestFailed as i32,
+            message: message.to_string(),
+            data: None,
+        }),
     }))?;
     Ok(())
 }

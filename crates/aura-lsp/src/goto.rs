@@ -1,11 +1,32 @@
-//! Token-based navigation: go-to-definition, find-references, and document
-//! symbols. Lexical so it works even while the file does not fully parse.
-//! Scope-precise resolution and parameters are a later refinement.
+//! Navigation: go-to-definition, find-references, and document symbols.
+//!
+//! Two tiers. While the file parses, `aura_lang::resolve` answers exactly — it
+//! knows scopes, so `x` in a lambda and `x` at the top level stay distinct, and
+//! uses inside `#{...}` count. While the file does not parse (i.e. most of the
+//! time you are typing) the older lexical pass keeps answering approximately,
+//! which is better than answering nothing.
 
 use aura_lang::lexer::{Lexer, TokenKind};
+use aura_lang::parser::Parser;
+use aura_lang::resolve::{self, Resolution};
+use aura_lang::span::Span;
 use lsp_types::{DocumentSymbol, Range, SymbolKind};
 
 use crate::diagnostics::LineIndex;
+
+/// Resolution for `text`, or `None` if it does not currently parse.
+pub fn resolution(text: &str) -> Option<Resolution> {
+    let toks = Lexer::new(text, 0).tokenize().ok()?;
+    let module = Parser::new(toks).parse_module().ok()?;
+    Some(resolve::resolve(text, &module))
+}
+
+fn to_range(index: &LineIndex, text: &str, s: Span) -> Range {
+    Range {
+        start: index.position(text, s.start as usize),
+        end: index.position(text, s.end as usize),
+    }
+}
 
 /// The identifier name whose token span covers `offset`.
 fn ident_at<'a>(toks: &[aura_lang::lexer::Token<'a>], offset: u32) -> Option<&'a str> {
@@ -19,6 +40,16 @@ pub fn definition_range(text: &str, line: u32, character: u32) -> Option<Range> 
     let toks = Lexer::new(text, 0).tokenize().ok()?;
     let index = LineIndex::new(text);
     let offset = index.offset(text, line, character) as u32;
+
+    // Exact answer while the file parses.
+    if let Some(r) = resolution(text) {
+        if let Some(b) = r.binding_at(offset) {
+            return Some(to_range(&index, text, r.bindings[b].decl));
+        }
+        // A parsing file with no binding here (a method name, a field key) has no
+        // definition — do not fall through and guess.
+        return None;
+    }
 
     let name = ident_at(&toks, offset)?;
 
@@ -158,14 +189,26 @@ pub fn declaration_range_in(text: &str, name: &str) -> Option<Range> {
     None
 }
 
-/// Every occurrence (declaration + uses) of the identifier under the cursor.
-/// No scoping yet: same-named symbols in other scopes are included.
+/// Every occurrence (declaration + uses) of the binding under the cursor. Scope
+/// precise while the file parses; a same-name lexical sweep otherwise.
 pub fn reference_ranges(text: &str, line: u32, character: u32) -> Vec<Range> {
     let Ok(toks) = Lexer::new(text, 0).tokenize() else {
         return Vec::new();
     };
     let index = LineIndex::new(text);
     let offset = index.offset(text, line, character) as u32;
+
+    if let Some(r) = resolution(text) {
+        return match r.binding_at(offset) {
+            Some(b) => r
+                .occurrences(b)
+                .into_iter()
+                .map(|s| to_range(&index, text, s))
+                .collect(),
+            None => Vec::new(),
+        };
+    }
+
     let Some(name) = ident_at(&toks, offset) else {
         return Vec::new();
     };
@@ -306,6 +349,64 @@ mod tests {
         let refs = reference_ranges("x = 1\ny: x\nz: x + 1\n", 0, 0);
         let lines: Vec<u32> = refs.iter().map(|r| r.start.line).collect();
         assert_eq!(lines, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn references_are_scope_precise_while_the_file_parses() {
+        // Two unrelated `x`: a top-level binding and a `def` parameter. Before
+        // scope precision this returned all four occurrences for either cursor.
+        let src = "x = 1
+def f(x)
+  y: x
+end
+z: x
+";
+        let lines = |line, ch| -> Vec<u32> {
+            reference_ranges(src, line, ch)
+                .iter()
+                .map(|r| r.start.line)
+                .collect()
+        };
+        assert_eq!(lines(0, 0), vec![0, 4], "top-level x: its decl and `z: x`");
+        assert_eq!(lines(1, 6), vec![1, 2], "the parameter and `y: x`");
+    }
+
+    #[test]
+    fn references_include_interpolated_uses() {
+        let src = "name = \"api\"
+id: \"#{name}-1\"
+";
+        let lines: Vec<u32> = reference_ranges(src, 0, 0)
+            .iter()
+            .map(|r| r.start.line)
+            .collect();
+        assert_eq!(lines, vec![0, 1], "the use inside #{{...}} counts");
+    }
+
+    #[test]
+    fn definition_of_a_shadowed_name_picks_the_inner_binding() {
+        let src = "p = 1
+domain \"d\"
+  shadow p = 2
+  a: p
+end
+";
+        // Cursor on `p` in `a: p` (line 3) -> the `shadow` on line 2, not line 0.
+        assert_eq!(def_line(src, 3, 5), Some(2));
+    }
+
+    #[test]
+    fn references_fall_back_to_a_lexical_sweep_when_the_file_does_not_parse() {
+        // Mid-edit: the `def` has no `end`, so nothing parses.
+        let src = "x = 1
+def f(
+y: x
+";
+        assert!(resolution(src).is_none(), "must not parse");
+        assert!(
+            !reference_ranges(src, 0, 0).is_empty(),
+            "the lexical tier still answers"
+        );
     }
 
     #[test]
