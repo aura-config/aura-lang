@@ -4,16 +4,28 @@
   "description": "Aura configuration language: syntax highlighting + language server (live diagnostics)",
   "version": "0.1.0",
   "publisher": "aura-lang",
-  "engines": { "vscode": "^1.75.0" },
-  "categories": ["Programming Languages", "Linters"],
+  "engines": {
+    "vscode": "^1.91.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
   "main": "./extension.js",
-  "activationEvents": ["onLanguage:aura"],
+  "activationEvents": [
+    "onLanguage:aura"
+  ],
   "contributes": {
     "languages": [
       {
         "id": "aura",
-        "aliases": ["Aura", "aura"],
-        "extensions": [".aura"],
+        "aliases": [
+          "Aura",
+          "aura"
+        ],
+        "extensions": [
+          ".aura"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -46,7 +58,7 @@
     }
   },
   "dependencies": {
-    "vscode-languageclient": "^9.0.1"
+    "vscode-languageclient": "^10.1.0"
   },
   "scripts": {
     "package": "vsce package"
