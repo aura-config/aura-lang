@@ -235,7 +235,10 @@ fn run_add(package: &str, from: Option<&Path>, registry_dir: Option<PathBuf>) ->
             };
             eprintln!("fetching {url}");
             match ureq::get(&url).call() {
-                Ok(resp) => match resp.into_string() {
+                // ureq 3 caps `read_to_string` at 10 MB by default, which is far
+                // above any package manifest and bounds what a hostile registry
+                // can make us allocate.
+                Ok(mut resp) => match resp.body_mut().read_to_string() {
                     Ok(t) => t,
                     Err(e) => {
                         eprintln!("error: cannot read response: {e}");

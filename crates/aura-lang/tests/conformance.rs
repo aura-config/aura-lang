@@ -89,6 +89,20 @@ fn k8s_deploy_yaml() {
     );
 }
 
+/// TOML output had no snapshot, so a change in how it is rendered — a library
+/// upgrade, a formatting tweak — would have gone unnoticed. Same manifest as the
+/// YAML case, so the two formats are pinned against one source of truth.
+#[test]
+fn k8s_deploy_toml() {
+    check_ok(
+        "k8s_deploy",
+        "k8s_deploy.aura",
+        &["--format", "toml"],
+        &[],
+        "expected.toml",
+    );
+}
+
 #[test]
 fn ci_matrix() {
     check_ok("ci_matrix", "ci_matrix.aura", &[], &[], "expected.json");

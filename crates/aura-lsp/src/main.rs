@@ -437,11 +437,9 @@ fn respond(
     id: lsp_server::RequestId,
     result: serde_json::Value,
 ) -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
-    connection.sender.send(Message::Response(Response {
-        id,
-        result: Some(result),
-        error: None,
-    }))?;
+    connection
+        .sender
+        .send(Message::Response(Response::new_ok(id, result)))?;
     Ok(())
 }
 
@@ -451,15 +449,11 @@ fn respond_err(
     id: lsp_server::RequestId,
     message: &str,
 ) -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
-    connection.sender.send(Message::Response(Response {
+    connection.sender.send(Message::Response(Response::new_err(
         id,
-        result: None,
-        error: Some(lsp_server::ResponseError {
-            code: lsp_server::ErrorCode::RequestFailed as i32,
-            message: message.to_string(),
-            data: None,
-        }),
-    }))?;
+        lsp_server::ErrorCode::RequestFailed as i32,
+        message.to_string(),
+    )))?;
     Ok(())
 }
 

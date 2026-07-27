@@ -1,6 +1,8 @@
 //! Phase 1 hot-path benchmark: lexer throughput (MB/s) on the reference manifest.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use std::hint::black_box;
+
+use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 
 const MANIFEST: &str = include_str!("../tests/fixtures/production_deploy.aura");
 

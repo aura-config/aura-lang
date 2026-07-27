@@ -1,6 +1,8 @@
 //! Phase 3 hot-path benchmark: the full lex + parse + eval pipeline on the reference manifest.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use std::hint::black_box;
+
+use criterion::{criterion_group, criterion_main, Criterion};
 use indexmap::IndexMap;
 use std::collections::HashMap;
 

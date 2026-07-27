@@ -346,10 +346,75 @@ fn m_parse_yaml<'a>(
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
     let Value::Str(s) = recv else { unreachable!() };
-    // Via serde_json::Value: gives a unified type mapping and preserve_order
-    let parsed: serde_json::Value =
-        serde_yaml::from_str(s).map_err(|e| rt("E0314", format!("invalid YAML: {e}"), sp))?;
-    Ok(json_to_value(parsed))
+    let docs = yaml_rust2::YamlLoader::load_from_str(s)
+        .map_err(|e| rt("E0314", format!("invalid YAML: {e}"), sp))?;
+    // A stream with several documents is ambiguous as a single value (D13: one
+    // input, one result), so require exactly one.
+    let doc = match docs.len() {
+        1 => &docs[0],
+        0 => return Ok(Value::Null),
+        n => {
+            return Err(rt(
+                "E0314",
+                format!("invalid YAML: expected one document, found {n}"),
+                sp,
+            ))
+        }
+    };
+    yaml_to_value(doc, sp)
+}
+
+/// yaml-rust2's tree into an Aura value. Written out rather than routed through
+/// serde so the type mapping is explicit: YAML's untyped scalars are where a
+/// version string quietly becomes a float.
+fn yaml_to_value<'a>(y: &yaml_rust2::Yaml, sp: Span) -> Result<Value<'a>, Diagnostic> {
+    use yaml_rust2::Yaml as Y;
+    Ok(match y {
+        Y::Null => Value::Null,
+        Y::Boolean(b) => Value::Bool(*b),
+        Y::Integer(n) => Value::Int(*n),
+        // Reals are kept as text by the parser and parsed on demand.
+        Y::Real(r) => match r.parse::<f64>() {
+            Ok(f) => Value::Float(f),
+            Err(_) => Value::str(r.clone()),
+        },
+        Y::String(s) => Value::str(s.clone()),
+        Y::Array(xs) => {
+            let mut out = Vec::with_capacity(xs.len());
+            for x in xs {
+                out.push(yaml_to_value(x, sp)?);
+            }
+            Value::list(out)
+        }
+        Y::Hash(h) => {
+            let mut map = indexmap::IndexMap::with_capacity(h.len());
+            for (k, v) in h {
+                // Only scalar keys map onto an Aura object.
+                let key = match k {
+                    Y::String(s) => s.clone(),
+                    Y::Integer(n) => n.to_string(),
+                    Y::Boolean(b) => b.to_string(),
+                    Y::Real(r) => r.clone(),
+                    _ => {
+                        return Err(rt(
+                            "E0314",
+                            "invalid YAML: only scalar keys are supported".to_string(),
+                            sp,
+                        ))
+                    }
+                };
+                map.insert(key, yaml_to_value(v, sp)?);
+            }
+            Value::object(map)
+        }
+        Y::Alias(_) | Y::BadValue => {
+            return Err(rt(
+                "E0314",
+                "invalid YAML: aliases are not supported".to_string(),
+                sp,
+            ))
+        }
+    })
 }
 
 fn m_to_json<'a>(

@@ -4,7 +4,9 @@
 //! (lex + parse + resolve) against parse alone, so the cost of resolution itself
 //! is visible rather than assumed.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use std::hint::black_box;
+
+use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 
 const MANIFEST: &str = include_str!("../tests/fixtures/production_deploy.aura");
 
