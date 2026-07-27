@@ -113,7 +113,9 @@ jobs:
           Copy-Item README.md, LICENSE-MIT, LICENSE-APACHE $name
           Compress-Archive -Path $name -DestinationPath "$name.zip"
           $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
-          "$hash  $name.zip" | Out-File -Encoding ascii "$name.zip.sha256"
+          # LF only: Out-File would write CRLF and `sha256sum -c` would then look
+          # for a filename ending in a carriage return
+          [IO.File]::WriteAllText("$PWD/$name.zip.sha256", "$hash  $name.zip`n")
 
       - name: Upload to release
         uses: softprops/action-gh-release@v3
