@@ -1,0 +1,10 @@
+# Interpolation referencing a name that is shadowed at that point: the use lives
+# inside a string literal, so its offset is recovered from a subslice.
+host = "outer"
+plain: "#{host}"
+domain "d"
+  shadow host = "inner"
+  inside:  "#{host}-x"
+  nested:  "a#{host}b#{host}c"
+end
+outside: "#{host}"

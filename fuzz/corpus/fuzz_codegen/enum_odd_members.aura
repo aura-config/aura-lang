@@ -1,0 +1,13 @@
+# Members that are not identifiers: each must still yield a valid type identifier
+# in Rust/TS/Go while the wire value stays verbatim.
+enum Region
+  "eu-central"
+  "us.east"
+  "2fa"
+  "UPPER"
+  "with space"
+  "трасса"
+end
+type Placement
+  region: Region
+end

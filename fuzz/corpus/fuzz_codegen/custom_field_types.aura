@@ -1,0 +1,15 @@
+# A custom field type pointing at an enum and at another schema, plus a schema
+# declared *after* the one that references it. Deliberately not evaluable (E0504:
+# a declaration must precede its use) — `aura types` only parses, so it must still
+# emit these in source order.
+type Outer
+  inner: Inner
+  tier:  Tier
+end
+enum Tier
+  "hot"
+  "cold"
+end
+type Inner
+  n: Int
+end

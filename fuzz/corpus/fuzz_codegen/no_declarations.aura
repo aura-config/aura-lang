@@ -1,0 +1,6 @@
+# A manifest with nothing to emit: the output must be just the header.
+x = 1
+y: x + 1
+domain "d"
+  z: 2
+end

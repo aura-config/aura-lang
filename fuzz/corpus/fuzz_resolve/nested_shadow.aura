@@ -1,0 +1,13 @@
+# Chained shadowing: three bindings of one name, each in a deeper scope, with a
+# use between every pair. Resolution must attach each use to its own binding.
+port = 1
+domain "outer"
+  shadow port = 2
+  a: port
+  domain "inner"
+    shadow port = 3
+    b: port
+  end
+  c: port
+end
+d: port

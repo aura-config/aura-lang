@@ -1,0 +1,11 @@
+# A `def` declared inside a block: its body is a scope nested in the block's, and
+# its params must not leak outward (D17).
+base = 10
+domain "d"
+  def scaled(factor, base)
+    n = factor * base
+    value: n
+  end
+  a: scaled(2, 3)
+  b: base
+end

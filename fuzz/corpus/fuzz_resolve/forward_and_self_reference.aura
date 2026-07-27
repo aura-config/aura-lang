@@ -1,0 +1,22 @@
+# A parameter named like its own function, and a schema field whose type name is
+# also used as a value elsewhere: both are cases where narrowing a statement span
+# down to the right identifier token can pick the wrong one.
+enum Tier
+  "a"
+  "b"
+end
+def f(f)
+  out: f
+end
+type S
+  tier: Tier
+  n:    Int = 1
+end
+def make(Tier)
+  passed: Tier
+end
+s: new S
+  tier: "a"
+end
+g: f(1)
+h: make("b")

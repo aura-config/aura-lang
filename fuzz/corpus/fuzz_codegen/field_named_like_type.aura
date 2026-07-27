@@ -1,0 +1,14 @@
+# A field whose name matches its own type, and a schema whose name matches a field
+# of another schema — the span-narrowing here is easy to get wrong.
+enum Mode
+  "on"
+  "off"
+end
+type Mode2
+  mode: Mode
+  Mode2: Int
+end
+type Wrapper
+  mode2: Mode2
+  mode:  Mode
+end

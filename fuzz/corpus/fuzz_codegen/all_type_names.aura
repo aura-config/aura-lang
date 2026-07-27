@@ -1,0 +1,13 @@
+# Every TypeName variant in one schema, so each arm of the type mapping is hit.
+type Everything
+  s:  String
+  i:  Int
+  f:  Float
+  b:  Bool
+  l:  List
+  o:  Object
+  s2: String = "d"
+  i2: Int    = 1
+  f2: Float  = 1.5
+  b2: Bool   = true
+end

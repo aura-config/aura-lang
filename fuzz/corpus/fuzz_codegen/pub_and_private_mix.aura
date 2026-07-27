@@ -1,0 +1,19 @@
+# `pub` and private declarations interleaved: visibility must not change what is
+# emitted, only what importers may use.
+pub enum Scheme
+  "https"
+  "http"
+end
+enum Internal
+  "a"
+end
+pub type Endpoint
+  host:   String
+  scheme: Scheme = "https"
+end
+type Hidden
+  flag: Internal
+end
+pub def helper(x)
+  out: x
+end

@@ -13,9 +13,43 @@ Windows/MSVC is not supported). On Windows, run it from **WSL** (see below).
   overflow the stack (deep nesting is capped by `MAX_PARSE_DEPTH` → E0208).
 - **`fuzz_pipeline`** — lex + parse + eval with all capabilities denied and no
   resolver, so it is deterministic and does no I/O; must not panic/hang/OOM.
+- **`fuzz_fmt`** — `aura fmt` must not panic, and must never change the token
+  stream (the formatter's own backstop, asserted here on arbitrary input).
+- **`fuzz_codegen`** — `aura types` on arbitrary input: a malformed manifest is a
+  `Diagnostic`, never a crash.
+- **`fuzz_resolve`** — name resolution: every span it reports must be in bounds
+  and on a char boundary, or a consumer slicing by it would panic instead.
 
-Seed corpora (`corpus/<target>/`) are the `examples/*.aura` files and the
-reference manifest, so the fuzzer starts from valid inputs and mutates them.
+## Seed corpora
+
+`corpus/<target>/` holds **only reviewable `*.aura` seeds**, which are tracked in
+git. Everything libFuzzer writes there itself — hash-named coverage inputs, tens
+of thousands of them after a long session — is ignored (see `.gitignore`): those
+files are unreadable in review, would dominate the repository's size, and are
+cheap for the fuzzer to rediscover. Named regression seeds
+(`blockstring_nbsp_regression.aura`) stay forever, so a fixed bug is re-tested on
+every run.
+
+Seeds are the `examples/*.aura` manifests plus hand-written files aimed at the
+construct a given target is about: scope shapes for `fuzz_resolve` (chained
+`shadow`, a lambda parameter shadowing an outer binding, interpolation over a
+shadowed name, a parameter named like its own function), declaration shapes for
+`fuzz_codegen` (non-identifier enum members, every `TypeName`, forward-referenced
+custom types, nothing to emit at all).
+
+Whether a new seed is worth keeping is measurable rather than a matter of taste —
+run the target over the seed directory alone and read libFuzzer's counters:
+
+```sh
+cargo +nightly fuzz run fuzz_resolve corpus/fuzz_resolve -- -runs=0
+#9  INITED cov: 1292 ft: 2744 corp: 8/6345b
+```
+
+`cov` is edges reached, `ft` the features (edge counts and value profiles) that
+drive mutation. Adding the six scope-shape seeds above moved `fuzz_resolve` from
+`cov: 1262 ft: 1778` to `cov: 1292 ft: 2744` — few new edges, since the showcase
+manifest already reached most of them, but a much richer starting point to mutate
+from. `fuzz_codegen` went from `cov: 746` to `cov: 851`.
 
 ## Running
 

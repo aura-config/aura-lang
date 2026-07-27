@@ -1,0 +1,11 @@
+# A lambda parameter shadowing an outer binding, and a body binding shadowing the
+# parameter — the scope chain is param -> body -> outer within one expression.
+name = "outer"
+xs = ["a", "b"]
+out: xs.map (name, i) ->
+  label = name
+  first:  name
+  second: label
+  third:  i
+end
+after: name

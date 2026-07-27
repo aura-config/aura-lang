@@ -1,0 +1,19 @@
+# One name declared in two sibling scopes: neither may capture the other's uses.
+def left()
+  v = 1
+  out: v
+end
+def right()
+  v = 2
+  out: v
+end
+domain "a"
+  v = 3
+  x: v
+end
+domain "b"
+  v = 4
+  x: v
+end
+l: left()
+r: right()
