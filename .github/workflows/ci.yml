@@ -100,6 +100,32 @@ jobs:
           ../target/debug/aura eval production_deploy.aura \
             --allow-read=. --allow-env=APP_ENV --registry-dir=registry --frozen > /dev/null
 
+  # `cargo check --target wasm32` proves only that it compiles. It compiled for
+  # months while the parser tried to spawn a thread, which wasm does not have, so
+  # the module aborted on the first manifest it was given. This runs it.
+  wasm-runtime:
+    name: Run the wasm module
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install wasm-bindgen-cli matching the crate
+        run: |
+          VERSION=$(grep -A1 '^name = "wasm-bindgen"$' crates/aura-wasm/Cargo.lock             | grep '^version' | head -1 | sed 's/version = "//;s/"//')
+          cargo install wasm-bindgen-cli --version "$VERSION" --locked
+      - name: Build and smoke-test
+        working-directory: crates/aura-wasm
+        run: |
+          cargo build --target wasm32-unknown-unknown --release
+          wasm-bindgen target/wasm32-unknown-unknown/release/aura_wasm.wasm             --out-dir pkg-node --target nodejs --no-typescript
+          node smoke.cjs
+
   # Coverage-guided fuzzing (nightly + libFuzzer). Non-blocking: a smoke run of
   # each target for a bounded time, seeded from examples/. See fuzz/README.md.
   fuzz:
