@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aura — a configuration language</title>
+    <meta
+      name="description"
+      content="Aura is a configuration language that compiles to JSON, YAML and TOML: schemas, assertions and capability-gated I/O."
+    />
+    <style>
+      /* Placeholder for the landing page. It exists so that / is not a 404 and
+         so /book/ and /playground/ have their final addresses from the first
+         deployment — those links must never have to move. */
+      :root {
+        color-scheme: light dark;
+        --bg: #fbfbfa;
+        --text: #24211d;
+        --muted: #6b665e;
+        --border: #e3e1dd;
+        --accent: #b4530a;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #171614;
+          --text: #e8e5e0;
+          --muted: #9a948a;
+          --border: #33312d;
+          --accent: #f0913f;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      main {
+        max-width: 44rem;
+      }
+      h1 {
+        margin: 0 0 0.25rem;
+        font-size: 2rem;
+        letter-spacing: -0.02em;
+      }
+      p.lede {
+        margin: 0 0 2rem;
+        color: var(--muted);
+        font-size: 1.1rem;
+      }
+      pre {
+        margin: 0 0 2rem;
+        padding: 16px;
+        overflow-x: auto;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+        font-size: 13px;
+      }
+      .links {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 16px;
+      }
+      a:hover {
+        border-color: var(--accent);
+      }
+      footer {
+        margin-top: 2rem;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Aura</h1>
+      <p class="lede">
+        A configuration language that compiles to JSON, YAML and TOML. Schemas
+        and assertions check the config before it ships; <code>env()</code> and
+        <code>read_file()</code> are granted per run, and the grant never reaches
+        what the manifest imports.
+      </p>
+
+      <pre>
+enum Tier
+  "frontend"
+  "backend"
+end
+
+type Service
+  name: String
+  tier: Tier
+  replicas: Int = 2
+end
+
+api: new Service
+  name: "checkout-api"
+  tier: "backend"
+end</pre
+      >
+
+      <div class="links">
+        <a href="playground/">Try it in the browser</a>
+        <a href="book/">Documentation</a>
+        <a href="https://github.com/aura-config/aura-lang">Source</a>
+      </div>
+
+      <footer>Version 0.1.0 — early, and the syntax is frozen but not yet promised.</footer>
+    </main>
+  </body>
+</html>

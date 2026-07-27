@@ -1,0 +1,89 @@
+name: Pages
+
+# Deliberately manual for now. GitHub Pages needs the repository to be public
+# (or a paid plan), so a push trigger would paint every commit red until the
+# repository is opened. Add this when it is:
+#
+#   push:
+#     branches: [main]
+#
+on:
+  workflow_dispatch:
+
+# The site layout is fixed here rather than later, so the URLs never have to
+# move: / is the landing page, /book/ the documentation, /playground/ the
+# in-browser editor.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a queued run supersedes an older one rather than
+# racing it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: latest
+
+      - name: Build the book
+        run: mdbook build docs/book
+
+      - name: Build the playground's WebAssembly bundle
+        run: |
+          VERSION=$(grep -A1 '^name = "wasm-bindgen"$' crates/aura-wasm/Cargo.lock \
+            | grep '^version' | head -1 | sed 's/version = "//;s/"//')
+          cargo install wasm-bindgen-cli --version "$VERSION" --locked
+          cd crates/aura-wasm
+          cargo build --target wasm32-unknown-unknown --release
+          wasm-bindgen target/wasm32-unknown-unknown/release/aura_wasm.wasm \
+            --out-dir ../../playground/pkg --target web --no-typescript
+
+      - name: Check the bundle before publishing it
+        run: |
+          cd crates/aura-wasm
+          wasm-bindgen target/wasm32-unknown-unknown/release/aura_wasm.wasm \
+            --out-dir pkg-node --target nodejs --no-typescript
+          node smoke.cjs
+
+      - name: Assemble
+        run: |
+          mkdir -p site/book site/playground
+          cp -r docs/book/book/. site/book/
+          cp -r playground/. site/playground/
+          cp site-index.html site/index.html
+          # Pages otherwise runs the output through Jekyll, which drops
+          # directories beginning with an underscore.
+          touch site/.nojekyll
+          du -sh site site/playground/pkg
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
