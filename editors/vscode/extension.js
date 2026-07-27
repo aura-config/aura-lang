@@ -19,6 +19,9 @@ function activate(context) {
   };
   const clientOptions = {
     documentSelector: [{ scheme: "file", language: "aura" }],
+    // The server needs the registry cache location to resolve a registry import
+    // (`org/pkg@v1.2`) for go-to-definition; empty means its own default.
+    initializationOptions: { registryDir: cfg.get("registryDir") || "" },
   };
   client = new LanguageClient(
     "aura",

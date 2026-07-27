@@ -8,6 +8,14 @@ still change the language.
 ## [Unreleased]
 
 ### Added
+- **LSP: enum members for imported schemas and go-to-definition on registry
+  imports.** Inside `new lib.Endpoint`, a field typed by a `pub enum` in the
+  imported module now offers exactly its members (the module is read from the open
+  buffer if there is one, otherwise from disk). Go-to-definition on a registry
+  import (`org/pkg@v1.2`) opens the cached package, delegating version selection to
+  the same `LocalFsResolver` the interpreter uses, so it cannot pick a different
+  file than evaluation would. The cache location comes from the new
+  `aura.registryDir` setting (default `~/.aura/registry`).
 - **Rename in the LSP (F2)**, built on scope-precise name resolution. A new
   `resolve` module in the core answers *which binding* an identifier refers to,
   so `x` in a lambda and `x` at the top level are no longer conflated, and uses

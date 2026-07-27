@@ -235,7 +235,14 @@ fn schema_field_types<'a>(toks: &[Token<'a>]) -> HashMap<&'a str, HashMap<&'a st
 
 /// The schema being instantiated by the `new` block that encloses `at`, plus the
 /// field key whose value the cursor sits in.
-fn enclosing_new_field<'a>(toks: &[Token<'a>], at: usize) -> Option<(&'a str, &'a str)> {
+/// The `new` block enclosing `at`: `(module alias, schema, field)`. The alias is
+/// `None` for `new Schema` and `Some("lib")` for `new lib.Schema`, which decides
+/// whether the field's type is looked up in this file or in the imported module.
+#[allow(clippy::type_complexity)]
+fn enclosing_new_field<'a>(
+    toks: &[Token<'a>],
+    at: usize,
+) -> Option<(Option<&'a str>, &'a str, &'a str)> {
     // The token index just before the cursor.
     let cur = toks.iter().rposition(|t| (t.span.start as usize) < at)?;
 
@@ -264,11 +271,11 @@ fn enclosing_new_field<'a>(toks: &[Token<'a>], at: usize) -> Option<(&'a str, &'
                     toks.get(i + 3).map(|t| &t.kind),
                 ) {
                     (
-                        Some(TokenKind::Ident(_)),
+                        Some(TokenKind::Ident(alias)),
                         Some(TokenKind::Dot),
                         Some(TokenKind::Ident(s)),
-                    ) => Some((*s, field)),
-                    (Some(TokenKind::Ident(s)), _, _) => Some((*s, field)),
+                    ) => Some((Some(*alias), *s, field)),
+                    (Some(TokenKind::Ident(s)), _, _) => Some((None, *s, field)),
                     _ => None,
                 };
             }
@@ -285,14 +292,54 @@ fn enclosing_new_field<'a>(toks: &[Token<'a>], at: usize) -> Option<(&'a str, &'
 }
 
 /// Members of the enum expected at `offset`: the cursor is in the value position
-/// of a `new Schema` field whose declared type is a declared enum. Same-file
-/// declarations only (an imported schema's enum lives in the module file).
-pub fn expected_enum_members(text: &str, offset: usize) -> Option<Vec<String>> {
+/// of a `new Schema` field whose declared type is a declared enum.
+///
+/// For `new alias.Schema` the schema and its enum live in the imported module, so
+/// `load_module` is called with the import's relative path to get that file's text.
+/// Returning `None` from it (an unresolvable or registry import) simply means no
+/// members are offered.
+pub fn expected_enum_members(
+    text: &str,
+    offset: usize,
+    load_module: impl Fn(&str) -> Option<String>,
+) -> Option<Vec<String>> {
     let toks = Lexer::new(text, 0).tokenize().ok()?;
-    let (schema, field) = enclosing_new_field(&toks, offset)?;
+    let (alias, schema, field) = enclosing_new_field(&toks, offset)?;
+
+    let Some(alias) = alias else {
+        return members_of_field(text, schema, field);
+    };
+    // `new lib.Schema` — resolve inside the module bound to `lib`.
+    let path = import_path_for(&toks, alias)?;
+    let module = load_module(path)?;
+    members_of_field(&module, schema, field)
+}
+
+/// The enum members of `schema.field`, both declared in `text`.
+fn members_of_field(text: &str, schema: &str, field: &str) -> Option<Vec<String>> {
+    let toks = Lexer::new(text, 0).tokenize().ok()?;
     let ty = *schema_field_types(&toks).get(schema)?.get(field)?;
     let members = enum_decls(&toks).get(ty)?.clone();
     Some(members.into_iter().map(str::to_string).collect())
+}
+
+/// The relative path of the file import bound to `alias`. Registry imports
+/// (`org/pkg@v1`) lex as `ImportPath`, not `Str`, so they yield `None`.
+fn import_path_for<'a>(toks: &[Token<'a>], alias: &str) -> Option<&'a str> {
+    for i in 0..toks.len() {
+        if !matches!(toks[i].kind, TokenKind::Import) {
+            continue;
+        }
+        if let (Some(TokenKind::Str(path)), Some(TokenKind::Ident(a))) = (
+            toks.get(i + 1).map(|t| &t.kind),
+            toks.get(i + 3).map(|t| &t.kind),
+        ) {
+            if *a == alias {
+                return Some(path);
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -348,7 +395,7 @@ end
     #[test]
     fn enum_members_offered_for_an_enum_typed_field() {
         // cursor at the end, i.e. in the value position of `tier:`
-        let m = expected_enum_members(ENUM_SRC, ENUM_SRC.len()).expect("members");
+        let m = expected_enum_members(ENUM_SRC, ENUM_SRC.len(), |_| None).expect("members");
         assert_eq!(m, vec!["frontend", "backend", "cache"]);
     }
 
@@ -356,7 +403,86 @@ end
     fn no_enum_members_for_a_plain_field() {
         // `name: String` is not an enum, so no member list
         let upto = ENUM_SRC.find("tier: ").unwrap() - 1;
-        assert_eq!(expected_enum_members(ENUM_SRC, upto), None);
+        assert_eq!(expected_enum_members(ENUM_SRC, upto, |_| None), None);
+    }
+
+    /// A `pub enum` field of an imported schema still offers its members: the
+    /// declarations live in the module file, reached through the import path.
+    #[test]
+    fn enum_members_offered_for_an_imported_schema() {
+        const LIB: &str = concat!(
+            "pub enum Scheme
+  \"https\"
+  \"http\"
+end
+",
+            "pub type Endpoint
+  host: String
+  scheme: Scheme
+end
+",
+        );
+        let src = concat!(
+            "import \"lib.aura\" as lib
+",
+            "e: new lib.Endpoint
+  host: \"h\"
+  scheme: ",
+        );
+        let load = |path: &str| (path == "lib.aura").then(|| LIB.to_string());
+        assert_eq!(
+            expected_enum_members(src, src.len(), load),
+            Some(vec!["https".to_string(), "http".to_string()])
+        );
+        // A plain field of the same imported schema offers nothing.
+        let upto = src.find("host: ").unwrap() + 6;
+        assert_eq!(expected_enum_members(src, upto, load), None);
+    }
+
+    /// The same thing against the files actually shipped in the repository, so the
+    /// wiring is proven on real declarations rather than on hand-written fixtures.
+    #[test]
+    fn imported_enum_members_on_the_real_showcase_files() {
+        const LIB: &str = include_str!("../../../examples/showcase/lib.aura");
+        // `lib.Endpoint.scheme` is typed by `pub enum Scheme` in lib.aura.
+        let src = "import \"lib.aura\" as lib
+e: new lib.Endpoint
+  host: \"h\"
+  scheme: ";
+        assert_eq!(
+            expected_enum_members(src, src.len(), |p| (p == "lib.aura")
+                .then(|| LIB.to_string())),
+            Some(vec!["https".to_string(), "http".to_string()])
+        );
+        // `host: String` in the same schema is not an enum.
+        let upto = src.find("host: ").unwrap() + 6;
+        assert_eq!(
+            expected_enum_members(src, upto, |p| (p == "lib.aura").then(|| LIB.to_string())),
+            None
+        );
+    }
+
+    #[test]
+    fn unresolvable_and_registry_imports_offer_nothing() {
+        let src = concat!(
+            "import \"lib.aura\" as lib
+",
+            "e: new lib.Endpoint
+  scheme: ",
+        );
+        // The module cannot be read (unsaved, missing, outside the workspace).
+        assert_eq!(expected_enum_members(src, src.len(), |_| None), None);
+        // A registry import has no file path to load at all.
+        let reg = concat!(
+            "import acme/net@v1.0.0 as net
+",
+            "e: new net.Endpoint
+  scheme: ",
+        );
+        assert_eq!(
+            expected_enum_members(reg, reg.len(), |_| panic!("must not be loaded")),
+            None
+        );
     }
 
     #[test]
@@ -366,7 +492,7 @@ end
 end
 x: 
 ";
-        assert_eq!(expected_enum_members(src, src.len()), None);
+        assert_eq!(expected_enum_members(src, src.len(), |_| None), None);
     }
 
     #[test]

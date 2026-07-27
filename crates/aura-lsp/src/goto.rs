@@ -6,10 +6,13 @@
 //! time you are typing) the older lexical pass keeps answering approximately,
 //! which is better than answering nothing.
 
+use std::path::{Path, PathBuf};
+
 use aura_lang::lexer::{Lexer, TokenKind};
 use aura_lang::parser::Parser;
 use aura_lang::resolve::{self, Resolution};
 use aura_lang::span::Span;
+use aura_lang::vfs::{FileResolver, ImportSpec, LocalFsResolver, ModuleId};
 use lsp_types::{DocumentSymbol, Range, SymbolKind};
 
 use crate::diagnostics::LineIndex;
@@ -125,6 +128,63 @@ pub fn import_target_path(text: &str, line: u32, character: u32) -> Option<Strin
         .iter()
         .find(|(alias, ..)| *alias == name)
         .map(|(_, path, ..)| path.to_string())
+}
+
+/// If the cursor is on a registry import (`github/owner/repo@v1.2`) — its path
+/// token or its alias, including a use like `pkg.thing` — return the cached module
+/// file the import resolves to.
+///
+/// Version selection is delegated to `LocalFsResolver`, the same resolver the
+/// interpreter uses: `@v1.2` picking `1.2.0.aura` out of the cache is a range
+/// match, and a second implementation of that would be free to disagree with the
+/// one that actually loads the module.
+pub fn registry_target_path(
+    text: &str,
+    line: u32,
+    character: u32,
+    registry_dir: &Path,
+) -> Option<PathBuf> {
+    let toks = Lexer::new(text, 0).tokenize().ok()?;
+    let index = LineIndex::new(text);
+    let offset = index.offset(text, line, character) as u32;
+
+    // Registry imports as (alias, path, version, path token index, alias token index).
+    let mut imports: Vec<(&str, &str, &str, usize, usize)> = Vec::new();
+    for i in 0..toks.len() {
+        if !matches!(toks[i].kind, TokenKind::Import) {
+            continue;
+        }
+        if let (Some(TokenKind::ImportPath { path, version }), Some(TokenKind::Ident(alias))) = (
+            toks.get(i + 1).map(|t| &t.kind),
+            toks.get(i + 3).map(|t| &t.kind),
+        ) {
+            imports.push((alias, path, version, i + 1, i + 3));
+        }
+    }
+    let covers = |idx: usize| toks[idx].span.start <= offset && offset <= toks[idx].span.end;
+    let (_, path, version, ..) = imports
+        .iter()
+        .find(|(_, _, _, p, a)| covers(*p) || covers(*a))
+        .or_else(|| {
+            // On a use of the alias elsewhere (`rust.step`).
+            let name = ident_at(&toks, offset)?;
+            imports.iter().find(|(alias, ..)| *alias == name)
+        })?;
+
+    let resolver = LocalFsResolver {
+        root: PathBuf::from("."),
+        registry_dir: registry_dir.to_path_buf(),
+    };
+    let id = resolver
+        .resolve(&ImportSpec::Registry { path, version }, None)
+        .ok()?;
+    match id {
+        // Mirrors `LocalFsResolver::load`'s cache layout.
+        ModuleId::Registry { path, version } => {
+            Some(registry_dir.join(path).join(format!("{version}.aura")))
+        }
+        _ => None,
+    }
 }
 
 /// The import path bound to `alias`, if any (file imports only).
@@ -406,6 +466,34 @@ y: x
         assert!(
             !reference_ranges(src, 0, 0).is_empty(),
             "the lexical tier still answers"
+        );
+    }
+
+    #[test]
+    fn registry_import_resolves_to_the_cached_module_file() {
+        // The repository's own registry cache: `@v1.2` must select `1.2.0.aura`,
+        // the same range match the interpreter performs.
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/registry");
+        let src = "import github/actions/rust-cache@v1.2 as rust\nx: rust.name\n";
+        let expect = dir.join("github/actions/rust-cache/1.2.0.aura");
+        assert!(expect.exists(), "fixture missing: {}", expect.display());
+
+        for (line, ch, what) in [
+            (0, 20, "the import path"),
+            (0, 42, "the alias"),
+            (1, 4, "a use"),
+        ] {
+            let got = registry_target_path(src, line, ch, &dir)
+                .unwrap_or_else(|| panic!("no target on {what}"));
+            assert_eq!(got, expect, "on {what}");
+        }
+        // A version with no cached match resolves to nothing.
+        let miss = "import github/actions/rust-cache@v9.9 as rust\n";
+        assert_eq!(registry_target_path(miss, 0, 20, &dir), None);
+        // A file import is not a registry import.
+        assert_eq!(
+            registry_target_path("import \"lib.aura\" as lib\n", 0, 10, &dir),
+            None
         );
     }
 

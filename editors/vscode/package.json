@@ -36,6 +36,11 @@
           "type": "boolean",
           "default": true,
           "description": "Run the Aura language server for live diagnostics."
+        },
+        "aura.registryDir": {
+          "type": "string",
+          "default": "",
+          "description": "Directory of the cached package registry, used to jump into a registry import (`org/pkg@v1.2`). Defaults to ~/.aura/registry."
         }
       }
     }

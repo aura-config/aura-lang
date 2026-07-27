@@ -68,10 +68,11 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
         }),
         ..Default::default()
     };
-    connection.initialize(serde_json::to_value(capabilities)?)?;
+    let init = connection.initialize(serde_json::to_value(capabilities)?)?;
+    let registry_dir = registry_dir_from(&init);
     // The completion database is built once by evaluating the embedded manifest.
     let stdlib = Stdlib::load();
-    main_loop(&connection, &stdlib)?;
+    main_loop(&connection, &stdlib, &registry_dir)?;
     // Drop the connection before joining: it owns the writer channel's sender, and
     // io_threads.join() only returns once that sender is gone (otherwise it hangs).
     drop(connection);
@@ -79,9 +80,40 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
     Ok(())
 }
 
+/// Where cached registry packages live, so go-to-definition can open one.
+/// `initializationOptions.registryDir` (the editor's `aura.registryDir` setting)
+/// wins; otherwise the CLI's default, `~/.aura/registry`.
+fn registry_dir_from(init: &serde_json::Value) -> std::path::PathBuf {
+    if let Some(dir) = init
+        .get("initializationOptions")
+        .and_then(|o| o.get("registryDir"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
+        return std::path::PathBuf::from(dir);
+    }
+    std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default()
+        .join(".aura")
+        .join("registry")
+}
+
+/// `file://` URI for a filesystem path, so a resolved registry module can be
+/// opened. The inverse of `uri_to_fs_path`.
+fn fs_path_to_uri(path: &std::path::Path) -> Option<lsp_types::Uri> {
+    let mut s = path.to_str()?.replace('\\', "/");
+    if !s.starts_with('/') {
+        s.insert(0, '/'); // "C:/…" -> "/C:/…"
+    }
+    format!("file://{s}").parse().ok()
+}
+
 fn main_loop(
     connection: &Connection,
     stdlib: &Stdlib,
+    registry_dir: &std::path::Path,
 ) -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
     let mut docs = Docs::new();
     for msg in &connection.receiver {
@@ -94,15 +126,26 @@ fn main_loop(
                     Completion::METHOD => {
                         let p: CompletionParams = serde_json::from_value(req.params)?;
                         let pos = p.text_document_position;
+                        let uri = pos.text_document.uri.to_string();
                         let items = docs
-                            .get(&pos.text_document.uri.to_string())
+                            .get(&uri)
                             .map(|text| {
                                 let offset = diagnostics::LineIndex::new(text).offset(
                                     text,
                                     pos.position.line,
                                     pos.position.character,
                                 );
-                                completion_items(stdlib, text, offset)
+                                // An imported module is read from disk unless it is
+                                // already open, in which case the buffer is newer.
+                                let load = |rel: &str| {
+                                    let target = sibling_uri(&uri, rel)?;
+                                    let key = target.to_string();
+                                    if let Some(open) = docs.get(&key) {
+                                        return Some(open.clone());
+                                    }
+                                    std::fs::read_to_string(uri_to_fs_path(&key)?).ok()
+                                };
+                                completion_items(stdlib, text, offset, load)
                             })
                             .unwrap_or_default();
                         let result = serde_json::to_value(CompletionResponse::Array(items))?;
@@ -144,6 +187,26 @@ fn main_loop(
                                     return Some(GotoDefinitionResponse::Scalar(Location {
                                         uri: target,
                                         range: Range::default(),
+                                    }));
+                                }
+                            }
+                            // A registry import (`org/pkg@v1.2`) opens the cached
+                            // module; on `pkg.Member` it jumps to the declaration.
+                            if let Some(file) =
+                                goto::registry_target_path(text, line, ch, registry_dir)
+                            {
+                                if let Some(target) = fs_path_to_uri(&file) {
+                                    let range = std::fs::read_to_string(&file)
+                                        .ok()
+                                        .and_then(|m| {
+                                            let (_, member) =
+                                                goto::imported_member(text, line, ch)?;
+                                            goto::declaration_range_in(&m, &member)
+                                        })
+                                        .unwrap_or_default();
+                                    return Some(GotoDefinitionResponse::Scalar(Location {
+                                        uri: target,
+                                        range,
                                     }));
                                 }
                             }
@@ -419,11 +482,18 @@ fn format_edits(text: &str) -> Option<Vec<TextEdit>> {
 
 /// Context-aware completion. After a `.` only stdlib methods are offered; at any
 /// other position: builtins, keywords, and the file's declared names.
-fn completion_items(stdlib: &Stdlib, text: &str, offset: usize) -> Vec<CompletionItem> {
+/// `load_module` resolves an import's relative path to that file's text, so a
+/// field of an *imported* schema can offer its enum members too.
+fn completion_items(
+    stdlib: &Stdlib,
+    text: &str,
+    offset: usize,
+    load_module: impl Fn(&str) -> Option<String>,
+) -> Vec<CompletionItem> {
     let mut items = Vec::new();
     // D18: inside `new Schema`, a field typed by an enum offers exactly its
     // members — the one place where the set of valid values is known exactly.
-    if let Some(members) = infer::expected_enum_members(text, offset) {
+    if let Some(members) = infer::expected_enum_members(text, offset, load_module) {
         return members
             .into_iter()
             .map(|m| CompletionItem {
@@ -502,6 +572,41 @@ fn publish(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A resolved registry module is handed to the editor as a URI, so the path
+    /// conversion must round-trip — including the Windows drive-letter form, where
+    /// `file:///C:/…` and `C:\…` differ by more than separators.
+    #[test]
+    fn fs_path_and_uri_round_trip() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+        assert!(path.exists(), "fixture must exist");
+        let uri = fs_path_to_uri(&path).expect("a uri");
+        let back = uri_to_fs_path(&uri.to_string()).expect("a path");
+        // Compare canonically: the round trip normalises separators.
+        assert_eq!(
+            std::fs::canonicalize(&back).unwrap(),
+            std::fs::canonicalize(&path).unwrap(),
+            "uri was {uri:?}"
+        );
+    }
+
+    #[test]
+    fn registry_dir_comes_from_initialization_options_then_falls_back() {
+        let given = serde_json::json!({"initializationOptions": {"registryDir": "/tmp/reg"}});
+        assert_eq!(
+            registry_dir_from(&given),
+            std::path::PathBuf::from("/tmp/reg")
+        );
+        // Absent or empty -> the CLI's default location, not an empty path.
+        for v in [
+            serde_json::json!({}),
+            serde_json::json!({"initializationOptions": {"registryDir": ""}}),
+        ] {
+            let d = registry_dir_from(&v);
+            assert!(d.ends_with("registry"), "{d:?}");
+            assert!(d.parent().is_some_and(|p| p.ends_with(".aura")), "{d:?}");
+        }
+    }
 
     #[test]
     fn formatting_reindents_and_is_a_noop_when_canonical() {
