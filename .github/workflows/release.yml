@@ -18,23 +18,40 @@ jobs:
         run: |
           CARGO_VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
           TAG_VERSION="${GITHUB_REF_NAME#v}"
-          echo "Cargo.toml: $CARGO_VERSION, tag: $TAG_VERSION"
-          test "$CARGO_VERSION" = "$TAG_VERSION"
+          # A prerelease suffix is allowed: v0.1.0-rc.1 matches Cargo.toml 0.1.0
+          BASE_VERSION="${TAG_VERSION%%-*}"
+          echo "Cargo.toml: $CARGO_VERSION, tag: $TAG_VERSION (base $BASE_VERSION)"
+          test "$CARGO_VERSION" = "$BASE_VERSION"
 
   build:
     name: Build (${{ matrix.target }})
     needs: verify
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
+            native: true
+          # Статический бинарник: Alpine и scratch-контейнеры
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-          - target: aarch64-apple-darwin
-            os: macos-latest
+            native: true
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            native: false
+          # DEBUG: macOS legs are commented out while the workflow is being
+          # validated on a throwaway tag — macOS minutes bill at 10x. Restore
+          # both before the first real release.
+          # - target: aarch64-apple-darwin
+          #   os: macos-latest
+          #   native: true
+          # - target: x86_64-apple-darwin
+          #   os: macos-latest
+          #   native: false # arm64-раннер: Rosetta не гарантирована
           - target: x86_64-pc-windows-msvc
             os: windows-latest
+            native: true
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -42,32 +59,89 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+
       - name: Install musl tools
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - run: cargo test --workspace
-      - run: cargo build --release -p aura-cli --target ${{ matrix.target }}
+
+      - name: Install aarch64 cross-linker
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+
+      # Тесты уже прогнаны в CI на каждый push; здесь собирается сам бинарник
+      # (фича `cli` включена по умолчанию — см. crates/aura-lang/Cargo.toml).
+      - run: cargo build --release -p aura-lang --target ${{ matrix.target }}
+
+      # Дым: бинарник должен запускаться и вычислять реальный манифест — только
+      # там, где архитектура сборки совпадает с раннером.
+      - name: Smoke test (unix)
+        if: matrix.native && runner.os != 'Windows'
+        run: |
+          BIN="$PWD/target/${{ matrix.target }}/release/aura"
+          "$BIN" --version
+          cd examples/ci_matrix && "$BIN" eval ci_matrix.aura > /dev/null
+      - name: Smoke test (windows)
+        if: matrix.native && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bin = "$PWD/target/${{ matrix.target }}/release/aura.exe"
+          & $bin --version
+          Push-Location examples/ci_matrix
+          & $bin eval ci_matrix.aura | Out-Null
+          Pop-Location
+
       - name: Package (unix)
         if: runner.os != 'Windows'
         run: |
-          NAME="aura-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          NAME="aura-${GITHUB_REF_NAME#v}-${{ matrix.target }}"
           mkdir "$NAME"
           cp "target/${{ matrix.target }}/release/aura" "$NAME/"
           cp README.md LICENSE-MIT LICENSE-APACHE "$NAME/"
           tar czf "$NAME.tar.gz" "$NAME"
+          # Integrity в духе aura.lock: setup-aura сверяет хеш после скачивания
+          shasum -a 256 "$NAME.tar.gz" > "$NAME.tar.gz.sha256"
       - name: Package (windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $name = "aura-$env:GITHUB_REF_NAME-${{ matrix.target }}"
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          $name = "aura-$version-${{ matrix.target }}"
           New-Item -ItemType Directory $name | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/aura.exe" $name
           Copy-Item README.md, LICENSE-MIT, LICENSE-APACHE $name
           Compress-Archive -Path $name -DestinationPath "$name.zip"
+          $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name.zip" | Out-File -Encoding ascii "$name.zip.sha256"
+
       - name: Upload to release
         uses: softprops/action-gh-release@v3
         with:
           draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             aura-*.tar.gz
             aura-*.zip
+            aura-*.sha256
+
+  # Проверяет релиз так, как его увидит потребитель: ставит `aura` из только что
+  # загруженных ассетов через наш же экшен и запускает его.
+  self-test:
+    name: Install from release (${{ matrix.os }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest] # DEBUG: macOS omitted, see above
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./packaging/setup-aura
+        with:
+          version: ${{ github.ref_name }}
+      - name: Use the installed binary
+        shell: bash
+        run: |
+          aura --version
+          cd examples/nginx && aura eval nginx.aura > /dev/null
