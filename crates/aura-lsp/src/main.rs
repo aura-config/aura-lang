@@ -8,6 +8,7 @@ mod diagnostics;
 mod goto;
 mod hover;
 mod infer;
+mod signature;
 mod stdlib;
 
 use std::collections::HashMap;
@@ -19,15 +20,16 @@ use lsp_types::notification::{
 };
 use lsp_types::request::{
     Completion, DocumentSymbolRequest, Formatting, GotoDefinition, HoverRequest, References,
-    Request as _,
+    Request as _, SignatureHelpRequest,
 };
 use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DocumentFormattingParams, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
     GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
-    HoverProviderCapability, Location, MarkupContent, MarkupKind, OneOf, Position,
-    PublishDiagnosticsParams, Range, ReferenceParams, ServerCapabilities,
+    HoverProviderCapability, Location, MarkupContent, MarkupKind, OneOf, ParameterInformation,
+    ParameterLabel, Position, PublishDiagnosticsParams, Range, ReferenceParams, ServerCapabilities,
+    SignatureHelp, SignatureHelpOptions, SignatureHelpParams, SignatureInformation,
     TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
 };
 
@@ -51,6 +53,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
         definition_provider: Some(OneOf::Left(true)),
         references_provider: Some(OneOf::Left(true)),
         document_symbol_provider: Some(OneOf::Left(true)),
+        signature_help_provider: Some(SignatureHelpOptions {
+            trigger_characters: Some(vec!["(".to_string(), ",".to_string()]),
+            ..Default::default()
+        }),
         ..Default::default()
     };
     connection.initialize(serde_json::to_value(capabilities)?)?;
@@ -163,6 +169,40 @@ fn main_loop(
                             })
                             .unwrap_or_default();
                         respond(connection, req.id, serde_json::to_value(locations)?)?;
+                    }
+                    SignatureHelpRequest::METHOD => {
+                        let p: SignatureHelpParams = serde_json::from_value(req.params)?;
+                        let pos = p.text_document_position_params;
+                        let help = docs
+                            .get(&pos.text_document.uri.to_string())
+                            .and_then(|text| {
+                                let offset = diagnostics::LineIndex::new(text).offset(
+                                    text,
+                                    pos.position.line,
+                                    pos.position.character,
+                                );
+                                signature::signature_at(stdlib, text, offset).map(|s| {
+                                    SignatureHelp {
+                                        signatures: vec![SignatureInformation {
+                                            label: s.label,
+                                            documentation: s.doc.map(Documentation::String),
+                                            parameters: Some(
+                                                s.params
+                                                    .into_iter()
+                                                    .map(|p| ParameterInformation {
+                                                        label: ParameterLabel::Simple(p),
+                                                        documentation: None,
+                                                    })
+                                                    .collect(),
+                                            ),
+                                            active_parameter: Some(s.active),
+                                        }],
+                                        active_signature: Some(0),
+                                        active_parameter: Some(s.active),
+                                    }
+                                })
+                            });
+                        respond(connection, req.id, serde_json::to_value(help)?)?;
                     }
                     DocumentSymbolRequest::METHOD => {
                         let p: DocumentSymbolParams = serde_json::from_value(req.params)?;
@@ -302,6 +342,20 @@ fn format_edits(text: &str) -> Option<Vec<TextEdit>> {
 /// other position: builtins, keywords, and the file's declared names.
 fn completion_items(stdlib: &Stdlib, text: &str, offset: usize) -> Vec<CompletionItem> {
     let mut items = Vec::new();
+    // D18: inside `new Schema`, a field typed by an enum offers exactly its
+    // members — the one place where the set of valid values is known exactly.
+    if let Some(members) = infer::expected_enum_members(text, offset) {
+        return members
+            .into_iter()
+            .map(|m| CompletionItem {
+                label: format!("\"{m}\""),
+                kind: Some(CompletionItemKind::ENUM_MEMBER),
+                detail: Some("enum member".to_string()),
+                insert_text: Some(format!("\"{m}\"")),
+                ..Default::default()
+            })
+            .collect();
+    }
     if goto::is_method_context(text, offset) {
         // Type-aware when the receiver type can be inferred; otherwise all methods.
         let recv = infer::receiver_type(stdlib, text, offset);

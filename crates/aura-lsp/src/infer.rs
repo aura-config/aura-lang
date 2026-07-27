@@ -173,6 +173,128 @@ fn value_ends(k: &TokenKind) -> bool {
     )
 }
 
+// ---- D18: enum member completion ----
+
+/// Enum declarations in a file: name -> members.
+fn enum_decls<'a>(toks: &[Token<'a>]) -> HashMap<&'a str, Vec<&'a str>> {
+    let mut out = HashMap::new();
+    let mut i = 0;
+    while i < toks.len() {
+        if !matches!(toks[i].kind, TokenKind::Enum) {
+            i += 1;
+            continue;
+        }
+        let Some(TokenKind::Ident(name)) = toks.get(i + 1).map(|t| &t.kind) else {
+            i += 1;
+            continue;
+        };
+        let mut members = Vec::new();
+        let mut j = i + 2;
+        while j < toks.len() && !matches!(toks[j].kind, TokenKind::End) {
+            if let TokenKind::Str(m) = &toks[j].kind {
+                members.push(*m);
+            }
+            j += 1;
+        }
+        out.insert(*name, members);
+        i = j;
+    }
+    out
+}
+
+/// Schema declarations: schema name -> (field name -> declared type name).
+fn schema_field_types<'a>(toks: &[Token<'a>]) -> HashMap<&'a str, HashMap<&'a str, &'a str>> {
+    let mut out = HashMap::new();
+    let mut i = 0;
+    while i < toks.len() {
+        if !matches!(toks[i].kind, TokenKind::Type) {
+            i += 1;
+            continue;
+        }
+        let Some(TokenKind::Ident(sname)) = toks.get(i + 1).map(|t| &t.kind) else {
+            i += 1;
+            continue;
+        };
+        let mut fields = HashMap::new();
+        let mut j = i + 2;
+        while j < toks.len() && !matches!(toks[j].kind, TokenKind::End) {
+            if let (TokenKind::Ident(f), Some(TokenKind::Colon), Some(TokenKind::Ident(ty))) = (
+                &toks[j].kind,
+                toks.get(j + 1).map(|t| &t.kind),
+                toks.get(j + 2).map(|t| &t.kind),
+            ) {
+                fields.insert(*f, *ty);
+            }
+            j += 1;
+        }
+        out.insert(*sname, fields);
+        i = j;
+    }
+    out
+}
+
+/// The schema being instantiated by the `new` block that encloses `at`, plus the
+/// field key whose value the cursor sits in.
+fn enclosing_new_field<'a>(toks: &[Token<'a>], at: usize) -> Option<(&'a str, &'a str)> {
+    // The token index just before the cursor.
+    let cur = toks.iter().rposition(|t| (t.span.start as usize) < at)?;
+
+    // The field key: nearest `Ident Colon` pair at or before the cursor.
+    let mut k = cur;
+    let field = loop {
+        if matches!(toks[k].kind, TokenKind::Colon) && k > 0 {
+            if let TokenKind::Ident(f) = &toks[k - 1].kind {
+                break *f;
+            }
+        }
+        k = k.checked_sub(1)?;
+    };
+
+    // Walk back to the `new` that opens this block, skipping nested blocks.
+    let mut depth = 0usize;
+    let mut i = k;
+    loop {
+        match &toks[i].kind {
+            TokenKind::End => depth += 1,
+            TokenKind::New if depth == 0 => {
+                // `new Schema` or `new alias.Schema`
+                return match (
+                    toks.get(i + 1).map(|t| &t.kind),
+                    toks.get(i + 2).map(|t| &t.kind),
+                    toks.get(i + 3).map(|t| &t.kind),
+                ) {
+                    (
+                        Some(TokenKind::Ident(_)),
+                        Some(TokenKind::Dot),
+                        Some(TokenKind::Ident(s)),
+                    ) => Some((*s, field)),
+                    (Some(TokenKind::Ident(s)), _, _) => Some((*s, field)),
+                    _ => None,
+                };
+            }
+            TokenKind::New
+            | TokenKind::Domain
+            | TokenKind::Def
+            | TokenKind::Type
+            | TokenKind::Enum
+            | TokenKind::Cond => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+        i = i.checked_sub(1)?;
+    }
+}
+
+/// Members of the enum expected at `offset`: the cursor is in the value position
+/// of a `new Schema` field whose declared type is a declared enum. Same-file
+/// declarations only (an imported schema's enum lives in the module file).
+pub fn expected_enum_members(text: &str, offset: usize) -> Option<Vec<String>> {
+    let toks = Lexer::new(text, 0).tokenize().ok()?;
+    let (schema, field) = enclosing_new_field(&toks, offset)?;
+    let ty = *schema_field_types(&toks).get(schema)?.get(field)?;
+    let members = enum_decls(&toks).get(ty)?.clone();
+    Some(members.into_iter().map(str::to_string).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,6 +325,48 @@ mod tests {
     fn variable_resolution() {
         assert_eq!(rt("s = \"x\"\ny: s."), Some("String".into()));
         assert_eq!(rt("xs = [1]\ny: xs."), Some("List".into()));
+    }
+
+    const ENUM_SRC: &str = concat!(
+        "enum Tier
+  \"frontend\"
+  \"backend\"
+  \"cache\"
+end
+",
+        "type Service
+  name: String
+  tier: Tier
+end
+",
+        "svc: new Service
+  name: \"api\"
+  tier: 
+",
+    );
+
+    #[test]
+    fn enum_members_offered_for_an_enum_typed_field() {
+        // cursor at the end, i.e. in the value position of `tier:`
+        let m = expected_enum_members(ENUM_SRC, ENUM_SRC.len()).expect("members");
+        assert_eq!(m, vec!["frontend", "backend", "cache"]);
+    }
+
+    #[test]
+    fn no_enum_members_for_a_plain_field() {
+        // `name: String` is not an enum, so no member list
+        let upto = ENUM_SRC.find("tier: ").unwrap() - 1;
+        assert_eq!(expected_enum_members(ENUM_SRC, upto), None);
+    }
+
+    #[test]
+    fn no_enum_members_outside_a_new_block() {
+        let src = "enum Tier
+  \"a\"
+end
+x: 
+";
+        assert_eq!(expected_enum_members(src, src.len()), None);
     }
 
     #[test]
