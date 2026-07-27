@@ -9,6 +9,8 @@
 //! Consumers get exact byte spans for the declaration and for every use,
 //! including uses inside `#{...}` interpolation.
 
+use std::collections::HashMap;
+
 use crate::lexer::token::StrPart;
 use crate::lexer::{Lexer, Token, TokenKind};
 use crate::parser::ast::*;
@@ -118,17 +120,20 @@ pub fn resolve(src: &str, module: &Module<'_>) -> Resolution {
 }
 
 /// A lexical scope: its byte range and the bindings declared directly in it.
-struct Scope {
+struct Scope<'a> {
     range: Span,
-    /// Indices into `Resolution::bindings`.
-    decls: Vec<usize>,
+    /// Indices into `Resolution::bindings`, grouped by name in declaration order.
+    /// Keyed by name rather than a flat list so a lookup does not scan every
+    /// binding in the scope — the module scope of a large manifest holds thousands,
+    /// and each use would then cost a full pass.
+    decls: HashMap<&'a str, Vec<usize>>,
 }
 
 struct Resolver<'a> {
     src: &'a str,
     toks: Vec<Token<'a>>,
     out: Resolution,
-    scopes: Vec<Scope>,
+    scopes: Vec<Scope<'a>>,
     /// Offset added to recorded use spans. Non-zero only while walking a `#{...}`
     /// sub-expression, which is lexed standalone and so reports spans from 0.
     bias: u32,
@@ -138,7 +143,7 @@ impl<'a> Resolver<'a> {
     fn push(&mut self, range: Span) {
         self.scopes.push(Scope {
             range,
-            decls: Vec::new(),
+            decls: HashMap::new(),
         });
     }
 
@@ -146,11 +151,11 @@ impl<'a> Resolver<'a> {
         self.scopes.pop();
     }
 
-    fn declare(&mut self, name: &str, decl: Span, kind: BindingKind) {
+    fn declare(&mut self, name: &'a str, decl: Span, kind: BindingKind) {
         self.declare_vis(name, decl, kind, false)
     }
 
-    fn declare_vis(&mut self, name: &str, decl: Span, kind: BindingKind, public: bool) {
+    fn declare_vis(&mut self, name: &'a str, decl: Span, kind: BindingKind, public: bool) {
         let scope = self.scopes.last().map(|s| s.range).unwrap_or(decl);
         self.out.bindings.push(Binding {
             name: name.to_string(),
@@ -161,7 +166,7 @@ impl<'a> Resolver<'a> {
         });
         let idx = self.out.bindings.len() - 1;
         if let Some(s) = self.scopes.last_mut() {
-            s.decls.push(idx);
+            s.decls.entry(name).or_default().push(idx);
         }
     }
 
@@ -170,13 +175,12 @@ impl<'a> Resolver<'a> {
     /// same scope does not capture earlier uses.
     fn lookup(&self, name: &str, at: u32) -> Option<usize> {
         for scope in self.scopes.iter().rev() {
+            let Some(candidates) = scope.decls.get(name) else {
+                continue;
+            };
             let mut fallback = None;
-            for &i in scope.decls.iter().rev() {
-                let b = &self.out.bindings[i];
-                if b.name != name {
-                    continue;
-                }
-                if b.decl.start <= at {
+            for &i in candidates.iter().rev() {
+                if self.out.bindings[i].decl.start <= at {
                     return Some(i);
                 }
                 fallback = Some(i);
@@ -201,11 +205,22 @@ impl<'a> Resolver<'a> {
     // ---- narrowing statement spans down to the identifier token ----
 
     /// Tokens whose span lies inside `range`.
+    ///
+    /// Tokens are sorted by start offset, so the sub-range is found by binary
+    /// search and then walked until it leaves `range`. Scanning the whole vector
+    /// instead — one full pass per declaration — made resolution quadratic in file
+    /// size, and an editor pays this on every keystroke: 119 ms on a 190 KB
+    /// manifest, against 6.2 ms with this and the name-keyed `Scope::decls`. The
+    /// indexing costs ~2 µs on a small file, which is the right trade.
+    /// See `benches/resolve.rs`.
     fn toks_in(&self, range: Span) -> impl Iterator<Item = (usize, &Token<'a>)> {
-        self.toks
+        let first = self.toks.partition_point(|t| t.span.start < range.start);
+        self.toks[first..]
             .iter()
             .enumerate()
-            .filter(move |(_, t)| t.span.start >= range.start && t.span.end <= range.end)
+            .take_while(move |(_, t)| t.span.start <= range.end)
+            .filter(move |(_, t)| t.span.end <= range.end)
+            .map(move |(i, t)| (first + i, t))
     }
 
     /// The first `Ident(name)` token inside `range`.
