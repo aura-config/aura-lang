@@ -1,0 +1,78 @@
+name: "Setup Aura"
+description: "Install the Aura configuration-language CLI and add it to PATH"
+author: "Aura contributors"
+branding:
+  icon: "package"
+  color: "purple"
+
+inputs:
+  version:
+    description: 'Aura version — "0.1.0", "v0.1.0" or "latest"'
+    default: "latest"
+  github-token:
+    description: "Token used for the GitHub API (defaults to the workflow token)"
+    default: ${{ github.token }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install aura
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        INPUT_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        REPO="aura-config/aura-lang"
+
+        # 1. Resolve the version (accepts "latest", "v0.1.0" or "0.1.0")
+        VERSION="${INPUT_VERSION#v}"
+        if [ "$VERSION" = "latest" ]; then
+          VERSION=$(gh release view --repo "$REPO" --json tagName -q .tagName)
+          VERSION="${VERSION#v}"
+        fi
+        echo "Installing aura $VERSION"
+
+        # 2. Map the runner to a Rust target triple
+        case "${RUNNER_OS}-${RUNNER_ARCH}" in
+          Linux-X64)   TARGET=x86_64-unknown-linux-gnu;  EXT=tar.gz; BIN=aura ;;
+          Linux-ARM64) TARGET=aarch64-unknown-linux-gnu; EXT=tar.gz; BIN=aura ;;
+          macOS-X64)   TARGET=x86_64-apple-darwin;       EXT=tar.gz; BIN=aura ;;
+          macOS-ARM64) TARGET=aarch64-apple-darwin;      EXT=tar.gz; BIN=aura ;;
+          Windows-X64) TARGET=x86_64-pc-windows-msvc;    EXT=zip;    BIN=aura.exe ;;
+          *) echo "::error::unsupported runner ${RUNNER_OS}-${RUNNER_ARCH}"; exit 1 ;;
+        esac
+
+        # 3. Download the archive and its checksum
+        NAME="aura-${VERSION}-${TARGET}"
+        ASSET="${NAME}.${EXT}"
+        DEST="${RUNNER_TEMP}/aura-install"
+        mkdir -p "$DEST"
+        gh release download "v${VERSION}" --repo "$REPO" \
+          --pattern "$ASSET" --pattern "${ASSET}.sha256" --dir "$DEST"
+
+        # 4. Verify integrity before unpacking (supply chain, cf. aura.lock)
+        cd "$DEST"
+        if command -v shasum >/dev/null 2>&1; then
+          shasum -a 256 -c "${ASSET}.sha256"
+        else
+          sha256sum -c "${ASSET}.sha256"
+        fi
+
+        # 5. Unpack and put the binary on PATH
+        if [ "$EXT" = "zip" ]; then
+          if command -v unzip >/dev/null 2>&1; then
+            unzip -q "$ASSET"
+          else
+            # Windows runners do not always ship `unzip` in bash
+            powershell -NoProfile -Command "Expand-Archive -Path '$ASSET' -DestinationPath . -Force"
+          fi
+        else
+          tar -xzf "$ASSET"
+        fi
+        chmod +x "${NAME}/${BIN}" 2>/dev/null || true
+        echo "${DEST}/${NAME}" >> "$GITHUB_PATH"
+
+    - name: Verify
+      shell: bash
+      run: aura --version
