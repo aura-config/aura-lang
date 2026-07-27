@@ -9,16 +9,17 @@
 //! let cfg: serde_json::Value = out.json; // or serde_json::from_value::<MyConfig>(out.json)
 //! ```
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::analysis::has_blocking;
 use crate::error::{Diagnostic, Severity};
-use crate::eval::{DenyFs, EnvCap, Interpreter, Options, RealFs};
+use crate::eval::{DenyFs, EnvCap, FileAccess, Interpreter, MemFs, Options, RealFs};
 use crate::source::SourceCache;
 use crate::span::Span;
 use crate::vfs::loader::Loader;
 use crate::vfs::lockfile::Lockfile;
-use crate::vfs::{ImportSpec, LocalFsResolver};
+use crate::vfs::{FileResolver, ImportSpec, LocalFsResolver, MemoryResolver};
 
 #[derive(Debug, Clone, Default)]
 pub struct EvalOptions {
@@ -94,39 +95,80 @@ pub fn eval_file(path: &Path, opts: &EvalOptions) -> Result<Evaluated, Vec<Repor
         registry_dir,
     };
 
-    let mut loader = Loader::new(&cache, &resolver);
-    loader.frozen = opts.frozen;
-    if let Ok(text) = std::fs::read_to_string(root.join("aura.lock")) {
-        loader.lock = Lockfile::parse(&text)
-            .map_err(|e| vec![io_report(format!("invalid aura.lock: {e}"))])?;
-    }
-
-    let mut interp = Interpreter::new(Options {
-        strict: opts.strict,
-        dry_run: false,
-    });
-    if !opts.allow_read.is_empty() {
-        interp.fs = Box::new(RealFs {
-            allowed: opts.allow_read.clone(),
-        });
+    let lock = match std::fs::read_to_string(root.join("aura.lock")) {
+        Ok(text) => Lockfile::parse(&text)
+            .map_err(|e| vec![io_report(format!("invalid aura.lock: {e}"))])?,
+        Err(_) => Lockfile::default(),
+    };
+    let fs: Box<dyn FileAccess> = if opts.allow_read.is_empty() {
+        Box::new(DenyFs)
     } else {
-        interp.fs = Box::new(DenyFs);
-    }
-    interp.env_cap = opts.allow_env.clone();
-    interp.allow_imports_io = opts.allow_imports_io;
-
+        Box::new(RealFs {
+            allowed: opts.allow_read.clone(),
+        })
+    };
     let file_name = entry
         .file_name()
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
-    let result = interp_eval(&mut loader, &mut interp, &file_name);
+    run(&cache, &resolver, lock, fs, &file_name, opts)
+}
 
-    let mut reports: Vec<Report> = loader.diags.iter().map(|d| to_report(d, &cache)).collect();
+/// Evaluate a manifest that exists only in memory: `files` maps a name to its
+/// text, `entry` is the one to start from. Imports resolve inside that map, so a
+/// multi-file example works without touching a disk — this is what a browser
+/// playground or a test harness needs.
+///
+/// `read_file()` reads the same map, and is still capability-gated exactly as on
+/// disk: with an empty `allow_read` it is denied. The paths in `allow_read` are
+/// not consulted otherwise, since there is no filesystem to confine.
+pub fn eval_source(
+    files: HashMap<String, String>,
+    entry: &str,
+    opts: &EvalOptions,
+) -> Result<Evaluated, Vec<Report>> {
+    let cache = SourceCache::new();
+    let resolver = MemoryResolver {
+        files: files.clone(),
+    };
+    let fs: Box<dyn FileAccess> = if opts.allow_read.is_empty() {
+        Box::new(DenyFs)
+    } else {
+        Box::new(MemFs(files))
+    };
+    run(&cache, &resolver, Lockfile::default(), fs, entry, opts)
+}
+
+/// The part `eval_file` and `eval_source` share: everything after deciding where
+/// modules and file reads come from.
+fn run(
+    cache: &SourceCache,
+    resolver: &dyn FileResolver,
+    lock: Lockfile,
+    fs: Box<dyn FileAccess>,
+    file_name: &str,
+    opts: &EvalOptions,
+) -> Result<Evaluated, Vec<Report>> {
+    let mut loader = Loader::new(cache, resolver);
+    loader.frozen = opts.frozen;
+    loader.lock = lock;
+
+    let mut interp = Interpreter::new(Options {
+        strict: opts.strict,
+        dry_run: false,
+    });
+    interp.fs = fs;
+    interp.env_cap = opts.allow_env.clone();
+    interp.allow_imports_io = opts.allow_imports_io;
+
+    let result = interp_eval(&mut loader, &mut interp, file_name);
+
+    let mut reports: Vec<Report> = loader.diags.iter().map(|d| to_report(d, cache)).collect();
     let value = match result {
         Ok(v) => v,
         Err(d) => {
-            reports.insert(0, to_report(&d, &cache));
+            reports.insert(0, to_report(&d, cache));
             return Err(reports);
         }
     };
@@ -135,7 +177,7 @@ pub fn eval_file(path: &Path, opts: &EvalOptions) -> Result<Evaluated, Vec<Repor
     }
 
     let json = crate::serialize::to_json(&value).map_err(|d| {
-        reports.insert(0, to_report(&d, &cache));
+        reports.insert(0, to_report(&d, cache));
         reports.clone()
     })?;
     let updated_lockfile =
@@ -188,5 +230,104 @@ fn io_report(message: String) -> Report {
         line: 0,
         column: 0,
         help: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn files(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    /// The playground scenario: several buffers, an import between them, no disk.
+    #[test]
+    fn eval_source_resolves_imports_between_in_memory_files() {
+        let fs = files(&[
+            (
+                "main.aura",
+                "import \"lib.aura\" as lib\nport: lib.default_port\nname: lib.label(\"api\")\n",
+            ),
+            (
+                "lib.aura",
+                "pub def label(n)\n  service: n\nend\n\ndefault_port: 8080\n",
+            ),
+        ]);
+        let out = eval_source(fs, "main.aura", &EvalOptions::default())
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(out.json["port"], 8080);
+        assert_eq!(out.json["name"]["service"], "api");
+    }
+
+    /// Capabilities behave exactly as on disk: denied unless granted, and when
+    /// granted the "filesystem" is the same set of buffers.
+    #[test]
+    fn read_file_is_gated_and_reads_the_same_buffers() {
+        let fs = files(&[
+            ("main.aura", "data: read_file(\"data.json\").parse_json()\n"),
+            ("data.json", "{\"k\": 1}"),
+        ]);
+
+        let denied = eval_source(fs.clone(), "main.aura", &EvalOptions::default());
+        let reports = denied.expect_err("read_file must be denied without a grant");
+        assert!(
+            reports.iter().any(|r| r.code == "E0310"),
+            "expected E0310, got {reports:?}"
+        );
+
+        let allowed = eval_source(
+            fs,
+            "main.aura",
+            &EvalOptions {
+                allow_read: vec![".".into()],
+                ..Default::default()
+            },
+        )
+        .unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(allowed.json["data"]["k"], 1);
+    }
+
+    /// Diagnostics still carry the buffer name and a position, which the
+    /// playground needs to put a marker in the right editor tab.
+    #[test]
+    fn errors_point_at_the_buffer_they_came_from() {
+        let fs = files(&[
+            ("main.aura", "import \"lib.aura\" as lib\nx: lib.boom\n"),
+            ("lib.aura", "pub def boom()\n  y: undefined_name\nend\n"),
+        ]);
+        let reports = eval_source(fs, "main.aura", &EvalOptions::default())
+            .expect_err("undefined name must fail");
+        let first = &reports[0];
+        assert_eq!(first.code, "E0504", "{reports:?}");
+        assert_eq!(first.file, "lib.aura", "must name the buffer");
+        assert!(first.line > 0, "must carry a line");
+    }
+
+    /// The capability boundary holds in memory too: an imported buffer gets no
+    /// file access even when the root was granted it (D1).
+    #[test]
+    fn imports_get_no_file_access_in_memory_either() {
+        let fs = files(&[
+            ("main.aura", "import \"dep.aura\" as dep\nx: dep.data\n"),
+            ("dep.aura", "data: read_file(\"secret.txt\")\n"),
+            ("secret.txt", "s3cr3t"),
+        ]);
+        let reports = eval_source(
+            fs,
+            "main.aura",
+            &EvalOptions {
+                allow_read: vec![".".into()],
+                ..Default::default()
+            },
+        )
+        .expect_err("an import must not read files");
+        assert!(
+            reports.iter().any(|r| r.code == "E0310"),
+            "expected E0310, got {reports:?}"
+        );
     }
 }
