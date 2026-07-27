@@ -53,10 +53,12 @@ runs:
 
         # 4. Verify integrity before unpacking (supply chain, cf. aura.lock)
         cd "$DEST"
+        # Tolerate a CRLF checksum file, whoever produced it
+        tr -d '\r' < "${ASSET}.sha256" > checksum.txt
         if command -v shasum >/dev/null 2>&1; then
-          shasum -a 256 -c "${ASSET}.sha256"
+          shasum -a 256 -c checksum.txt
         else
-          sha256sum -c "${ASSET}.sha256"
+          sha256sum -c checksum.txt
         fi
 
         # 5. Unpack and put the binary on PATH
