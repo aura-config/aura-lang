@@ -1,0 +1,421 @@
+/* Aura playground.
+   Themes are two sets of custom properties. The default follows the operating
+   system; the toggle writes data-theme on <html>, which wins over the media
+   query, and the choice is remembered. */
+
+:root {
+  --bg: #fbfbfa;
+  --panel: #ffffff;
+  --border: #e3e1dd;
+  --text: #24211d;
+  --muted: #6b665e;
+  --accent: #b4530a;
+  --accent-soft: #fdf0e4;
+  --error: #b3261e;
+  --error-soft: #fdeceb;
+  --warn: #8a6100;
+  --warn-soft: #fdf5e2;
+
+  --kw: #9026a8;
+  --str: #1c6b3c;
+  --num: #1a5fb4;
+  --cmt: #8b867d;
+  --lit: #1a5fb4;
+  --op: #6b665e;
+  --id: #24211d;
+
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo,
+    Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    sans-serif;
+  --radius: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #171614;
+    --panel: #1e1d1a;
+    --border: #33312d;
+    --text: #e8e5e0;
+    --muted: #9a948a;
+    --accent: #f0913f;
+    --accent-soft: #2c2118;
+    --error: #ff8a80;
+    --error-soft: #2f1d1c;
+    --warn: #e8c168;
+    --warn-soft: #2c2519;
+
+    --kw: #e08ff5;
+    --str: #7ed99f;
+    --num: #86b8ff;
+    --cmt: #7d786f;
+    --lit: #86b8ff;
+    --op: #9a948a;
+    --id: #e8e5e0;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #171614;
+  --panel: #1e1d1a;
+  --border: #33312d;
+  --text: #e8e5e0;
+  --muted: #9a948a;
+  --accent: #f0913f;
+  --accent-soft: #2c2118;
+  --error: #ff8a80;
+  --error-soft: #2f1d1c;
+  --warn: #e8c168;
+  --warn-soft: #2c2519;
+
+  --kw: #e08ff5;
+  --str: #7ed99f;
+  --num: #86b8ff;
+  --cmt: #7d786f;
+  --lit: #86b8ff;
+  --op: #9a948a;
+  --id: #e8e5e0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow: hidden;
+}
+
+/* ---- header ---- */
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.brand {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-right: auto;
+}
+
+.brand span {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+select,
+input[type="text"] {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+input[type="text"] {
+  width: 15ch;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+:is(button, select, input, .tab):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---- layout ---- */
+
+main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  flex: 1;
+  min-height: 0;
+  background: var(--border);
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.tab {
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab[aria-selected="true"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--border);
+}
+
+.tab .close {
+  margin-left: 6px;
+  opacity: 0.5;
+}
+
+.tab .close:hover {
+  opacity: 1;
+}
+
+/* ---- editor: a textarea over a highlighted copy ---- */
+
+.editor {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.editor pre,
+.editor textarea {
+  margin: 0;
+  padding: 12px 14px;
+  border: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+  tab-size: 2;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.editor pre {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: var(--id);
+  min-height: 100%;
+}
+
+.editor textarea {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  color: transparent;
+  background: transparent;
+  caret-color: var(--text);
+  resize: none;
+  outline: none;
+}
+
+.editor textarea::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.kw {
+  color: var(--kw);
+}
+.str {
+  color: var(--str);
+}
+.num {
+  color: var(--num);
+}
+.cmt {
+  color: var(--cmt);
+  font-style: italic;
+}
+.lit {
+  color: var(--lit);
+}
+.op {
+  color: var(--op);
+}
+
+/* ---- output ---- */
+
+.output {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre;
+  color: var(--text);
+}
+
+.output.stale {
+  opacity: 0.45;
+}
+
+/* ---- diagnostics ---- */
+
+.diagnostics {
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  max-height: 30vh;
+  overflow: auto;
+}
+
+.diagnostics:empty {
+  display: none;
+}
+
+.diag {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  padding: 7px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.diag:hover {
+  background: var(--accent-soft);
+}
+
+.diag.error {
+  background: var(--error-soft);
+}
+
+.diag.warning {
+  background: var(--warn-soft);
+}
+
+.diag .code {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.diag.error .code {
+  color: var(--error);
+}
+
+.diag.warning .code {
+  color: var(--warn);
+}
+
+.diag .where {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.status {
+  padding: 7px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  background: var(--panel);
+}
+
+.status.ok {
+  color: var(--str);
+}
+
+/* ---- narrow screens ---- */
+
+@media (max-width: 860px) {
+  body {
+    overflow: auto;
+  }
+
+  main {
+    grid-template-columns: 1fr;
+  }
+
+  .pane {
+    min-height: 45vh;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tab,
+  button,
+  .diag {
+    transition:
+      background-color 0.12s ease,
+      color 0.12s ease,
+      border-color 0.12s ease;
+  }
+}

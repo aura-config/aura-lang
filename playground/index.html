@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en" data-theme="">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aura playground</title>
+    <meta
+      name="description"
+      content="Run the Aura configuration language in your browser: schemas, assertions and capability-gated I/O, evaluated locally with WebAssembly."
+    />
+    <link rel="stylesheet" href="style.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='14'>◈</text></svg>"
+    />
+  </head>
+  <body>
+    <header>
+      <div class="brand">Aura <span>playground</span></div>
+
+      <label
+        >Example
+        <select id="example" aria-label="Load an example"></select>
+      </label>
+
+      <label title="Grant read_file(); without it, reads are denied (E0310)">
+        <input type="checkbox" id="allow-read" />
+        allow read_file
+      </label>
+
+      <label title="Variables env() can see, as NAME=value, comma separated">
+        env
+        <input type="text" id="env" value="APP_ENV=production" spellcheck="false" />
+      </label>
+
+      <button id="theme" type="button" aria-label="Switch colour theme">
+        Theme
+      </button>
+    </header>
+
+    <main>
+      <section class="pane" aria-label="Editor">
+        <div class="tabs" id="file-tabs" role="tablist"></div>
+        <div class="editor">
+          <pre id="highlight" aria-hidden="true"></pre>
+          <textarea
+            id="code"
+            spellcheck="false"
+            autocapitalize="off"
+            autocomplete="off"
+            autocorrect="off"
+            aria-label="Aura source"
+          ></textarea>
+        </div>
+      </section>
+
+      <section class="pane" aria-label="Output">
+        <div class="tabs" role="tablist" id="format-tabs">
+          <button class="tab" role="tab" data-format="json" aria-selected="true">
+            JSON
+          </button>
+          <button class="tab" role="tab" data-format="yaml" aria-selected="false">
+            YAML
+          </button>
+          <button class="tab" role="tab" data-format="toml" aria-selected="false">
+            TOML
+          </button>
+        </div>
+        <pre class="output" id="output" aria-live="polite">Loading…</pre>
+      </section>
+    </main>
+
+    <div class="diagnostics" id="diagnostics" role="log"></div>
+    <div class="status" id="status">Starting the WebAssembly module…</div>
+
+    <script type="module" src="app.js"></script>
+    <noscript>
+      <p class="status">
+        The playground evaluates Aura in your browser, so it needs JavaScript and
+        WebAssembly. The language itself needs neither.
+      </p>
+    </noscript>
+  </body>
+</html>
