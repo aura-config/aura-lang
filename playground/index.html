@@ -33,6 +33,10 @@
         <input type="text" id="env" value="APP_ENV=production" spellcheck="false" />
       </label>
 
+      <button id="format" type="button" title="Canonical formatting (aura fmt)">
+        Format
+      </button>
+
       <button id="theme" type="button" aria-label="Switch colour theme">
         Theme
       </button>
@@ -42,6 +46,7 @@
       <section class="pane" aria-label="Editor">
         <div class="tabs" id="file-tabs" role="tablist"></div>
         <div class="editor">
+          <div class="gutter" id="gutter" aria-hidden="true"></div>
           <pre id="highlight" aria-hidden="true"></pre>
           <textarea
             id="code"
@@ -53,6 +58,15 @@
           ></textarea>
         </div>
       </section>
+
+      <div
+        class="splitter"
+        id="splitter"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize the panes"
+        tabindex="0"
+      ></div>
 
       <section class="pane" aria-label="Output">
         <div class="tabs" role="tablist" id="format-tabs">
@@ -73,6 +87,29 @@
     <div class="diagnostics" id="diagnostics" role="log"></div>
     <div class="status" id="status">Starting the WebAssembly module…</div>
 
+    <!-- Reports a failure the module itself cannot: if app.js throws while
+         loading, nothing inside it runs and the page would sit on "Loading…"
+         with no explanation. -->
+    <script>
+      const report = (what) => {
+        const status = document.getElementById("status");
+        if (status) status.textContent = String(what);
+        const output = document.getElementById("output");
+        if (output && output.textContent === "Loading…") output.textContent = "";
+      };
+      if (location.protocol === "file:") {
+        report(
+          "Open this over http, not as a file: a browser refuses to load ES modules " +
+            "and WebAssembly from file://. From this directory: python -m http.server 8787",
+        );
+      }
+      addEventListener("error", (e) =>
+        report(`Failed to start: ${e.message} (${e.filename}:${e.lineno})`),
+      );
+      addEventListener("unhandledrejection", (e) =>
+        report(`Failed to start: ${e.reason}`),
+      );
+    </script>
     <script type="module" src="app.js"></script>
     <noscript>
       <p class="status">

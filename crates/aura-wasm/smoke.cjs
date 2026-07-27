@@ -3,7 +3,7 @@
 // spawn a thread — unsupported on wasm — and aborted on the first manifest.
 //
 // Usage: wasm-bindgen … --target nodejs --out-dir pkg-node && node smoke.cjs
-const { evaluate, highlight } = require("./pkg-node/aura_wasm.js");
+const { evaluate, highlight, format } = require("./pkg-node/aura_wasm.js");
 
 let failures = 0;
 const check = (name, cond, extra = "") => {
@@ -84,6 +84,18 @@ check("comment span decodes correctly",
 check("unterminated string is safe", highlight('x: "unterm') === "[]");
 r = JSON.parse(evaluate({ "main.aura": 'x: "unterm' }, "main.aura", "json", false, {}));
 check("unterminated string reports, not throws", !r.ok && r.diagnostics.length > 0);
+
+// 7. Formatting is the canonicalisation `aura fmt` performs, and it must never
+// destroy a buffer that does not lex — the button is one keystroke away from a
+// half-typed string.
+const messy = 'domain "d"\n      x: 1\nend\n';
+check(
+  "format canonicalises",
+  format(messy) === 'domain "d"\n  x: 1\nend\n',
+  JSON.stringify(format(messy)),
+);
+check("format is idempotent", format(format(messy)) === format(messy));
+check("format leaves unlexable input alone", format('x: "unterm') === 'x: "unterm');
 
 console.log(failures ? `\n${failures} FAILED` : "\nвсе проверки прошли");
 process.exit(failures ? 1 : 0);

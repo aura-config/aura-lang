@@ -3,7 +3,7 @@
 // Everything runs locally: the WebAssembly module is the real interpreter, so
 // what you see here is what `aura eval` produces. Nothing is sent anywhere.
 
-import init, { evaluate, highlight } from "./pkg/aura_wasm.js";
+import init, { evaluate, format, highlight } from "./pkg/aura_wasm.js";
 
 // ---------------------------------------------------------------- examples
 
@@ -158,6 +158,9 @@ const els = {
   allowRead: $("allow-read"),
   env: $("env"),
   theme: $("theme"),
+  formatBtn: $("format"),
+  gutter: $("gutter"),
+  splitter: $("splitter"),
 };
 
 // ------------------------------------------------------- byte offsets ↔ JS
@@ -208,8 +211,19 @@ function paintHighlight() {
   els.highlight.innerHTML = html + "\n";
 }
 
+/** Line numbers, kept in their own element so a selection never includes them. */
+function paintGutter() {
+  const lines = els.code.value.split("\n").length;
+  let text = "";
+  for (let i = 1; i <= lines; i++) text += `${i}\n`;
+  els.gutter.textContent = text;
+}
+
 function syncScroll() {
-  els.highlight.style.transform = `translate(${-els.code.scrollLeft}px, ${-els.code.scrollTop}px)`;
+  const { scrollLeft: x, scrollTop: y } = els.code;
+  els.highlight.style.transform = `translate(${-x}px, ${-y}px)`;
+  // The gutter follows vertically only: it must stay pinned to the left edge.
+  els.gutter.style.transform = `translateY(${-y}px)`;
 }
 
 // ------------------------------------------------------------------- tabs
@@ -264,6 +278,7 @@ function selectFile(name) {
   els.code.value = state.files[name] ?? "";
   renderFileTabs();
   paintHighlight();
+  paintGutter();
   syncScroll();
   els.code.focus();
 }
@@ -414,9 +429,80 @@ function applyTheme(theme) {
 els.code.addEventListener("input", () => {
   state.files[state.active] = els.code.value;
   paintHighlight();
+  paintGutter();
   scheduleRun();
 });
 els.code.addEventListener("scroll", syncScroll);
+
+// Canonical formatting, the same the CLI applies. Keeps the caret roughly where
+// it was: jumping to the top after every format is the reason people stop using
+// a format button.
+els.formatBtn.addEventListener("click", () => {
+  if (!state.ready) return;
+  const caret = els.code.selectionStart;
+  const before = els.code.value;
+  const after = format(before);
+  if (after === before) return;
+  els.code.value = after;
+  state.files[state.active] = after;
+  els.code.setSelectionRange(
+    Math.min(caret, after.length),
+    Math.min(caret, after.length),
+  );
+  paintHighlight();
+  paintGutter();
+  run();
+});
+
+// ---- the splitter ----
+//
+// Dragging writes a percentage into --split, which is the first grid track.
+// Arrow keys move it too, so the layout is not mouse-only.
+
+function setSplit(percent) {
+  const clamped = Math.min(80, Math.max(20, percent));
+  document.documentElement.style.setProperty("--split", `${clamped}%`);
+  els.splitter.setAttribute("aria-valuenow", String(Math.round(clamped)));
+  try {
+    localStorage.setItem("aura-split", String(clamped));
+  } catch {
+    /* private mode */
+  }
+  syncScroll();
+}
+
+function splitFromEvent(event) {
+  const main = els.splitter.parentElement.getBoundingClientRect();
+  return ((event.clientX - main.left) / main.width) * 100;
+}
+
+els.splitter.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  els.splitter.setPointerCapture(event.pointerId);
+  const move = (e) => setSplit(splitFromEvent(e));
+  const up = (e) => {
+    els.splitter.releasePointerCapture(e.pointerId);
+    els.splitter.removeEventListener("pointermove", move);
+    els.splitter.removeEventListener("pointerup", up);
+    document.body.style.userSelect = "";
+  };
+  // Without this a drag selects the text it passes over.
+  document.body.style.userSelect = "none";
+  els.splitter.addEventListener("pointermove", move);
+  els.splitter.addEventListener("pointerup", up);
+});
+
+els.splitter.addEventListener("keydown", (event) => {
+  const step = event.key === "ArrowLeft" ? -2 : event.key === "ArrowRight" ? 2 : 0;
+  if (!step) return;
+  event.preventDefault();
+  const current =
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--split")) ||
+    50;
+  setSplit(current + step);
+});
+
+els.splitter.addEventListener("dblclick", () => setSplit(50));
 
 // Tab indents instead of leaving the editor. Shift+Tab still moves focus out,
 // so the page stays keyboard-navigable.
@@ -428,6 +514,7 @@ els.code.addEventListener("keydown", (event) => {
   els.code.setSelectionRange(start + 2, start + 2);
   state.files[state.active] = els.code.value;
   paintHighlight();
+  paintGutter();
   scheduleRun();
 });
 
@@ -460,12 +547,15 @@ for (const name of Object.keys(EXAMPLES)) {
 }
 
 let saved = "";
+let savedSplit = null;
 try {
   saved = localStorage.getItem("aura-theme") ?? "";
+  savedSplit = localStorage.getItem("aura-split");
 } catch {
   /* ignore */
 }
 applyTheme(saved);
+setSplit(savedSplit ? parseFloat(savedSplit) : 50);
 
 init()
   .then(() => {

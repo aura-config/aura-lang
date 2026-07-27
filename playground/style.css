@@ -140,7 +140,7 @@ input[type="text"] {
 }
 
 input[type="text"] {
-  width: 15ch;
+  width: 22ch;
   font-family: var(--mono);
   font-size: 12px;
 }
@@ -174,11 +174,23 @@ button:hover {
 
 main {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1px;
+  /* The splitter writes --split; the middle track is the handle itself. */
+  grid-template-columns: var(--split, 1fr) 5px 1fr;
   flex: 1;
   min-height: 0;
   background: var(--border);
+}
+
+.splitter {
+  cursor: col-resize;
+  background: var(--border);
+  border: 0;
+  touch-action: none;
+}
+
+.splitter:hover,
+.splitter:focus-visible {
+  background: var(--accent);
 }
 
 .pane {
@@ -240,10 +252,32 @@ main {
   overflow: auto;
 }
 
+/* Line numbers live outside the text flow, so selecting the source and copying
+   it never picks them up — the usual complaint about numbered code blocks. */
+.gutter {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3.2em;
+  padding: 12px 8px 12px 0;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--cmt);
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  white-space: pre;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
+  z-index: 1;
+}
+
 .editor pre,
 .editor textarea {
   margin: 0;
-  padding: 12px 14px;
+  padding: 12px 14px 12px calc(3.2em + 14px);
   border: 0;
   font-family: var(--mono);
   font-size: 13px;
@@ -400,8 +434,13 @@ main {
     overflow: auto;
   }
 
+  /* Stacked: one column, and the horizontal handle has nothing to resize. */
   main {
     grid-template-columns: 1fr;
+  }
+
+  .splitter {
+    display: none;
   }
 
   .pane {

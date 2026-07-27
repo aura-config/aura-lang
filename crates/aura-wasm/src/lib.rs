@@ -121,6 +121,15 @@ fn serde_wasm_from(v: JsValue) -> Result<HashMap<String, String>, String> {
     serde_json::from_str(&s).map_err(|e| e.to_string())
 }
 
+/// Canonical formatting, the same `aura fmt` applies.
+///
+/// Returns the formatted source, or the input unchanged if it does not lex —
+/// a half-typed buffer should not be destroyed by pressing the button.
+#[wasm_bindgen]
+pub fn format(src: &str) -> String {
+    aura_lang::fmt::format_source(src).unwrap_or_else(|_| src.to_string())
+}
+
 /// Syntax highlighting spans for `src`, as JSON `[{"s":start,"e":end,"k":kind}]`
 /// over byte offsets.
 ///
