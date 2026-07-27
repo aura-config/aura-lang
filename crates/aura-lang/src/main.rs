@@ -85,6 +85,16 @@ enum Cmd {
         #[arg(long = "registry-dir", value_name = "DIR")]
         registry_dir: Option<PathBuf>,
     },
+    /// Generate host-language types from the manifest's `type`/`enum` declarations
+    Types {
+        file: PathBuf,
+        /// Target language: rust | ts | go
+        #[arg(long, default_value = "rust")]
+        lang: String,
+        /// Write to a file instead of stdout
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
     /// Canonical formatter: indentation, spacing, and column alignment (rewrites files in place)
     Fmt {
         files: Vec<PathBuf>,
@@ -98,6 +108,7 @@ fn main() -> ExitCode {
     match Cli::parse().cmd {
         Cmd::Check { file, strict } => run_check(&file, strict),
         Cmd::Fmt { files, check } => run_fmt(&files, check),
+        Cmd::Types { file, lang, out } => run_types(&file, &lang, out.as_deref()),
         Cmd::Add {
             package,
             from,
@@ -298,6 +309,43 @@ fn run_add(package: &str, from: Option<&Path>, registry_dir: Option<PathBuf>) ->
 
     println!("installed {path}@v{version_num} -> {}", target.display());
     println!("locked    {integrity}");
+    ExitCode::SUCCESS
+}
+
+/// `aura types <file> --lang rust|ts|go` — emit types for the declared schemas
+/// and enums. Parsing only: the manifest is never evaluated, so no capabilities
+/// are involved and the output is deterministic.
+fn run_types(file: &PathBuf, lang: &str, out: Option<&std::path::Path>) -> ExitCode {
+    let Some(lang) = aura_lang::codegen::Lang::parse(lang) else {
+        eprintln!("error: unknown --lang '{lang}' (expected rust, ts or go)");
+        return ExitCode::from(2);
+    };
+    let src = match std::fs::read_to_string(file) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: cannot read {}: {e}", file.display());
+            return ExitCode::from(2);
+        }
+    };
+    let cache = SourceCache::new();
+    cache.add(file.display().to_string(), src.clone());
+    let code = match aura_lang::codegen::generate(&src, lang) {
+        Ok(c) => c,
+        Err(d) => {
+            render(&d, &cache);
+            return ExitCode::from(1);
+        }
+    };
+    match out {
+        Some(path) => {
+            if let Err(e) = std::fs::write(path, code.as_bytes()) {
+                eprintln!("error: cannot write {}: {e}", path.display());
+                return ExitCode::from(2);
+            }
+            println!("wrote {}", path.display());
+        }
+        None => print!("{code}"),
+    }
     ExitCode::SUCCESS
 }
 

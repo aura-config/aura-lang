@@ -189,6 +189,44 @@ end
 `pub enum` crosses the module boundary (D12), and members are resolved where the
 schema is declared — an imported schema validates against its own module's enum.
 
+### Types for your service: `aura types`
+
+The same schema that validates the config can type the service that consumes its
+JSON — no hand-written structs to keep in sync:
+
+```console
+aura types config.aura --lang rust   # or ts | go
+```
+
+```ruby
+enum Scheme
+  "https"
+  "http"
+end
+
+type Endpoint
+  host: String
+  port: Int      = 443
+  scheme: Scheme = "https"
+end
+```
+
+becomes, for TypeScript:
+
+```ts
+export type Scheme = "https" | "http";
+
+export interface Endpoint {
+  host: string;
+  port: number;
+  scheme: Scheme;
+}
+```
+
+Rust gets a `serde` struct plus an enum with `#[serde(rename)]`; Go gets a struct
+with `json:` tags plus a named string type and typed constants. Parsing only —
+the manifest is never evaluated, so no capabilities are involved.
+
 ### Functions, lambdas, methods
 
 ```ruby

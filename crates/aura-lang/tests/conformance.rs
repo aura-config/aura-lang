@@ -212,6 +212,60 @@ fn security_demo_denies_import_io() {
     );
 }
 
+/// `aura types` emits host-language types for the declared schemas and enums.
+/// Verified through the real binary, so the CLI wiring is covered too.
+#[test]
+fn types_codegen_for_all_languages() {
+    let dir = examples_dir().join("showcase");
+    for (lang, needles) in [
+        (
+            "rust",
+            vec![
+                "pub enum Scheme {",
+                "#[serde(rename = \"https\")]",
+                "pub struct Endpoint {",
+                "pub port: i64,",
+            ],
+        ),
+        (
+            "ts",
+            vec![
+                "export type Scheme = \"https\" | \"http\";",
+                "export interface Endpoint {",
+                "  port: number;",
+            ],
+        ),
+        (
+            "go",
+            vec![
+                "type Scheme string",
+                "SchemeHttps Scheme = \"https\"",
+                // gofmt-aligned columns (verified against `gofmt -l`)
+                "Port   int64  `json:\"port\"`",
+            ],
+        ),
+    ] {
+        let run = aura(&dir, &["types", "lib.aura", "--lang", lang], &[]);
+        assert_eq!(
+            run.code, 0,
+            "{lang}: stderr:
+{}",
+            run.stderr
+        );
+        for n in needles {
+            assert!(
+                run.stdout.contains(n),
+                "{lang}: missing {n:?} in:
+{}",
+                run.stdout
+            );
+        }
+    }
+    // An unknown language is a usage error, not a panic.
+    let run = aura(&dir, &["types", "lib.aura", "--lang", "cobol"], &[]);
+    assert_eq!(run.code, 2, "unknown --lang must be a usage error");
+}
+
 /// Generating a non-JSON format: a `text … end` block string builds an
 /// nginx.conf as a String value.
 #[test]

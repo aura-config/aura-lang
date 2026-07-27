@@ -8,6 +8,14 @@ still change the language.
 ## [Unreleased]
 
 ### Added
+- **`aura types`** — generate host-language types from a manifest's `type` and
+  `enum` declarations: `aura types config.aura --lang rust|ts|go`. One schema
+  then both validates the config and types the service consuming its JSON. An
+  enum maps idiomatically (Rust enum with `#[serde(rename)]`, TypeScript literal
+  union, Go named string plus constants). Parsing only — no evaluation, no
+  capabilities, deterministic output. Output is already canonical for the host
+  language's formatter (`rustfmt`, `gofmt`, `prettier`), so generated files can be
+  committed without formatting churn.
 - **`enum` (D18)** — a closed set of allowed string values, usable as a schema
   field type. A member stays an ordinary `String`, so output is unchanged; a
   non-member is `E0514` with a did-you-mean suggestion and the member list.

@@ -623,6 +623,7 @@ aura eval <file.aura> [--strict] [--dry-run] [--frozen]
                       [--registry-dir=<dir>]
 aura check <file.aura> [--strict]        # lex + parse + analysis
 aura fmt <files...> [--check]            # канонический форматтер
+aura types <file.aura> --lang rust|ts|go [--out <file>]         # типы для host-языка
 aura add <path>@vX.Y.Z [--from <file>] [--registry-dir=<dir>]  # установка пакета (D12-пакет, §5.2)
 ```
 
@@ -637,6 +638,8 @@ aura add <path>@vX.Y.Z [--from <file>] [--registry-dir=<dir>]  # установ�
 Содержимое block strings (D16) выводится verbatim. Инварианты: поток не-trivia токенов
 никогда не меняется (backstop оставляет патологический вход как есть, а не портит его),
 и форматирование идемпотентно.
+
+`aura types` генерирует типы host-языка из объявлений `type` и `enum` манифеста, поэтому одна схема и валидирует конфиг, и типизирует сервис, который потребляет JSON. Работает по AST — манифест не вычисляется, значит capability не задействованы, а вывод детерминирован. Маппинг: `String`→`String`/`string`/`string`, `Int`→`i64`/`number`/`int64`, `Float`→`f64`/`number`/`float64`, `Bool`, `List`→`Vec<Value>`/`unknown[]`/`[]any`, `Object`→map-типы, имя схемы/enum→этот тип. Enum становится Rust-энумом с `#[serde(rename)]`, TypeScript-юнионом строковых литералов или Go-типом-строкой с типизированными константами. Опциональные поля (D15) выводятся как **обязательные**: вычисление всегда вставляет дефолт, поэтому поле всегда есть в JSON. Только объявления того же файла.
 
 `--format yaml|toml` использует эмиттеры §4.4 (D11-пакет); `--registry-dir` задаёт
 локальный кэш пакетов (по умолчанию `~/.aura/registry`), используется и `eval`

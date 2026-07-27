@@ -115,6 +115,6 @@ jobs:
         # LeakSanitizer stays on: the interpreter's env arena + Weak closures keep
         # evaluation leak-free (see eval::env, D9). A regression here is a real leak.
         run: |
-          for t in fuzz_lexer fuzz_parser fuzz_pipeline fuzz_fmt; do
+          for t in fuzz_lexer fuzz_parser fuzz_pipeline fuzz_fmt fuzz_codegen; do
             cargo fuzz run "$t" -- -rss_limit_mb=1024 -timeout=10 -max_total_time=60
           done

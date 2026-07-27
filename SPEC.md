@@ -623,6 +623,7 @@ aura eval <file.aura> [--strict] [--dry-run] [--frozen]
                       [--registry-dir=<dir>]
 aura check <file.aura> [--strict]        # lex + parse + analysis
 aura fmt <files...> [--check]            # canonical formatter
+aura types <file.aura> --lang rust|ts|go [--out <file>]         # host-language types
 aura add <path>@vX.Y.Z [--from <file>] [--registry-dir=<dir>]  # package install (the D12 package, §5.2)
 ```
 
@@ -638,6 +639,8 @@ different construct or an indent change ends a run, and the `else` arm is left
 unaligned. Block-string interiors (D16) are emitted verbatim. Invariants: the
 non-trivia token stream is never changed (a backstop leaves a pathological input
 untouched rather than corrupt it), and formatting is idempotent.
+
+`aura types` emits host-language types for the manifest's `type` and `enum` declarations, so one schema both validates the config and types the service that consumes the JSON. It works on the AST — the manifest is never evaluated, so no capabilities are involved and the output is deterministic. Mapping: `String`→`String`/`string`/`string`, `Int`→`i64`/`number`/`int64`, `Float`→`f64`/`number`/`float64`, `Bool`, `List`→`Vec<Value>`/`unknown[]`/`[]any`, `Object`→map types, a schema/enum name→that type. An enum becomes a Rust enum with `#[serde(rename)]`, a TypeScript string-literal union, or a Go named string type with typed constants. Optional fields (D15) are emitted as **required**: evaluation always inserts the default, so the JSON always carries the field. Same-file declarations only.
 
 `--format yaml|toml` uses the emitters from §4.4 (the D11 package);
 `--registry-dir` sets the local package cache (default `~/.aura/registry`),

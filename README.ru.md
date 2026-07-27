@@ -189,6 +189,44 @@ end
 `pub enum` пересекает границу модуля (D12), а члены резолвятся там, где объявлена
 схема — импортированная схема валидируется против enum своего модуля.
 
+### Типы для вашего сервиса: `aura types`
+
+Та же схема, что валидирует конфиг, может типизировать сервис, который потребляет
+его JSON — руками поддерживать структуры не нужно:
+
+```console
+aura types config.aura --lang rust   # или ts | go
+```
+
+```ruby
+enum Scheme
+  "https"
+  "http"
+end
+
+type Endpoint
+  host: String
+  port: Int      = 443
+  scheme: Scheme = "https"
+end
+```
+
+превращается для TypeScript в:
+
+```ts
+export type Scheme = "https" | "http";
+
+export interface Endpoint {
+  host: string;
+  port: number;
+  scheme: Scheme;
+}
+```
+
+Для Rust — `serde`-структура и enum с `#[serde(rename)]`; для Go — структура с
+`json:`-тегами плюс тип-строка и типизированные константы. Только парсинг —
+манифест не вычисляется, capability не задействованы.
+
 ### Функции, лямбды, методы
 
 ```ruby

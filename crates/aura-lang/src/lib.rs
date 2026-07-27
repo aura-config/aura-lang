@@ -6,6 +6,7 @@
 #![allow(clippy::arc_with_non_send_sync)]
 
 pub mod analysis;
+pub mod codegen;
 pub mod error;
 pub mod eval;
 pub mod facade;

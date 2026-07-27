@@ -45,3 +45,9 @@ path = "fuzz_targets/fuzz_fmt.rs"
 test = false
 doc = false
 bench = false
+[[bin]]
+name = "fuzz_codegen"
+path = "fuzz_targets/fuzz_codegen.rs"
+test = false
+doc = false
+bench = false
