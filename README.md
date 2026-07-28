@@ -7,10 +7,7 @@ assertions that fail the build instead of the deploy, and a capability model in
 which `env()` and `read_file()` are granted per run and the grant does not reach
 imported modules. One binary, 16 keywords, 1.9 MB.
 
-<!-- A hardcoded test count goes stale silently — this one claimed 117 while the
-     suite was at 211. Replace with a real CI status badge once the repository is
-     public and the badge can update itself. -->
-
+[![CI](https://github.com/aura-config/aura-lang/actions/workflows/ci.yml/badge.svg)](https://github.com/aura-config/aura-lang/actions/workflows/ci.yml)
 ![Rust 1.85+](https://img.shields.io/badge/rust-1.85%2B-orange)
 ![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)
 ![Status](https://img.shields.io/badge/status-v0.1%20preview-blue)

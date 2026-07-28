@@ -1,13 +1,10 @@
 name: Pages
 
-# Deliberately manual for now. GitHub Pages needs the repository to be public
-# (or a paid plan), so a push trigger would paint every commit red until the
-# repository is opened. Add this when it is:
-#
-#   push:
-#     branches: [main]
-#
+# The repository is public, so Pages deploys on every push to the default branch.
+# `workflow_dispatch` stays for redeploying without a commit.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 # The site layout is fixed here rather than later, so the URLs never have to

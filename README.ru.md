@@ -12,6 +12,7 @@ Aura компилирует читаемые манифесты в JSON, YAML и
      наборе было уже 211. Заменить на настоящий бейдж статуса CI после открытия
      репозитория, чтобы он обновлялся сам. -->
 
+[![CI](https://github.com/aura-config/aura-lang/actions/workflows/ci.yml/badge.svg)](https://github.com/aura-config/aura-lang/actions/workflows/ci.yml)
 ![Rust 1.85+](https://img.shields.io/badge/rust-1.85%2B-orange)
 ![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)
 ![Status](https://img.shields.io/badge/status-v0.1%20preview-blue)
