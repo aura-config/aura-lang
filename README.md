@@ -25,7 +25,7 @@ imported modules. One binary, 16 keywords, 1.9 MB.
 | Configs "work on my machine" | Deterministic by construction: without explicit flags a manifest has **no** access to files or environment variables |
 | A module pulled from the internet reads `/etc/passwd` | Imported modules are isolated from I/O (Deno-style capabilities) |
 | "Why is prod on a different port?" | Values are immutable; shadowing requires the explicit `shadow` keyword |
-| Dependency version drift in CI | Versioned imports + `aura.lock` with sha256 integrity and `--frozen` mode |
+| Dependency version drift in CI | Versioned imports + `aura.lock` with a token-stream integrity hash and `--frozen` mode |
 | Dead config fragments live for years | Static analysis: unused variables and imports, `--strict` for CI |
 
 ## Example
@@ -355,7 +355,7 @@ import "templates/k8s_defaults.aura" as defaults
 
 - Cyclic imports are detected with the full chain: `E0401: cyclic import: a.aura -> b.aura -> a.aura`.
 - Every module is loaded, parsed, and evaluated exactly once.
-- Exact versions and sha256 hashes are pinned in `aura.lock`; use `--frozen` in CI.
+- Exact versions and integrity hashes are pinned in `aura.lock`; use `--frozen` in CI.
 
 ### Validation
 
@@ -394,7 +394,7 @@ aura add <path>@vX.Y.Z [--from <file>] [--registry-dir=<dir>]
 `aura add` is the only place Aura ever touches the network: a package is
 downloaded (by convention `github/<owner>/<repo>` -> `package.aura` at tag
 `vX.Y.Z`), validated, stored in the local cache, and pinned in `aura.lock`
-with a sha256 hash. **`eval` always runs offline** - the result never depends
+with an integrity hash. **`eval` always runs offline** - the result never depends
 on the network, by construction.
 
 | Mode | Behavior |

@@ -56,11 +56,17 @@ aura add pkg/internal@v1.0.0 --from ./pkg.aura # from a local file
 
 `aura add` is **the only place Aura touches the network**: the package is
 downloaded, validated, placed in the local cache (`~/.aura/registry`) and recorded
-in `aura.lock` with a SHA-256 hash. `eval` always works offline.
+in `aura.lock` with an integrity hash. `eval` always works offline.
 
 ## aura.lock and --frozen
 
 - the lock stores the exact version and integrity hash of every package;
+- the hash covers the module's **token stream**, not its bytes: reformatting it or
+  fixing a typo in a comment does not trip the check, while renaming a field or
+  changing a number does. An integrity check that fires on harmless edits teaches
+  people to refresh the lock without reading it, which defeats the purpose;
+- a `sha256-` entry from an older version still verifies, and is upgraded the next
+  time the lock is writable;
 - if a package's contents change underneath it, that is `E0402 integrity mismatch`;
 - in CI, run with `--frozen`: resolution goes strictly through the lock, a missing
   entry is `E0403`, and the lock is never rewritten.

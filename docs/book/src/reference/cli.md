@@ -63,7 +63,7 @@ diffs.
 
 Installs a package: downloading it (`github/<owner>/<repo>` → `package.aura` at
 tag `vX.Y.Z`; an exact version is mandatory), validating it, writing it to the
-cache and recording it in `./aura.lock` with a SHA-256. `--from <file>` installs
+cache and recording it in `./aura.lock` with an integrity hash. `--from <file>` installs
 from a local file instead. This is the only command that uses the network.
 
 ## Exit codes

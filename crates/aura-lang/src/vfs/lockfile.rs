@@ -6,7 +6,8 @@ use std::collections::BTreeMap;
 pub struct LockEntry {
     /// The exact version without the `v` prefix, e.g. "1.2.9".
     pub version: String,
-    /// "sha256-<hex>" of the module file's contents.
+    /// The integrity hash: `aura1-<hex>` over the module's token stream, or the
+    /// legacy `sha256-<hex>` over its raw bytes. See [`integrity_of`].
     pub integrity: String,
 }
 
@@ -59,13 +60,264 @@ impl Lockfile {
     }
 }
 
-/// The integrity hash of a module's contents.
+/// A module's integrity hash: SHA-256 over its **token stream**, prefixed `aura1-`.
+///
+/// Hashing bytes — which is what `sha256-` entries did — makes the check fire on
+/// changes that cannot alter behaviour: a reformat, a fixed typo in a comment, a
+/// changed line ending. That trains people to refresh the lock without looking,
+/// which is precisely the habit an integrity check exists to prevent. Dhall got
+/// this right first, hashing the normal form of an expression rather than its
+/// text.
+///
+/// Hashing the token stream is cheaper than a normal form and needs no
+/// evaluation, so it also works for a module whose exports include functions.
+/// The trade is honest: it is insensitive to layout and comments, but a renamed
+/// private variable still changes the hash even though behaviour is identical —
+/// a normal form would see through that, and this does not.
+///
+/// The encoding below **is a compatibility contract**: change it and every lock
+/// in existence stops matching. That is why it is written out explicitly rather
+/// than derived from `Debug`, which is not a stable format, and why
+/// `hash_is_pinned_by_a_golden_value` exists. A future change means a new prefix,
+/// not an edit here.
 pub fn integrity_of(text: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let digest = Sha256::digest(text.as_bytes());
-    let mut hex = String::with_capacity(64);
-    for b in digest {
-        hex.push_str(&format!("{b:02x}"));
+    // A file that does not lex has no token stream; fall back to its bytes so
+    // that a corrupt download still produces a stable, comparable hash.
+    match crate::lexer::Lexer::new(text, 0).tokenize() {
+        Ok(tokens) => sha256_hex("aura1", &encode_tokens(&tokens)),
+        Err(_) => sha256_hex("aura1", text.as_bytes()),
     }
-    format!("sha256-{hex}")
+}
+
+/// The legacy hash: SHA-256 over the raw bytes, prefixed `sha256-`. Kept so that
+/// a lock written by an older version still verifies instead of failing E0402.
+pub fn legacy_integrity_of(text: &str) -> String {
+    sha256_hex("sha256", text.as_bytes())
+}
+
+/// Which algorithm an existing lock entry used.
+pub fn recompute_like(existing: &str, text: &str) -> String {
+    if existing.starts_with("sha256-") {
+        legacy_integrity_of(text)
+    } else {
+        integrity_of(text)
+    }
+}
+
+fn sha256_hex(prefix: &str, bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(bytes);
+    let mut out = String::with_capacity(prefix.len() + 65);
+    out.push_str(prefix);
+    out.push('-');
+    for b in digest {
+        out.push_str(&format!("{b:02x}"));
+    }
+    out
+}
+
+/// A deterministic byte encoding of the token stream.
+///
+/// Every variant gets an explicit tag, and payloads are length-prefixed so that
+/// no concatenation of two tokens can be confused with a third. `Newline` and
+/// `Eof` are skipped: blank lines carry no meaning, and layout must not affect
+/// the hash. Comments never appear here at all — the lexer does not emit them.
+fn encode_tokens(tokens: &[crate::lexer::Token<'_>]) -> Vec<u8> {
+    use crate::lexer::token::{StrPart, TokenKind as T};
+
+    let mut out = Vec::with_capacity(tokens.len() * 4);
+    let mut put_str = |out: &mut Vec<u8>, s: &str| {
+        out.extend_from_slice(&(s.len() as u64).to_le_bytes());
+        out.extend_from_slice(s.as_bytes());
+    };
+
+    for t in tokens {
+        // Exhaustive on purpose: a new token variant must not silently inherit
+        // another one's tag, so adding one has to be a deliberate decision here.
+        let tag: u8 = match &t.kind {
+            T::Newline | T::Eof => continue,
+            T::Ident(_) => 1,
+            T::Int(_) => 2,
+            T::Float(_) => 3,
+            T::Str(_) => 4,
+            T::InterpStr(_) => 5,
+            T::ImportPath { .. } => 6,
+            T::True => 7,
+            T::False => 8,
+            T::Null => 9,
+            T::Import => 10,
+            T::As => 11,
+            T::Type => 12,
+            T::Enum => 13,
+            T::Def => 14,
+            T::End => 15,
+            T::Domain => 16,
+            T::New => 17,
+            T::Assert => 18,
+            T::Shadow => 19,
+            T::Pub => 20,
+            T::Cond => 21,
+            T::Else => 22,
+            T::LParen => 23,
+            T::RParen => 24,
+            T::LBracket => 25,
+            T::RBracket => 26,
+            T::Colon => 27,
+            T::Comma => 28,
+            T::Dot => 29,
+            T::Assign => 30,
+            T::Arrow => 31,
+            T::Question => 32,
+            T::Plus => 33,
+            T::Minus => 34,
+            T::Star => 35,
+            T::Slash => 36,
+            T::Percent => 37,
+            T::EqEq => 38,
+            T::NotEq => 39,
+            T::Lt => 40,
+            T::Gt => 41,
+            T::LtEq => 42,
+            T::GtEq => 43,
+            T::And => 44,
+            T::Or => 45,
+            T::Not => 46,
+        };
+        out.push(tag);
+
+        match &t.kind {
+            T::Ident(s) | T::Str(s) => put_str(&mut out, s),
+            T::Int(n) => out.extend_from_slice(&n.to_le_bytes()),
+            // Bit pattern, not the decimal rendering: `1.0` and `1.00` are the
+            // same value and must hash the same.
+            T::Float(f) => out.extend_from_slice(&f.to_bits().to_le_bytes()),
+            T::InterpStr(parts) => {
+                out.extend_from_slice(&(parts.len() as u64).to_le_bytes());
+                for p in parts {
+                    match p {
+                        StrPart::Lit(s) => {
+                            out.push(0);
+                            put_str(&mut out, s);
+                        }
+                        StrPart::Interp(s) => {
+                            out.push(1);
+                            put_str(&mut out, s);
+                        }
+                    }
+                }
+            }
+            T::ImportPath { path, version } => {
+                put_str(&mut out, path);
+                put_str(&mut out, version);
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The whole point: a change that cannot alter behaviour must not fire the
+    /// integrity check, because a check that cries wolf gets refreshed blindly.
+    #[test]
+    fn layout_and_comments_do_not_change_the_hash() {
+        let original = "pub def f(a)\n  x: a\nend\n";
+        let same_meaning = [
+            "pub def f(a)\n\n\n  x: a\nend\n",          // blank lines
+            "pub def f(a)\n  x:   a\nend\n",            // spacing
+            "# a comment\npub def f(a)\n  x: a\nend\n", // a leading comment
+            "pub def f(a)\n  x: a # trailing\nend\n",   // a trailing comment
+            "pub def f(a)\r\n  x: a\r\nend\r\n",        // CRLF
+        ];
+        let base = integrity_of(original);
+        for variant in same_meaning {
+            assert_eq!(
+                integrity_of(variant),
+                base,
+                "hash changed for a behaviour-preserving edit:\n{variant:?}"
+            );
+        }
+        // The byte hash, by contrast, changes for every one of them — which is
+        // the behaviour being replaced.
+        for variant in same_meaning {
+            assert_ne!(legacy_integrity_of(variant), legacy_integrity_of(original));
+        }
+    }
+
+    /// And it must still fire on anything that can change behaviour.
+    #[test]
+    fn real_changes_do_change_the_hash() {
+        let base = integrity_of("port: 8080\n");
+        for changed in [
+            "port: 8081\n",     // a different number
+            "port: \"8080\"\n", // a string, not an int
+            "prt: 8080\n",      // a renamed key
+            "port = 8080\n",    // `=` instead of `:` — private, not exported
+            "port: 8080.0\n",   // Float, not Int
+        ] {
+            assert_ne!(
+                integrity_of(changed),
+                base,
+                "hash unchanged for {changed:?}"
+            );
+        }
+    }
+
+    /// `1.0` and `1.00` are the same value, so they must hash the same — the
+    /// encoding uses the bit pattern rather than the text.
+    #[test]
+    fn equal_floats_written_differently_hash_the_same() {
+        assert_eq!(integrity_of("x: 1.0\n"), integrity_of("x: 1.00\n"));
+        assert_ne!(integrity_of("x: 1.0\n"), integrity_of("x: 1.5\n"));
+    }
+
+    /// Length-prefixing means no two tokens can run together into a third.
+    #[test]
+    fn adjacent_payloads_cannot_be_confused() {
+        assert_ne!(
+            integrity_of("a: \"bc\"\n"),
+            integrity_of("a: \"b\"\nc: 1\n")
+        );
+        assert_ne!(integrity_of("ab: 1\n"), integrity_of("a: 1\nb: 1\n"));
+    }
+
+    /// Input that does not lex still gets a stable, comparable hash.
+    #[test]
+    fn unlexable_input_falls_back_to_bytes() {
+        let broken = "x: \"unterminated";
+        assert_eq!(integrity_of(broken), integrity_of(broken));
+        assert_ne!(integrity_of(broken), integrity_of("x: \"other"));
+    }
+
+    #[test]
+    fn recompute_like_follows_the_existing_prefix() {
+        let text = "x: 1\n";
+        let old = legacy_integrity_of(text);
+        let new = integrity_of(text);
+        assert_eq!(
+            recompute_like(&old, text),
+            old,
+            "a sha256- entry stays legacy"
+        );
+        assert_eq!(
+            recompute_like(&new, text),
+            new,
+            "an aura1- entry stays current"
+        );
+        assert_ne!(old, new, "the two algorithms must be distinguishable");
+    }
+
+    /// The encoding is a compatibility contract: if this value moves, every lock
+    /// in existence stops matching. Changing the algorithm means a new prefix,
+    /// not a new expected value here.
+    #[test]
+    fn hash_is_pinned_by_a_golden_value() {
+        assert_eq!(
+            integrity_of("port: 8080\n"),
+            "aura1-f04ef7152b1131c8367cb4b832e7e5c5b9c5e8c7633abccf22e8b5572652ea8e"
+        );
+    }
 }

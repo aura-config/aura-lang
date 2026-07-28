@@ -209,15 +209,33 @@ impl<'a, 'r> Loader<'a, 'r> {
         let hash = integrity_of(text);
         match self.lock.entries.get(path) {
             Some(entry) if entry.version == *version => {
-                if entry.integrity != hash {
+                // A lock written before token-stream hashing holds a `sha256-`
+                // entry. Verify it the way it was written — failing an old lock
+                // over an algorithm change would be indistinguishable from a real
+                // tampering report, which is the one thing this must never be.
+                let expected = crate::vfs::lockfile::recompute_like(&entry.integrity, text);
+                if entry.integrity != expected {
                     return Err(rt(
                         "E0402",
                         format!(
-                            "integrity mismatch for '{path}@v{version}': lock has {}, got {hash}",
+                            "integrity mismatch for '{path}@v{version}': lock has {}, got {expected}",
                             entry.integrity
                         ),
                         span,
                     ));
+                }
+                // Verified under the old algorithm: upgrade the entry so the next
+                // reformat of the package does not look like tampering. Under
+                // --frozen the lock is read-only, so it stays as it is.
+                if expected != hash && !self.frozen {
+                    self.lock.entries.insert(
+                        path.clone(),
+                        LockEntry {
+                            version: version.clone(),
+                            integrity: hash,
+                        },
+                    );
+                    self.lock.dirty = true;
                 }
             }
             _ => {

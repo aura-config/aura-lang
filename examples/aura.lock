@@ -2,4 +2,4 @@
 
 [modules."github/actions/rust-cache"]
 version = "1.2.0"
-integrity = "sha256-5a11842f837ca1a6ac9a7e66d9da9683fc4a081f117b41243fb95aa56184bf49"
+integrity = "aura1-d4900647fd27902caf34d2694948876fcb984e2a46247f924a0160d70edc3c90"

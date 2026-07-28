@@ -40,8 +40,12 @@ There is a runnable version of this in `examples/security_demo/`.
 
 - A package's version is mandatory in the import itself:
   `import github/acme/pkg@v1.2 as p`.
-- `aura.lock` pins the exact version and a SHA-256 of the contents; a substitution
-  is `E0402`.
+- `aura.lock` pins the exact version and an integrity hash of the module's **token
+  stream**; a substitution is `E0402`. Hashing tokens rather than bytes means a
+  reformat or an edited comment does not fire the check, while any change that can
+  alter behaviour does. A lock written by an older version holds a `sha256-` byte
+  hash; it still verifies, and is upgraded in place on the next run that is not
+  `--frozen`.
 - `--frozen` (the CI mode) forbids resolving outside the lock (`E0403`).
 - The network exists only in `aura add`; evaluation is always offline.
 
