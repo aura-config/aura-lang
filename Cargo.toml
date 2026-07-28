@@ -6,6 +6,12 @@ members = ["crates/aura-lang", "crates/aura-lsp"]
 exclude = ["examples", "fuzz", "crates/aura-wasm"]
 resolver = "2"
 
+# `aura-lsp` depends on `aura-lang`. A path-only dependency cannot be published
+# ("all dependencies must have a version requirement"), and the version must
+# travel with the workspace one, so it lives here rather than in the member.
+[workspace.dependencies]
+aura-lang = { path = "crates/aura-lang", version = "0.1.0", default-features = false }
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"

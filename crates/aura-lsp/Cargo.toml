@@ -1,6 +1,6 @@
 [package]
 name = "aura-lsp"
-description = "Language Server (LSP) for the Aura configuration language: live diagnostics"
+description = "Language Server (LSP) for the Aura configuration language: diagnostics, completion, hover, go-to-definition, references, rename and formatting"
 keywords = ["configuration", "lsp", "language-server", "editor"]
 categories = ["development-tools"]
 readme = "../../README.md"
@@ -17,7 +17,7 @@ name = "aura-lsp"
 path = "src/main.rs"
 
 [dependencies]
-aura-lang = { path = "../aura-lang" }
+aura-lang.workspace = true
 lsp-server = "0.10"
 lsp-types = "0.97"
 serde_json = "1"
