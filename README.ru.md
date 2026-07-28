@@ -540,9 +540,10 @@ Aura находится в стадии рабочего превью (v0.1): в
       `.sha256`, после сверки тега с `Cargo.toml` —
       [release.yml](.github/workflows/release.yml)
 - [x] GitHub Action `setup-aura`: определяет версию, проверяет контрольную сумму
-      и кладёт `aura` в `PATH` — [packaging/setup-aura/](packaging/README.md).
-      Джоба `self-test` в релизном workflow ставит бинарник из настоящего релиза
-      и запускает его на Linux, macOS и Windows
+      и кладёт `aura` в `PATH` —
+      [aura-config/setup-aura](https://github.com/aura-config/setup-aura). Джоба
+      `self-test` в релизном workflow ставит бинарник из настоящего релиза через
+      этот опубликованный экшен и запускает его на Linux, macOS и Windows
 - [ ] Публикация: crates.io и вынос `setup-aura` в отдельный репозиторий для
       Marketplace — оба шага выполняются в момент открытия репозитория
 - [x] Подсветка синтаксиса: VS Code (TextMate + автоотступы), Vim/Neovim,

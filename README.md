@@ -548,9 +548,10 @@ Aura is in working-preview status (v0.1): all six specification phases are imple
       `.sha256`, after checking the tag against `Cargo.toml` -
       [release.yml](.github/workflows/release.yml)
 - [x] A `setup-aura` GitHub Action: resolves the version, verifies the checksum
-      and puts `aura` on `PATH` - [packaging/setup-aura/](packaging/README.md).
-      The release workflow's `self-test` job installs from a real release and
-      runs the result on Linux, macOS and Windows
+      and puts `aura` on `PATH` -
+      [aura-config/setup-aura](https://github.com/aura-config/setup-aura). The
+      release workflow's `self-test` job installs from a real release through
+      that published action and runs the result on Linux, macOS and Windows
 - [ ] Publication: crates.io, and `setup-aura` extracted into its own repository
       for the Marketplace - both are done when this repository becomes public
 - [x] Syntax highlighting: VS Code (TextMate + auto-indent), Vim/Neovim,

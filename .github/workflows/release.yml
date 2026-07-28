@@ -208,7 +208,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-      - uses: ./packaging/setup-aura
+      # The published action, not a copy in this tree: one definition, so it
+      # cannot drift from the one users get.
+      - uses: aura-config/setup-aura@v1
         with:
           version: ${{ github.ref_name }}
       - name: Use the installed binary
