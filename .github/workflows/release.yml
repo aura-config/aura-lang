@@ -119,7 +119,7 @@ jobs:
       # produced *two* draft releases for one tag, with the assets split between
       # them. The `release` job below assembles it once, from these artifacts.
       - name: Keep the archives for the release and e2e jobs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.target }}
           path: |
@@ -171,12 +171,12 @@ jobs:
             platform: linux/arm64
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist-${{ matrix.target }}
       - name: Enable arm64 emulation
         if: matrix.platform == 'linux/arm64'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
       - name: Unpack
         run: |
           mkdir -p dist
@@ -199,7 +199,7 @@ jobs:
     needs: e2e-artifacts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: dist-*
           merge-multiple: true
