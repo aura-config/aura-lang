@@ -114,26 +114,19 @@ jobs:
           # for a filename ending in a carriage return
           [IO.File]::WriteAllText("$PWD/$name.zip.sha256", "$hash  $name.zip`n")
 
-      # Also kept as a workflow artifact: the release above is a draft, which
-      # cannot be downloaded anonymously, and the e2e job needs these files.
-      - name: Keep the archives for the e2e job
+      # The build jobs no longer touch the release. Six of them calling
+      # action-gh-release concurrently raced to create it, and a v0.1.0-rc.1 tag
+      # produced *two* draft releases for one tag, with the assets split between
+      # them. The `release` job below assembles it once, from these artifacts.
+      - name: Keep the archives for the release and e2e jobs
         uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.target }}
           path: |
             aura-*.tar.gz
             aura-*.zip
-          retention-days: 1
-
-      - name: Upload to release
-        uses: softprops/action-gh-release@v3
-        with:
-          draft: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          files: |
-            aura-*.tar.gz
-            aura-*.zip
             aura-*.sha256
+          retention-days: 1
 
   # Runs the shipped artifact where a GitHub runner cannot: on an older libc than
   # the one it was built against, on a system with no toolchain, and — for
@@ -194,13 +187,43 @@ jobs:
       # the finding.
       - name: Run e2e in ${{ matrix.image }}
         run: |
-          docker run --rm --platform ${{ matrix.platform }}             -v "$PWD:/w" -w /w ${{ matrix.image }}             sh packaging/e2e.sh "$(find dist -name aura | head -1)"
+          BIN="$(find dist -name aura | head -1)"
+          docker run --rm --platform ${{ matrix.platform }}             -v "$PWD:/w" -w /w "${{ matrix.image }}"             sh packaging/e2e.sh "$BIN"
+
+  # One job creates the release, once, and only after every artifact has been
+  # executed in a container. Previously the build matrix uploaded as it went, so
+  # a binary that failed e2e was already attached to a release by the time anyone
+  # found out.
+  release:
+    name: Assemble the draft release
+    needs: e2e-artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+      - name: Check every expected asset arrived
+        run: |
+          ls -l aura-*
+          # Six targets, each an archive plus its checksum.
+          COUNT=$(ls aura-* | wc -l)
+          test "$COUNT" -eq 12 || {
+            echo "expected 12 files, found $COUNT"; exit 1; }
+      - uses: softprops/action-gh-release@v3
+        with:
+          draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            aura-*.tar.gz
+            aura-*.zip
+            aura-*.sha256
 
   # Проверяет релиз так, как его увидит потребитель: ставит `aura` из только что
   # загруженных ассетов через наш же экшен и запускает его.
   self-test:
     name: Install from release (${{ matrix.os }})
-    needs: build
+    needs: release
     strategy:
       fail-fast: false
       matrix:
