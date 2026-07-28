@@ -35,6 +35,13 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Only the default branch writes caches. Every branch that saves its own
+          # would multiply a ~1.4 GB generation per pull request against a 10 GB
+          # repository quota; pull requests still read main's cache, which is where
+          # the speed-up actually comes from. A changed Cargo.lock already creates a
+          # fresh generation on its own.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-node@v7
         with:
           node-version: 22

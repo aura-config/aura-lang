@@ -19,6 +19,13 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Only the default branch writes caches. Every branch that saves its own
+          # would multiply a ~1.4 GB generation per pull request against a 10 GB
+          # repository quota; pull requests still read main's cache, which is where
+          # the speed-up actually comes from. A changed Cargo.lock already creates a
+          # fresh generation on its own.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # Юниты, интеграционные тесты и conformance-suite (examples/*/expected.*)
       - run: cargo test --workspace
 
@@ -41,6 +48,13 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Only the default branch writes caches. Every branch that saves its own
+          # would multiply a ~1.4 GB generation per pull request against a 10 GB
+          # repository quota; pull requests still read main's cache, which is where
+          # the speed-up actually comes from. A changed Cargo.lock already creates a
+          # fresh generation on its own.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo check -p aura-lang --no-default-features --target ${{ matrix.target }}
 
   # Enforce the declared MSRV (Cargo.toml rust-version) for the published library,
@@ -53,6 +67,13 @@ jobs:
       # 1.85 is the real floor: the indexmap dependency requires it (edition 2024).
       - uses: dtolnay/rust-toolchain@1.85
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Only the default branch writes caches. Every branch that saves its own
+          # would multiply a ~1.4 GB generation per pull request against a 10 GB
+          # repository quota; pull requests still read main's cache, which is where
+          # the speed-up actually comes from. A changed Cargo.lock already creates a
+          # fresh generation on its own.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo check -p aura-lang --no-default-features
 
   lint:
@@ -64,6 +85,13 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Only the default branch writes caches. Every branch that saves its own
+          # would multiply a ~1.4 GB generation per pull request against a 10 GB
+          # repository quota; pull requests still read main's cache, which is where
+          # the speed-up actually comes from. A changed Cargo.lock already creates a
+          # fresh generation on its own.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       # Догфуд: все .aura-файлы репозитория канонически отформатированы
@@ -94,6 +122,13 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Only the default branch writes caches. Every branch that saves its own
+          # would multiply a ~1.4 GB generation per pull request against a 10 GB
+          # repository quota; pull requests still read main's cache, which is where
+          # the speed-up actually comes from. A changed Cargo.lock already creates a
+          # fresh generation on its own.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo build -p aura-lang
       # Эталонный манифест обязан вычисляться end-to-end
       - name: Evaluate reference manifest
@@ -116,18 +151,27 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Only the default branch writes caches. Every branch that saves its own
+          # would multiply a ~1.4 GB generation per pull request against a 10 GB
+          # repository quota; pull requests still read main's cache, which is where
+          # the speed-up actually comes from. A changed Cargo.lock already creates a
+          # fresh generation on its own.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Install wasm-bindgen-cli matching the crate
         run: |
-          VERSION=$(grep -A1 '^name = "wasm-bindgen"$' crates/aura-wasm/Cargo.lock             | grep '^version' | head -1 | sed 's/version = "//;s/"//')
+          VERSION=$(grep -A1 '^name = "wasm-bindgen"$' crates/aura-wasm/Cargo.lock \
+            | grep '^version' | head -1 | sed 's/version = "//;s/"//')
           cargo install wasm-bindgen-cli --version "$VERSION" --locked
       - name: Build and smoke-test
         working-directory: crates/aura-wasm
         run: |
           cargo build --target wasm32-unknown-unknown --release
-          wasm-bindgen target/wasm32-unknown-unknown/release/aura_wasm.wasm             --out-dir pkg-node --target nodejs --no-typescript
+          wasm-bindgen target/wasm32-unknown-unknown/release/aura_wasm.wasm \
+            --out-dir pkg-node --target nodejs --no-typescript
           node smoke.cjs
 
   # Coverage-guided fuzzing (nightly + libFuzzer). Non-blocking: a smoke run of
@@ -140,6 +184,13 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Only the default branch writes caches. Every branch that saves its own
+          # would multiply a ~1.4 GB generation per pull request against a 10 GB
+          # repository quota; pull requests still read main's cache, which is where
+          # the speed-up actually comes from. A changed Cargo.lock already creates a
+          # fresh generation on its own.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo install cargo-fuzz --locked
       - name: Smoke-run each target (60s)
         # LeakSanitizer stays on: the interpreter's env arena + Weak closures keep
