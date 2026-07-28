@@ -126,7 +126,7 @@ fn encode_tokens(tokens: &[crate::lexer::Token<'_>]) -> Vec<u8> {
     use crate::lexer::token::{StrPart, TokenKind as T};
 
     let mut out = Vec::with_capacity(tokens.len() * 4);
-    let mut put_str = |out: &mut Vec<u8>, s: &str| {
+    let put_str = |out: &mut Vec<u8>, s: &str| {
         out.extend_from_slice(&(s.len() as u64).to_le_bytes());
         out.extend_from_slice(s.as_bytes());
     };
