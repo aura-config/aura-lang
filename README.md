@@ -5,7 +5,7 @@
 Aura compiles readable manifests into JSON, YAML or TOML — with schemas, enums,
 assertions that fail the build instead of the deploy, and a capability model in
 which `env()` and `read_file()` are granted per run and the grant does not reach
-imported modules. One static binary, 16 keywords, a 1.9 MB download.
+imported modules. One static binary, 16 keywords, a 1.7 MB download.
 
 [![CI](https://github.com/aura-config/aura-lang/actions/workflows/ci.yml/badge.svg)](https://github.com/aura-config/aura-lang/actions/workflows/ci.yml)
 ![Rust 1.85+](https://img.shields.io/badge/rust-1.85%2B-orange)

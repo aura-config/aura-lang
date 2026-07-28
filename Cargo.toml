@@ -31,3 +31,21 @@ authors = ["Ilya Brin", "Aura contributors"]
 # profile: a profile in a non-root package is ignored.
 [profile.release]
 strip = true
+
+# Link-time optimization across the whole graph, in one codegen unit. Measured on
+# x86_64 musl: 4.17 MB -> 3.48 MB, and 1.11 ms -> 1.00 ms evaluating a real
+# manifest, so it is not a size-against-speed trade — it wins both. The cost is
+# release build time, 34 s -> 49 s, which only a tag pays.
+#
+# This is also the answer to packing the binary with UPX. Compressed, it would
+# download at roughly 1.6 MB against 1.71 MB here — an irrelevant difference, in
+# exchange for antivirus false positives (UPX is what malware packs with),
+# decompressing four megabytes on every run of a process that lives 1 ms, and a
+# broken signature on macOS.
+lto = true
+codegen-units = 1
+
+# `panic = "abort"` would shrink it further and is deliberately not set: the
+# parser runs on a thread with a large stack, and abort changes how a panic there
+# reaches the parent. The gain was never measured, and LTO already reached the
+# size that mattered.
