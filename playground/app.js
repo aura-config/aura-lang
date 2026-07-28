@@ -121,7 +121,7 @@ end
     allowRead: false,
     env: "APP_ENV=production",
     files: {
-      "main.aura": `is_prod = env("APP_ENV", "dev") == "production"
+      "main.aura": `is_prod  = env("APP_ENV", "dev") == "production"
 replicas = 1
 
 # In production one replica is not enough — this fails the build, not the deploy.
