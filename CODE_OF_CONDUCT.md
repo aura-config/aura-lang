@@ -1,73 +1,122 @@
-# Code of conduct
+# Contributor Covenant Code of Conduct
 
-## The short version
+## Our Pledge
 
-Be someone people can disagree with productively.
+We as members, contributors, and leaders pledge to make participation in our community a harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, caste, color, religion, or sexual identity and orientation.
 
-## What is expected
+We pledge to act and interact in ways that contribute to an open, welcoming, diverse, inclusive, and healthy community.
+
+## Our Standards
+
+Examples of behavior that contributes to a positive environment for our community include:
+
+* Demonstrating empathy and kindness toward other people
+* Being respectful of differing opinions, viewpoints, and experiences
+* Giving and gracefully accepting constructive feedback
+* Accepting responsibility and apologizing to those affected by our mistakes, and learning from the experience
+* Focusing on what is best not just for us as individuals, but for the overall community
+
+Examples of unacceptable behavior include:
+
+* The use of sexualized language or imagery, and sexual attention or advances of any kind
+* Trolling, insulting or derogatory comments, and personal or political attacks
+* Public or private harassment
+* Publishing others' private information, such as a physical or email address, without their explicit permission
+* Other conduct which could reasonably be considered inappropriate in a professional setting
+
+## Enforcement Responsibilities
+
+Community leaders are responsible for clarifying and enforcing our standards of acceptable behavior and will take appropriate and fair corrective action in response to any behavior that they deem inappropriate, threatening, offensive, or harmful.
+
+Community leaders have the right and responsibility to remove, edit, or reject comments, commits, code, wiki edits, issues, and other contributions that are not aligned to this Code of Conduct, and will communicate reasons for moderation decisions when appropriate.
+
+## Scope
+
+This Code of Conduct applies within all community spaces, and also applies when an individual is officially representing the community in public spaces. Examples of representing our community include using an official e-mail address, posting via an official social media account, or acting as an appointed representative at an online or offline event.
+
+## Enforcement
+
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement at [GitHub's abuse reporting form](https://github.com/contact/report-abuse) — see "How reporting works here" below for why that channel rather than an email address. All complaints will be reviewed and investigated promptly and fairly.
+
+All community leaders are obligated to respect the privacy and security of the reporter of any incident.
+
+## Enforcement Guidelines
+
+Community leaders will follow these Community Impact Guidelines in determining the consequences for any action they deem in violation of this Code of Conduct:
+
+### 1. Correction
+
+**Community Impact**: Use of inappropriate language or other behavior deemed unprofessional or unwelcome in the community.
+
+**Consequence**: A private, written warning from community leaders, providing clarity around the nature of the violation and an explanation of why the behavior was inappropriate. A public apology may be requested.
+
+### 2. Warning
+
+**Community Impact**: A violation through a single incident or series of actions.
+
+**Consequence**: A warning with consequences for continued behavior. No interaction with the people involved, including unsolicited interaction with those enforcing the Code of Conduct, for a specified period of time. This includes avoiding interactions in community spaces as well as external channels like social media. Violating these terms may lead to a temporary or permanent ban.
+
+### 3. Temporary Ban
+
+**Community Impact**: A serious violation of community standards, including sustained inappropriate behavior.
+
+**Consequence**: A temporary ban from any sort of interaction or public communication with the community for a specified period of time. No public or private interaction with the people involved, including unsolicited interaction with those enforcing the Code of Conduct, is allowed during this period. Violating these terms may lead to a permanent ban.
+
+### 4. Permanent Ban
+
+**Community Impact**: Demonstrating a pattern of violation of community standards, including sustained inappropriate behavior, harassment of an individual, or aggression toward or disparagement of classes of individuals.
+
+**Consequence**: A permanent ban from any sort of public interaction within the community.
+
+## How reporting works here
+
+The section above is the Contributor Covenant's wording, unchanged. This section
+is this project's, and it explains what "community leaders" means when there is
+one maintainer.
+
+**Harassment, threats, or sustained targeting of someone** should go to
+[GitHub](https://github.com/contact/report-abuse). This is not a way of passing
+the problem along: GitHub's
+[Acceptable Use Policies](https://docs.github.com/en/site-policy/acceptable-use-policies/github-acceptable-use-policies)
+already forbid it platform-wide, and GitHub can remove content and suspend
+accounts. The maintainer cannot — blocking someone from this repository stops
+them contributing but does not stop them. It is also the channel that works **if
+the maintainer is the problem**, which a mailbox the maintainer owns would not.
+
+**Tone, condescension, or reopening a settled decision** is better raised in the
+issue or pull request where it happened, or in a new issue. That is the
+maintainer's to handle, and handling it in the open is usually the point.
+
+**Retaliation against someone who reports is itself a violation**, and is treated
+as one.
+
+**One limitation, stated plainly:** there is no private address yet for something
+that is neither a GitHub policy violation nor suitable to raise in public. A
+dedicated address will exist once the project has a domain. Until then, GitHub's
+form is private and is the better route for anything sensitive — it does not
+require trusting the maintainer's inbox.
+
+## What is expected of contributors, concretely
+
+The Covenant states the norms. These are the two that come up in a language
+project specifically:
 
 - **Argue about the work, not the person.** "This breaks determinism because…" is
-  a technical objection. "You clearly did not read the spec" is not.
-- **Assume the other person is competent and acting in good faith**, including
-  when they are wrong. Most misunderstandings here will be about a language whose
-  documentation is incomplete, not about anyone's intelligence.
-- **Accept a decision you disagree with.** Some things — the frozen syntax
-  especially — are settled. You are welcome to think that is a mistake, and
-  welcome to say so once, clearly.
-- **Let people participate in imperfect English or Russian.** This project's
-  documentation exists in both and neither is the "correct" one; a reply about
-  someone's grammar instead of their point is not welcome.
+  a technical objection; "you clearly did not read the spec" is not.
+- **A settled decision can be disagreed with.** The frozen syntax is settled, and
+  saying you think that is a mistake is legitimate. Repeating it after an answer,
+  across issues, is the "sustained" part of sustained hostility.
 
-## What is not acceptable
+## Attribution
 
-Harassment of any kind. Personal attacks, insults, or sustained hostility.
-Demeaning comments about anyone's identity — nationality, ethnicity, gender,
-sexuality, religion, disability, age, appearance, level of experience.
-Deliberately publishing someone's private information. Sexual attention or
-imagery. Persistently pushing a rejected proposal past the point of discussion.
+This Code of Conduct is adapted from the [Contributor Covenant][homepage], version 2.1, available at [https://www.contributor-covenant.org/version/2/1/code_of_conduct.html][v2.1].
 
-## Where this applies
+Community Impact Guidelines were inspired by [Mozilla's code of conduct enforcement ladder][Mozilla CoC].
 
-Issues, pull requests, discussions, commit messages and code review in this
-repository, and anywhere someone is representing the project.
+For answers to common questions about this code of conduct, see the FAQ at [https://www.contributor-covenant.org/faq][FAQ]. Translations are available at [https://www.contributor-covenant.org/translations][translations].
 
-## Reporting
-
-There are two channels, and they cover different things. This project has one
-maintainer, so describing a review committee would be theatre.
-
-**Harassment, threats, or sustained targeting of someone** →
-[report it to GitHub](https://github.com/contact/report-abuse). GitHub's
-[Acceptable Use Policies](https://docs.github.com/en/site-policy/acceptable-use-policies/github-acceptable-use-policies)
-already forbid this across the platform, and GitHub can remove content and
-suspend accounts. A maintainer cannot — the most I can do is block someone from
-this repository, which stops them contributing but does not stop them. This is
-also the channel to use **if the maintainer is the problem**, since it works
-without me.
-
-**Tone, condescension, or pushing a settled decision past the point of
-discussion** → say so in the issue or pull request where it happened, or open a
-new issue. This kind of thing is better handled in the open, and it is mine to
-handle.
-
-**A gap worth naming:** there is currently no address for reporting something
-privately that is not a GitHub policy violation. A dedicated address will exist
-once the project has a domain; until then this file would rather admit the gap
-than list a mailbox nobody reads.
-
-You will not be asked to confront the other person, and you will not be expected
-to justify being uncomfortable.
-
-## What happens then
-
-Depending on what happened: a private word, a public correction, deleting the
-comment, or a ban. There is no formal ladder because there is no committee to run
-one — the intent is that repeated or severe behaviour ends participation, and a
-first misstep usually just needs saying out loud.
-
-## A note on scope
-
-This is a small project's code of conduct, written to be actually followed rather
-than to look official. It is not the [Contributor
-Covenant](https://www.contributor-covenant.org/), though it means much the same
-thing in fewer words.
+[homepage]: https://www.contributor-covenant.org
+[v2.1]: https://www.contributor-covenant.org/version/2/1/code_of_conduct.html
+[Mozilla CoC]: https://github.com/mozilla/diversity
+[FAQ]: https://www.contributor-covenant.org/faq
+[translations]: https://www.contributor-covenant.org/translations
