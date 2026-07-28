@@ -216,17 +216,22 @@ impl<'a> Parser<'a> {
 
     // ---- Module ----
 
-    /// Parses on a thread with a large stack. Deeply-nested input would otherwise
-    /// overflow the default stack (~1MB on Windows) before the `MAX_PARSE_DEPTH`
-    /// guard trips — especially in debug builds, whose frames are ~10x larger. A
-    /// 64 MiB stack plus the depth guard makes the recursive descent DoS-safe.
+    /// Debug builds parse on a thread with a 64 MiB stack. `MAX_PARSE_DEPTH`
+    /// already caps the recursion at 256 frames, which a release build clears in
+    /// tens of kilobytes — but a debug frame is roughly ten times larger, and 256
+    /// of them can approach the ~1 MiB default stack on Windows before the guard
+    /// trips.
     ///
-    /// wasm has no threads, and asking for one there is not a degraded mode but an
-    /// `Unsupported` error — which used to abort the whole module. There the
-    /// recursion runs on the stack the host provides and `MAX_PARSE_DEPTH` is the
-    /// only guard; at 256 frames a release build needs on the order of a hundred
-    /// kilobytes, well inside wasm's 1 MiB default.
-    #[cfg(not(target_family = "wasm"))]
+    /// Release builds — and wasm, which has no threads at all — recurse on the
+    /// stack they are given. This is not a weakening: the guard is what makes the
+    /// parser DoS-safe, and it is unconditional. The thread only ever bought head
+    /// room for fat debug frames.
+    ///
+    /// It bought that head room expensively. Spawning the thread costs about
+    /// 115 µs, against 7.8 µs for parsing the reference manifest — sixteen times
+    /// the work it protects, paid on every `check`, every `eval`, and every
+    /// reparse the language server does while someone types.
+    #[cfg(all(not(target_family = "wasm"), debug_assertions))]
     pub fn parse_module(self) -> Result<Module<'a>, Vec<Diagnostic>> {
         std::thread::scope(|s| {
             std::thread::Builder::new()
@@ -239,7 +244,7 @@ impl<'a> Parser<'a> {
     }
 
     /// See the note on the threaded version above.
-    #[cfg(target_family = "wasm")]
+    #[cfg(any(target_family = "wasm", not(debug_assertions)))]
     pub fn parse_module(self) -> Result<Module<'a>, Vec<Diagnostic>> {
         self.parse_module_impl()
     }
@@ -1067,7 +1072,9 @@ mod tests {
     #[test]
     fn deep_nesting_is_e0208_not_a_crash() {
         // Crafted deeply-nested input must be rejected (E0208), never overflow the
-        // stack. Runs on the big-stack parser thread + the MAX_PARSE_DEPTH guard.
+        // stack. Worth running under `cargo test --release` as well as in debug:
+        // release has no parser thread, so that run is what proves 256 frames fit
+        // on an ordinary stack.
         let parens = format!("x: {}1{}", "(".repeat(2000), ")".repeat(2000));
         assert_eq!(first_err(&parens), "E0208");
         let brackets = format!("x: {}", "[".repeat(2000));

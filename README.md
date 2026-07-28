@@ -498,9 +498,14 @@ Criterion benchmarks on the reference manifest (`cargo bench -p aura-lang`):
 
 | Stage | Result |
 | --- | --- |
-| Lexer | ~200 MB/s |
-| Lexer + parser | ~120 MB/s |
-| Full pipeline (lex + parse + eval) | ~37 µs per manifest |
+| Lexer | 258 MiB/s |
+| Lexer + parser | 178 MiB/s |
+| Lexer + parser + resolver | 71 MiB/s |
+| Full pipeline (lex + parse + eval) | 33 µs per manifest |
+
+Measured 2026-07-29 on x86_64 Linux. Numbers from a single machine are worth
+what they cost — treat them as an order of magnitude, and re-run
+`cargo bench -p aura-lang` on yours.
 
 ## Development
 

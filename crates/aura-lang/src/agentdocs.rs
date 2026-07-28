@@ -42,13 +42,14 @@ pub fn render() -> String {
     );
 
     out.push_str(PREAMBLE.trim_end());
-    out.push_str("\n\n## Keywords\n\nThe complete list — ");
-    out.push_str(&keywords().len().to_string());
-    out.push_str(" of them:\n\n");
-    out.push_str(&keywords().join(", "));
+    out.push_str("\n\n## Keywords\n\nAll ");
+    out.push_str(&crate::lexer::token::KEYWORDS.len().to_string());
+    out.push_str(" reserved words:\n\n");
+    out.push_str(&crate::lexer::token::KEYWORDS.join(", "));
     out.push_str(
-        ".\n\n`text` is contextual: it opens a block string only where a value \
-                 is expected, and is a normal identifier elsewhere.\n",
+        ".\n\nPlus `text`, which is *not* reserved: it opens a block string only \
+         where a value is expected, and is an ordinary identifier everywhere \
+         else.\n",
     );
 
     out.push_str("\n## Standard library\n\n");
@@ -67,16 +68,6 @@ pub fn render() -> String {
     out.push('\n');
 
     out
-}
-
-/// Reserved words plus the contextual block-string opener, which is not reserved
-/// but is syntax an assistant has to know about.
-fn keywords() -> Vec<&'static str> {
-    crate::lexer::token::KEYWORDS
-        .iter()
-        .copied()
-        .chain(std::iter::once("text"))
-        .collect()
 }
 
 /// Evaluate the stdlib manifest and render it as tables grouped by receiver.

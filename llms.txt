@@ -198,11 +198,11 @@ Exit codes: `0` success, `1` diagnostics, `2` an I/O or argument error.
 
 ## Keywords
 
-The complete list — 17 of them:
+All 16 reserved words:
 
-import, as, type, enum, def, end, domain, new, assert, shadow, pub, cond, else, true, false, null, text.
+import, as, type, enum, def, end, domain, new, assert, shadow, pub, cond, else, true, false, null.
 
-`text` is contextual: it opens a block string only where a value is expected, and is a normal identifier elsewhere.
+Plus `text`, which is *not* reserved: it opens a block string only where a value is expected, and is an ordinary identifier everywhere else.
 
 ## Standard library
 
