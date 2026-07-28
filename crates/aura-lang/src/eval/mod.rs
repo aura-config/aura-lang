@@ -39,7 +39,14 @@ pub enum EnvCap {
 
 #[derive(Debug)]
 pub enum FileError {
+    /// No read capability at all.
     Denied,
+    /// The capability was granted, but the path resolves outside every allowed
+    /// root. Kept separate from `Denied` because the remedy differs: the caller
+    /// already passed --allow-read, and telling them to pass it again is the
+    /// least useful thing a diagnostic can do. Carries the roots so the message
+    /// can name them.
+    Outside(Vec<PathBuf>),
     Io(String),
 }
 
@@ -94,7 +101,11 @@ impl FileAccess for RealFs {
                 .unwrap_or(false)
         });
         if !permitted {
-            return Err(FileError::Denied);
+            return Err(if self.allowed.is_empty() {
+                FileError::Denied
+            } else {
+                FileError::Outside(self.allowed.clone())
+            });
         }
         std::fs::read_to_string(&canon).map_err(|e| FileError::Io(e.to_string()))
     }
@@ -890,6 +901,22 @@ impl<'a> Interpreter<'a> {
                     Err(FileError::Denied) => {
                         let mut d = rt("E0310", format!("no capability to read '{path}'"), span);
                         d.help = Some("pass --allow-read=<dir> to grant access".to_string());
+                        Err(d)
+                    }
+                    Err(FileError::Outside(roots)) => {
+                        let list = roots
+                            .iter()
+                            .map(|r| r.display().to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        let mut d = rt(
+                            "E0311",
+                            format!("'{path}' is outside every directory allowed by --allow-read"),
+                            span,
+                        );
+                        d.help = Some(format!(
+                            "allowed: {list}. Paths are canonicalised before the check, so `..`                              cannot step out of a granted directory."
+                        ));
                         Err(d)
                     }
                     Err(FileError::Io(e)) => {

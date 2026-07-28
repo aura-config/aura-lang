@@ -4,6 +4,15 @@ Every Aura diagnostic carries a stable code, which makes it easy to grep for in 
 logs and to refer to in discussion. `E` is an error, `W` a warning — and under
 `--strict` warnings block too.
 
+## Host (E00xx)
+
+Raised by the embedding API rather than by a manifest: they carry no source
+position, because nothing was parsed yet.
+
+| Code | Meaning | How to fix it |
+| --- | --- | --- |
+| E0001 | the host could not open a file, or `aura.lock` is unreadable | the message carries the underlying I/O error |
+
 ## Lexing (E01xx)
 
 | Code | Meaning | How to fix it |
@@ -14,6 +23,7 @@ logs and to refer to in discussion. `E` is an error, `W` a warning — and under
 | E0104 | a registry import without a version | `import a/b@v1 as x` — the version is mandatory (D8) |
 | E0105 | unexpected character | |
 | E0106 | an unclosed `#{` interpolation | |
+| E0107 | an unterminated block string | close it with `end` at the opener's indentation (D16) |
 
 ## Syntax (E02xx)
 
@@ -25,6 +35,8 @@ logs and to refer to in discussion. `E` is an error, `W` a warning — and under
 | E0204 | an expression was expected | |
 | E0205 | statements are separated by line breaks | |
 | E0206 | `pub` not immediately before `def`, `type` or `enum` | properties export themselves; `=` is always private |
+| E0207 | a `cond` with no `else` arm | add `else -> ...`: every branch must produce a value (D14) |
+| E0208 | nesting too deep | the recursion limit that makes deeply-nested input an error rather than a stack overflow |
 | E0211 | an `enum` member is not a quoted string | members are listed as strings, one per line (D18) |
 | E0212 | a duplicate `enum` member | list each member once |
 | E0213 | an `enum` with no members | an empty set cannot be satisfied |
@@ -53,6 +65,8 @@ logs and to refer to in discussion. `E` is an error, `W` a warning — and under
 | E0318 | `obj["key"]` — brackets are not allowed on objects | use the dotted form: `obj."key"` (D11) |
 | E0319 | a malformed duration | the format is `"1h30m"`, units `d/h/m/s` |
 | E0320 | a malformed date | RFC 3339: `"2026-07-18T12:00:00Z"` |
+| E0321 | malformed base64 | `base64_decode()` on input that is not base64 |
+| E0398 | internal: a closure's environment was dropped | a bug in Aura — please report it with the manifest |
 | E0399 | call depth exceeded (256) | recursion in a function? |
 | E0533 | `now()` and `timestamp()` do not exist | the host passes time in: `env("BUILD_TIME", ...)` (D13) |
 
@@ -64,6 +78,7 @@ logs and to refer to in discussion. `E` is an error, `W` a warning — and under
 | E0402 | a package's integrity hash does not match `aura.lock` | the package's contents changed — find out why |
 | E0403 | `--frozen`: no entry in `aura.lock` | run `aura add` locally and commit the lock |
 | E0404 | module not found, or does not resolve | check the path, the version, `--registry-dir` |
+| E0410 | an import the interpreter was handed without the module loader | only reachable when embedding the evaluator directly; use `facade::eval_file`/`eval_source`, which load modules |
 
 ## Analysis and validation (E05xx / W05xx)
 
