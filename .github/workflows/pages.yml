@@ -42,8 +42,10 @@ jobs:
         with:
           mdbook-version: latest
 
-      - name: Build the book
-        run: mdbook build docs/book
+      - name: Build both books
+        run: |
+          mdbook build docs/book
+          mdbook build docs/book-ru
 
       - name: Build the playground's WebAssembly bundle
         run: |
@@ -64,8 +66,9 @@ jobs:
 
       - name: Assemble
         run: |
-          mkdir -p site/book site/playground
+          mkdir -p site/book/ru site/playground
           cp -r docs/book/book/. site/book/
+          cp -r docs/book-ru/book/. site/book/ru/
           cp -r playground/. site/playground/
           cp site-index.html site/index.html
           # Pages otherwise runs the output through Jekyll, which drops

@@ -1,90 +1,90 @@
-# Коды ошибок и предупреждений
+# Error and warning codes
 
-Каждая диагностика Aura имеет стабильный код — по нему удобно искать в CI-логах
-и ссылаться в обсуждениях. `E` — ошибка, `W` — предупреждение (в `--strict`
-предупреждения блокируют).
+Every Aura diagnostic carries a stable code, which makes it easy to grep for in CI
+logs and to refer to in discussion. `E` is an error, `W` a warning — and under
+`--strict` warnings block too.
 
-## Лексика (E01xx)
+## Lexing (E01xx)
 
-| Код | Смысл | Как чинить |
+| Code | Meaning | How to fix it |
 | --- | --- | --- |
-| E0101 | после десятичной точки нет цифры (`12.`) | `12.0` либо `12` |
-| E0102 | незакрытая строка до конца строки | строки в Aura однострочные; закройте `"` |
-| E0103 | целочисленный литерал не помещается в i64 | |
-| E0104 | registry-импорт без версии | `import a/b@v1 as x` — версия обязательна (D8) |
-| E0105 | неожиданный символ | |
-| E0106 | незакрытая интерполяция `#{` | |
+| E0101 | no digit after the decimal point (`12.`) | write `12.0` or `12` |
+| E0102 | a string left unclosed at end of line | Aura strings are single-line; close the `"` |
+| E0103 | an integer literal does not fit in i64 | |
+| E0104 | a registry import without a version | `import a/b@v1 as x` — the version is mandatory (D8) |
+| E0105 | unexpected character | |
+| E0106 | an unclosed `#{` interpolation | |
 
-## Синтаксис (E02xx)
+## Syntax (E02xx)
 
-| Код | Смысл | Как чинить |
+| Code | Meaning | How to fix it |
 | --- | --- | --- |
-| E0200 | ожидался конкретный токен | текст ошибки называет какой |
-| E0201 | инлайн-блок из v1.1 (`metrics port: 9090`) | объектный блок: `metrics:` … `end` (D3) |
-| E0203 | не хватает `end` / `]` | |
-| E0204 | ожидалось выражение | |
-| E0205 | statement'ы разделяются переносами строк | |
-| E0206 | `pub` не перед `def`/`type`/`enum` | свойства экспортируются сами; `=` всегда приватен |
-| E0211 | член `enum` — не строка в кавычках | члены перечисляются строками, по одной на строку (D18) |
-| E0212 | дубликат члена `enum` | каждый член указывается один раз |
-| E0213 | `enum` без членов | пустой набор нельзя удовлетворить |
+| E0200 | a specific token was expected | the message names which |
+| E0201 | a v1.1 inline block (`metrics port: 9090`) | use an object block: `metrics:` … `end` (D3) |
+| E0203 | a missing `end` or `]` | |
+| E0204 | an expression was expected | |
+| E0205 | statements are separated by line breaks | |
+| E0206 | `pub` not immediately before `def`, `type` or `enum` | properties export themselves; `=` is always private |
+| E0211 | an `enum` member is not a quoted string | members are listed as strings, one per line (D18) |
+| E0212 | a duplicate `enum` member | list each member once |
+| E0213 | an `enum` with no members | an empty set cannot be satisfied |
 
-## Выполнение (E03xx)
+## Evaluation (E03xx)
 
-| Код | Смысл | Как чинить |
+| Code | Meaning | How to fix it |
 | --- | --- | --- |
-| E0301 | повторное присваивание — значения иммутабельны | новое имя либо вложенный scope |
-| E0302 | затенение внешней переменной без маркера | `shadow x = ...` (D7) |
-| W0303 | `shadow` ничего не затеняет | уберите `shadow` |
-| E0304 | переполнение целочисленной арифметики | `Float` либо пересмотрите величины |
-| E0305 | деление на ноль | |
-| E0306 | неподходящий тип операнда | условия — строго `Bool`; «правдивости» нет |
-| E0307 | в интерполяции/`join` не скаляр | сериализуйте явно: `.to_json()` |
-| E0308 | неизвестное поле объекта | опечатка? `.get(key, default)` для опциональных |
-| E0309 | неизвестный метод | список — в справочнике методов; поля-функции пакетов вызываются так же |
-| E0310 | нет прав (capability) | подсказка в ошибке называет нужный флаг (D1) |
-| E0311 | путь вне разрешённых `--allow-read` каталогов | |
-| E0312 | функции передано меньше аргументов, чем параметров | |
-| E0313 | ошибка чтения файла (I/O) | |
-| E0314 | некорректный TOML/JSON/YAML при парсинге | |
-| E0315 | методу (`map`/`filter`) не передана лямбда | |
-| E0316 | некорректное выражение внутри `#{...}` | |
-| E0317 | индекс вне границ списка / `first()`/`last()` на пустом | `.get(i, default)` |
-| E0318 | `obj["key"]` — скобки на объектах запрещены | точечная форма: `obj."key"` (D11) |
-| E0319 | некорректная длительность | формат `"1h30m"`, единицы `d/h/m/s` |
-| E0320 | некорректная дата | RFC3339: `"2026-07-18T12:00:00Z"` |
-| E0399 | превышена глубина вызовов (256) | рекурсия в функциях? |
-| E0533 | `now()`/`timestamp()` не существуют | время передаёт хост: `env("BUILD_TIME", ...)` (D13) |
+| E0301 | assigned twice — values are immutable | use a new name, or a nested scope |
+| E0302 | shadowing an outer variable without the marker | `shadow x = ...` (D7) |
+| W0303 | `shadow` shadows nothing | drop the `shadow` |
+| E0304 | integer arithmetic overflowed | use `Float`, or reconsider the magnitudes |
+| E0305 | division by zero | |
+| E0306 | an operand of the wrong type | conditions must be `Bool`; there is no truthiness |
+| E0307 | a non-scalar in interpolation or `join` | serialise it explicitly with `.to_json()` |
+| E0308 | unknown object field | a typo? use `.get(key, default)` for optional ones |
+| E0309 | unknown method | see the method reference; a package's function fields are called the same way |
+| E0310 | missing capability | the error names the flag you need (D1) |
+| E0311 | a path outside the directories allowed by `--allow-read` | |
+| E0312 | fewer arguments passed than the function has parameters | |
+| E0313 | a file read failed (I/O) | |
+| E0314 | malformed TOML, JSON or YAML while parsing | |
+| E0315 | a method that needs a lambda (`map`, `filter`) did not get one | |
+| E0316 | a malformed expression inside `#{...}` | |
+| E0317 | a list index out of range, or `first()` / `last()` on an empty list | use `.get(i, default)` |
+| E0318 | `obj["key"]` — brackets are not allowed on objects | use the dotted form: `obj."key"` (D11) |
+| E0319 | a malformed duration | the format is `"1h30m"`, units `d/h/m/s` |
+| E0320 | a malformed date | RFC 3339: `"2026-07-18T12:00:00Z"` |
+| E0399 | call depth exceeded (256) | recursion in a function? |
+| E0533 | `now()` and `timestamp()` do not exist | the host passes time in: `env("BUILD_TIME", ...)` (D13) |
 
-## Модули и пакеты (E04xx)
+## Modules and packages (E04xx)
 
-| Код | Смысл | Как чинить |
+| Code | Meaning | How to fix it |
 | --- | --- | --- |
-| E0401 | циклический импорт (цепочка в сообщении) | разорвите цикл: общий код — в третий модуль |
-| E0402 | integrity-хэш пакета не совпал с `aura.lock` | содержимое пакета изменилось — разберитесь почему |
-| E0403 | `--frozen`: записи нет в `aura.lock` | `aura add` локально, лок — в коммит |
-| E0404 | модуль не найден / не резолвится | путь, версия, `--registry-dir` |
+| E0401 | a cyclic import (the chain is in the message) | break the cycle: move shared code into a third module |
+| E0402 | a package's integrity hash does not match `aura.lock` | the package's contents changed — find out why |
+| E0403 | `--frozen`: no entry in `aura.lock` | run `aura add` locally and commit the lock |
+| E0404 | module not found, or does not resolve | check the path, the version, `--registry-dir` |
 
-## Анализ и валидация (E05xx / W05xx)
+## Analysis and validation (E05xx / W05xx)
 
-| Код | Смысл | Как чинить |
+| Code | Meaning | How to fix it |
 | --- | --- | --- |
-| W0501 | неиспользуемая переменная | мёртвый код — удалите |
-| W0502 | неиспользуемый импорт | |
-| W0503 | неиспользуемая функция/тип | для API пакета — пометьте `pub` |
-| E0504 | необъявленная переменная | объявление должно предшествовать использованию |
-| E0511 | отсутствует поле, требуемое схемой | |
-| E0512 | тип поля не совпал со схемой | `Int` и `Float` — разные типы |
-| E0513 | лишнее поле (только `--strict`) | уберите поле либо добавьте в схему |
-| E0514 | значение не входит в `enum` | подсказка предлагает ближайший член и перечисляет набор (D18) |
-| W0512 | эффектный вызов в импортированном модуле | у импортов нет I/O-прав; пересмотрите дизайн пакета |
-| E0530 | провал `assert` | сообщение — ваше собственное |
-| E0531 | вызван `fail(...)` | |
+| W0501 | an unused variable | dead code — delete it |
+| W0502 | an unused import | |
+| W0503 | an unused function or type | if it is a package's API, mark it `pub` |
+| E0504 | an undeclared variable | a declaration must precede its use |
+| E0511 | a field the schema requires is missing | |
+| E0512 | a field's type does not match the schema | `Int` and `Float` are different types |
+| E0513 | an extra field (`--strict` only) | remove the field, or add it to the schema |
+| E0514 | a value outside the `enum` | the hint suggests the nearest member and lists the set (D18) |
+| W0512 | an effectful call in an imported module | imports have no I/O rights; reconsider the package's design |
+| E0530 | an `assert` failed | the message is your own |
+| E0531 | `fail(...)` was called | |
 
-## Сериализация (E06xx)
+## Serialisation (E06xx)
 
-| Код | Смысл | Как чинить |
+| Code | Meaning | How to fix it |
 | --- | --- | --- |
-| E0601 | функция/схема внутри выводимого дерева | путь ключа — в сообщении; на верхнем уровне `pub`-элементы исключаются сами |
-| E0602 | не-конечный Float (NaN/Inf) | |
-| E0603 | ограничение формата (TOML: нет null, корень — объект) | |
+| E0601 | a function or schema inside the exported tree | the key path is in the message; at the top level `pub` items are excluded automatically |
+| E0602 | a non-finite Float (NaN or Inf) | |
+| E0603 | a format limitation (TOML has no null; its root must be an object) | |

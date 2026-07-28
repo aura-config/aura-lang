@@ -1,8 +1,8 @@
-# Функции и методы
+# Functions and methods
 
-## def — функции-конструкторы
+## def — constructor functions
 
-`def` возвращает объект; тело — свойства:
+`def` returns an object; its body is properties:
 
 ```ruby
 def make_env(name, replicas, debug)
@@ -17,43 +17,43 @@ environments:
 end
 ```
 
-Один `def` вместо трёх скопированных YAML-файлов — главный анти-копипаст
-инструмент языка.
+One `def` instead of three copy-pasted YAML files: this is the language's main
+anti-duplication tool.
 
-## Лямбды
+## Lambdas
 
 ```ruby
 double = (x) -> x * 2 end
-up: ["a", "b"].map (s, i) -> s.upper() end # trailing-лямбда
+up: ["a", "b"].map (s, i) -> s.upper() end # a trailing lambda
 ```
 
-Колбэк `map`/`filter` получает элемент и индекс; лишние параметры можно
-не объявлять.
+A `map` or `filter` callback receives the element and its index; parameters you
+do not need can be left out.
 
-## Методы
+## Methods
 
-Вызываются через точку, образуют цепочки:
+Called with a dot, and they chain:
 
 ```ruby
 active: services.compact().uniq().map (s, i) -> s.upper() end
 ```
 
-Полный список — в [справочнике методов](../reference/methods.md).
-Часто используемые:
+The full list is in the [method reference](../reference/methods.md). The ones you
+will reach for:
 
-- **списки**: `map` `filter` `compact` (убрать `null`) `uniq` `first` `last`
+- **lists**: `map` `filter` `compact` (drop `null`) `uniq` `first` `last`
   `join(sep)` `contains(x)` `get(i, default)`
-- **объекты**: `merge` (правый перекрывает) `keys` `values` `contains(key)`
+- **objects**: `merge` (the right side wins) `keys` `values` `contains(key)`
   `get(key, default)`
-- **строки**: `upper` `lower` `len` `contains(sub)` + парсеры форматов
+- **strings**: `upper` `lower` `len` `contains(sub)`, plus the format parsers
 
-## Тернарный оператор
+## The ternary operator
 
-Единственная ветвящаяся конструкция языка:
+The language's only branching construct:
 
 ```ruby
 mode: is_prod ? "webhook" : "long_polling"
 ```
 
-Условие обязано быть `Bool` — «правдивости» (truthiness) в Aura нет,
-`E0306` на любом другом типе.
+The condition must be a `Bool`. Aura has no notion of truthiness, and anything
+else is `E0306`.

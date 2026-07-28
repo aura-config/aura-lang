@@ -1,30 +1,32 @@
-# Модель безопасности
+# The security model
 
-Aura исходит из того, что конфиги собирают из чужого кода (пакеты, шаблоны
-коллег, скопированные сниппеты), и строит защиту **по построению**, а не
-по договорённости.
+Aura assumes configuration gets assembled out of other people's code — packages,
+a colleague's templates, snippets copied from somewhere — and builds its defences
+**by construction** rather than by agreement.
 
-## Capability-модель
+## The capability model
 
-По умолчанию манифест не может **ничего**: ни читать файлы, ни переменные
-окружения. Права выдаются флагами запуска и не «протекают»:
+By default a manifest can do **nothing**: it can read neither files nor
+environment variables. Rights are granted by flags at the point of running it, and
+they do not leak.
 
-| Флаг | Разрешает |
+| Flag | Permits |
 | --- | --- |
-| `--allow-read=<dir>` | `read_file()` внутри каталога; пути канонизируются, `..` не сбегает (`E0311`) |
-| `--allow-env[=A,B]` | `env()` для перечисленных переменных (без списка — все) |
-| `--allow-imports-io` | распространить права корня на импортированные модули |
+| `--allow-read=<dir>` | `read_file()` inside that directory; paths are canonicalised, and `..` cannot escape (`E0311`) |
+| `--allow-env[=A,B]` | `env()` for the named variables — with no list, all of them |
+| `--allow-imports-io` | extend the root's rights to imported modules |
 
-Вызов без прав — `E0310` с подсказкой, какой флаг добавить.
+A call without the right is `E0310`, with a hint naming the flag to add.
 
-## Изоляция импортов
+## Import isolation
 
-Права принадлежат **корневому манифесту**. Импортированный модуль:
+Rights belong to the **root manifest**. An imported module:
 
-- не может вызывать `env()`/`read_file()` — даже если у корня права есть;
-- не получает права через свои экспортированные функции: тело `pub def`
-  выполняется с capability модуля-*происхождения*, а не вызывающего;
-- статически помечается предупреждением `W0512`, если содержит эффектные вызовы.
+- cannot call `env()` or `read_file()` — not even when the root holds those rights;
+- does not acquire rights through its own exported functions: the body of a
+  `pub def` runs with the capabilities of the module it *came from*, not the
+  caller's;
+- is flagged statically with warning `W0512` if it contains effectful calls.
 
 ```console
 $ aura eval main.aura --allow-read=.
@@ -32,18 +34,20 @@ $ aura eval main.aura --allow-read=.
    ╭─[ evil_dependency.aura:2:7 ]
 ```
 
-Живой пример — `examples/security_demo/`.
+There is a runnable version of this in `examples/security_demo/`.
 
 ## Supply chain
 
-- Версия пакета обязательна в самом импорте: `import github/acme/pkg@v1.2 as p`.
-- `aura.lock` фиксирует точную версию и sha256 содержимого; подмена — `E0402`.
-- `--frozen` (режим CI) запрещает резолв мимо лока (`E0403`).
-- Сеть существует только в `aura add`; вычисление всегда оффлайн.
+- A package's version is mandatory in the import itself:
+  `import github/acme/pkg@v1.2 as p`.
+- `aura.lock` pins the exact version and a SHA-256 of the contents; a substitution
+  is `E0402`.
+- `--frozen` (the CI mode) forbids resolving outside the lock (`E0403`).
+- The network exists only in `aura add`; evaluation is always offline.
 
-## Детерминизм
+## Determinism
 
-- `now()` не существует (`E0533`) — время передаёт хост через `env`.
-- Порядок ключей вывода = порядок объявления; два прогона побайтно идентичны.
-- `--dry-run` выполняет всё вычисление, но не пишет ни JSON, ни лок,
-  и отчитывается о каждом чтении: `[dry-run] read: ./Cargo.toml`.
+- `now()` does not exist (`E0533`) — the host passes time in through `env`.
+- Output key order is declaration order; two runs are byte-identical.
+- `--dry-run` performs the whole evaluation but writes neither JSON nor the lock,
+  and reports every read: `[dry-run] read: ./Cargo.toml`.

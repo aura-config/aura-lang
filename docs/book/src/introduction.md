@@ -1,19 +1,21 @@
-# Введение
+# Introduction
 
-**Aura** — конфигурационный язык, который компилируется в JSON/YAML/TOML.
-Он создан вокруг трёх обещаний:
+**Aura** is a configuration language that compiles to JSON, YAML or TOML. It is
+built around three promises:
 
-1. **Детерминизм по построению.** Два запуска дают побайтно одинаковый результат.
-   В языке нет `now()`, случайности и неявного доступа к окружению — всё внешнее
-   (файлы, переменные среды) приходит только через явные права, выданные при запуске.
-2. **Безопасность цепочки поставок.** Импортированный пакет физически не может
-   читать ваши файлы и переменные окружения — capability-модель в стиле Deno,
-   но строже: даже вызов *экспортированной функции* пакета выполняется с правами
-   пакета, а не вашими.
-3. **Валидация до деплоя.** Схемы с типами, `assert`-инварианты, статический
-   анализ мёртвого кода — ошибки конфигурации ловятся при сборке, а не в проде.
+1. **Deterministic by construction.** Two runs produce byte-identical output. The
+   language has no `now()`, no randomness and no implicit access to the
+   environment — everything external (files, environment variables) arrives only
+   through rights granted explicitly at the point of running it.
+2. **Supply-chain safety.** An imported package physically cannot read your files
+   or environment variables. The capability model is Deno's idea, applied more
+   strictly: even calling a package's *exported function* runs with the package's
+   rights rather than yours.
+3. **Validated before deploy.** Typed schemas, `assert` invariants and static
+   dead-code analysis mean configuration mistakes surface at build time instead of
+   in production.
 
-## Как это выглядит
+## What it looks like
 
 ```ruby
 type Service
@@ -21,10 +23,10 @@ type Service
   port: Int
 end
 
-base_port = 8000 # приватное вычисление
+base_port = 8000 # a private computation
 is_prod   = env("APP_ENV", "dev") == "production"
 
-api: new Service # свойство — попадает в вывод
+api: new Service # a property — this reaches the output
   name: "api"
   port: base_port + 1
 end
@@ -37,19 +39,22 @@ assert base_port > 1024, "privileged ports are not allowed"
 aura eval app.aura --allow-env=APP_ENV
 ```
 
-## Кому это нужно
+## Who it is for
 
-- **DevOps/SRE**: манифесты k8s, CI-матрицы, конфиги сервисов — без копипасты
-  YAML и с проверкой схем до `kubectl apply`.
-- **Платформенным командам**: публикуемые пакеты стандартов (`pub def`/`pub type`)
-  с версиями и integrity-локом.
-- **Разработчикам приложений**: одна `.aura`-декларация → JSON/YAML/TOML для
-  любого потребителя; для Rust — прямое встраивание библиотекой.
+- **DevOps and SRE**: Kubernetes manifests, CI matrices, service configs — without
+  copy-pasted YAML, and schema-checked before `kubectl apply`.
+- **Platform teams**: publishable packages of standards (`pub def` / `pub type`),
+  versioned and locked by integrity hash.
+- **Application developers**: one `.aura` declaration becomes JSON, YAML or TOML
+  for any consumer; in Rust it embeds directly as a library.
 
-## Где что лежать
+## Where things are
 
-- Эта книга — учебник и справочник для *пользователя языка*.
-- [SPEC.ru.md](https://github.com/aura-config/aura-lang/blob/main/SPEC.ru.md) —
-  формальная спецификация для разработчиков реализации.
-- [examples/](https://github.com/aura-config/aura-lang/tree/main/examples) —
-  10 работающих примеров с ожидаемыми выводами.
+- This book is the tutorial and reference for *using the language*.
+- [SPEC.md](https://github.com/aura-config/aura-lang/blob/main/SPEC.md) is the
+  formal specification, for anyone implementing it.
+- [examples/](https://github.com/aura-config/aura-lang/tree/main/examples) holds
+  working examples with their expected output.
+
+> This book is also available [in Russian](ru/). (The path is relative to the
+> book's root: the Russian translation is published under `/book/ru/`.)

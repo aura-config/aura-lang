@@ -543,7 +543,8 @@ Aura is in working-preview status (v0.1): all six specification phases are imple
 - [x] Syntax highlighting: VS Code (TextMate + auto-indent), Vim/Neovim,
       nano - [editors/](editors/README.md)
 - [ ] A tree-sitter grammar (Helix, Zed, Neovim, GitHub Linguist)
-- [x] A documentation book ([docs/book/](docs/book/)): a tutorial (6 chapters),
+- [x] A documentation book ([docs/book/](docs/book/), with a full Russian
+      translation at [docs/book-ru/](docs/book-ru/)): a tutorial (6 chapters),
       guides (security, formats, embedding), a CLI/method reference,
       and a full error-code catalog; built in CI, deployed to Pages - after
       the repository is published

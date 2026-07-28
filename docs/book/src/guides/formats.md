@@ -1,8 +1,9 @@
-# Форматы: TOML, JSON, YAML
+# Formats: TOML, JSON, YAML
 
-## Чтение
+## Reading
 
-Три парсера — методы строки; результат — обычные объекты/списки Aura:
+The three parsers are string methods, and they return ordinary Aura objects and
+lists:
 
 ```ruby
 cargo = read_file("./Cargo.toml").parse_toml()
@@ -15,21 +16,21 @@ service:
 end
 ```
 
-Целые числа всех форматов приходят как `Int` (без потери точности),
-ошибки парсинга — `E0314` с сообщением исходной библиотеки.
+Integers from every format arrive as `Int`, with no loss of precision. A parse
+failure is `E0314`, carrying the underlying library's message.
 
-## Запись
+## Writing
 
-Из CLI — флагом:
+From the CLI, with a flag:
 
 ```console
-aura eval app.aura --format json       # по умолчанию, pretty
-aura eval app.aura --format json-flat  # плоские ключи: a.b.c = 1
+aura eval app.aura --format json       # the default, pretty-printed
+aura eval app.aura --format json-flat  # flattened keys: a.b.c = 1
 aura eval app.aura --format yaml
-aura eval app.aura --format toml       # требует объект на верхнем уровне
+aura eval app.aura --format toml       # requires an object at the top level
 ```
 
-Изнутри языка — методами (полезно для вложенных конфигов-строк):
+From inside the language, with methods — useful for configs nested as strings:
 
 ```ruby
 configmap:
@@ -37,12 +38,12 @@ configmap:
 end
 ```
 
-Ограничения TOML честно превращаются в ошибки `E0603`: нет `null`,
-на верхнем уровне обязан быть объект.
+TOML's limitations become honest `E0603` errors: it has no `null`, and it requires
+an object at the top level.
 
-## Aura как конвертер
+## Aura as a converter
 
-Поскольку язык читает и пишет все три формата, миграция — однострочник:
+Because the language reads and writes all three formats, a migration is one line:
 
 ```ruby
 # convert.aura
@@ -53,5 +54,5 @@ config: read_file("./legacy.toml").parse_toml()
 aura eval convert.aura --allow-read=. --format yaml
 ```
 
-В отличие от `yq`/`jq`, по пути доступны схемы, `assert` и `merge`
-нескольких источников — конвертация с гарантиями.
+Unlike `yq` or `jq`, schemas, `assert` and merging several sources are available
+along the way — conversion with guarantees.

@@ -1,12 +1,13 @@
-# Время без сюрпризов
+# Time without surprises
 
-## now() не существует
+## now() does not exist
 
-Вызов `now()` или `timestamp()` — ошибка `E0533`. Это не пробел, а дизайн-решение
-(D13): текущее время сделало бы конфиг невоспроизводимым — сломались бы
-`--dry-run`-сравнения, кэши и сама идея «два прогона дают одинаковый результат».
+Calling `now()` or `timestamp()` is error `E0533`. This is not an omission but a
+design decision (D13): the current time would make a config irreproducible,
+breaking `--dry-run` comparisons, caching, and the whole idea that two runs give
+the same result.
 
-Если время сборки действительно нужно — его передаёт **хост**:
+If you genuinely need the build time, the **host** passes it in:
 
 ```ruby
 built_at: env("BUILD_TIME", "unknown")
@@ -16,12 +17,13 @@ built_at: env("BUILD_TIME", "unknown")
 BUILD_TIME=$(date -u +%FT%TZ) aura eval app.aura --allow-env=BUILD_TIME
 ```
 
-Решение о времени принимает и фиксирует запускающая сторона, конфиг остаётся
-чистой функцией от входов.
+The decision about time is made and recorded by whoever runs the tool, and the
+config stays a pure function of its inputs.
 
-## Длительности
+## Durations
 
-Таймауты и TTL — строки с единицами `d`/`h`/`m`/`s`, парсятся в секунды (Int):
+Timeouts and TTLs are strings with `d` / `h` / `m` / `s` units, parsed into
+seconds as an `Int`:
 
 ```ruby
 ttl = "1h30m".parse_duration() # → 5400
@@ -31,25 +33,25 @@ cache:
 end
 ```
 
-Дальше — обычная целочисленная арифметика: сложение, вычитание, «перевести
-сутки в часы» и т.п. Некорректная строка — `E0319`.
+From there it is ordinary integer arithmetic: adding, subtracting, converting a
+day into hours. A malformed string is `E0319`.
 
-## Даты
+## Dates
 
-RFC3339 ↔ epoch-секунды (UTC):
+RFC 3339 ↔ epoch seconds, in UTC:
 
 ```ruby
-start = "2026-07-18T22:00:00Z".parse_datetime()      # → epoch Int
+start = "2026-07-18T22:00:00Z".parse_datetime()      # → an epoch Int
 window:
   start: start
   end: (start + "4h".parse_duration()).format_datetime()
-  # → "2026-07-19T02:00:00Z" — переход через полночь корректен
+  # → "2026-07-19T02:00:00Z" — crossing midnight works correctly
 end
 ```
 
-Поддерживаются смещения (`+02:00` указывает на тот же момент времени)
-и короткая форма даты (`"2026-07-18"` — полночь UTC). Некорректная дата — `E0320`.
+Offsets are supported (`+02:00` denotes the same instant), as is the short date
+form (`"2026-07-18"` is midnight UTC). A malformed date is `E0320`.
 
-Календарная арифметика высокого уровня («+3 месяца», рабочие дни, таймзоны) —
-намеренно не в ядре: это территория будущих пакетов сообщества поверх
-epoch-примитивов.
+Higher-level calendar arithmetic — "plus three months", working days, time zones —
+is deliberately outside the core. That is territory for community packages built
+on top of these epoch primitives.

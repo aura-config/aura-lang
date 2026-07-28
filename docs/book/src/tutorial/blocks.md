@@ -1,14 +1,14 @@
-# Блоки и области видимости
+# Blocks and scopes
 
-Конфиг редко бывает плоским. В Aura есть две формы вложенности, и различаются
-они не выводом, а тем, **что разрешено писать внутри**.
+Configuration is rarely flat. Aura has two forms of nesting, and they differ not
+in what they output but in **what you are allowed to write inside**.
 
-| Форма | Что внутри | В JSON |
+| Form | What goes inside | In JSON |
 | --- | --- | --- |
-| `key:` … `end` | только свойства — данные | вложенный объект |
-| `domain "имя"` … `end` | свойства **и вычисления** (`=`, `shadow`, `assert`, `def`) | объект под ключом-меткой |
+| `key:` … `end` | properties only — data | a nested object |
+| `domain "name"` … `end` | properties **and computations** (`=`, `shadow`, `assert`, `def`) | an object under the label as key |
 
-## Литерал объекта: просто данные
+## An object literal: just data
 
 ```ruby
 security:
@@ -21,12 +21,12 @@ end
 { "security": { "tls": true, "min_version": "1.3" } }
 ```
 
-Внутри допустимы только свойства. Нужны вычисления — берите `domain`.
+Only properties are allowed inside. If you need computations, use `domain`.
 
-## `domain` — секция со своей областью видимости
+## `domain` — a section with its own scope
 
-Метка становится ключом, а тело — полноценная область: `=`, `shadow`, `assert`
-работают:
+The label becomes the key, and the body is a full scope: `=`, `shadow` and
+`assert` all work.
 
 ```ruby
 domain "prod"
@@ -39,33 +39,35 @@ end
 { "prod": { "replicas": 3, "region": "eu-central" } }
 ```
 
-Метка может быть выражением, не только строковым литералом.
+The label can be any expression, not only a string literal.
 
-## Область видимости и `shadow`
+## Scope and `shadow`
 
-Внешние переменные видны, но их перекрытие требует явного `shadow` (D7):
+Outer variables are visible, but overriding one requires an explicit `shadow`
+(D7):
 
 ```ruby
 port = 80
 
 domain "prod"
-  shadow port = 443 # без `shadow` — E0302
+  shadow port = 443 # without `shadow` this is E0302
   listen: port      # 443
 end
 
-fallback: port # 80 — снаружи ничего не изменилось
+fallback: port # 80 — nothing outside changed
 ```
 
-Это прямой ответ на вопрос «почему в проде другой порт»: перекрытие видно в коде.
+This is the direct answer to "why is the port different in production": the
+override is visible in the code.
 
-## Списки объектов: `map` без лишних ключевых слов
+## Lists of objects: `map`, with no extra keywords
 
-Тело лямбды — тоже область видимости (D17), поэтому элементы списка описываются
-напрямую, включая приватные вычисления:
+A lambda body is a scope too (D17), so list elements are described directly,
+private computations included:
 
 ```ruby
 services: ["api", "web"].map (n, i) ->
-  base = 8000 # приватно: в JSON не попадёт
+  base = 8000 # private: never reaches the JSON
   name: n
   port: base + i
 end
@@ -80,15 +82,15 @@ end
 }
 ```
 
-Поле `name` здесь — обычное свойство, которое вы пишете сами. Раньше эту строку
-неявно вставляло ключевое слово `component`; оно убрано в D17 — язык не
-добавляет полей за вашей спиной.
+The `name` field here is an ordinary property that you write yourself. A `component`
+keyword used to insert that line implicitly; D17 removed it, because the language
+should not add fields behind your back.
 
-## Что выбрать
+## Which to use
 
-- **Только данные** → `key:` … `end`.
-- **Данные плюс вычисления** → `domain`.
-- **Список объектов** → `map` с телом-лямбдой; блок не нужен.
+- **Data only** → `key:` … `end`.
+- **Data plus computation** → `domain`.
+- **A list of objects** → `map` with a lambda body; no block needed.
 
-Общее правило: **тела кода** (`def`, лямбда, `domain`) — это области видимости;
-**литерал объекта** — это данные.
+The general rule: **code bodies** (`def`, a lambda, `domain`) are scopes; an
+**object literal** is data.

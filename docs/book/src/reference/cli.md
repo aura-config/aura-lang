@@ -13,61 +13,63 @@ aura --version
 
 ## eval
 
-Вычисляет манифест со всеми импортами и печатает результат.
+Evaluates a manifest with all its imports and prints the result.
 
-| Флаг | Действие |
+| Flag | Effect |
 | --- | --- |
-| `--strict` | предупреждения анализа (всех модулей) блокируют; лишние поля схем — ошибка `E0513` |
-| `--dry-run` | полное вычисление, но ни вывод, ни `aura.lock` не записываются; отчёт `[dry-run] read/would write` |
-| `--frozen` | зависимости строго по `aura.lock` (`E0403` при расхождении), лок не переписывается — режим CI |
-| `--allow-read=<dir>` | право на `read_file()` внутри каталога (повторяемый) |
-| `--allow-env[=A,B]` | право на `env()`: список имён либо все |
-| `--allow-imports-io` | выдать импортам права корня |
-| `--format` | `json` (по умолчанию) / `json-flat` / `yaml` / `toml` |
-| `-o, --output <file>` | записать в файл вместо stdout |
-| `--registry-dir=<dir>` | каталог кэша пакетов (по умолчанию `~/.aura/registry`) |
+| `--strict` | analysis warnings (from every module) become blocking; extra schema fields are error `E0513` |
+| `--dry-run` | a full evaluation, but neither the output nor `aura.lock` is written; reports `[dry-run] read/would write` |
+| `--frozen` | dependencies strictly per `aura.lock` (`E0403` on a mismatch), and the lock is never rewritten — the CI mode |
+| `--allow-read=<dir>` | permits `read_file()` inside that directory (repeatable) |
+| `--allow-env[=A,B]` | permits `env()`: either a list of names, or all of them |
+| `--allow-imports-io` | extends the root's rights to imported modules |
+| `--format` | `json` (default), `json-flat`, `yaml` or `toml` |
+| `-o, --output <file>` | write to a file instead of stdout |
+| `--registry-dir=<dir>` | the package cache directory (default `~/.aura/registry`) |
 
 ## check
 
-Только lex + parse + статический анализ — быстрый гейт для pre-commit и CI.
+Lex, parse and static analysis only — a fast gate for pre-commit hooks and CI.
 
 ## fmt
 
-Канонический форматтер: отступы (2 пробела/уровень по токен-глубине), внутристрочные
-пробелы, колоночное выравнивание прогонов `name = value`, `key: value` и арок `cond`
-вместе с хвостовыми комментариями. Строки и содержимое block strings не трогаются;
-поток токенов гарантированно не меняется, форматирование идемпотентно.
-`--check` — только проверить (exit 1 при отличиях).
+The canonical formatter: indentation (two spaces per level, by token depth),
+intra-line spacing, and column alignment of runs of `name = value`, `key: value`
+and `cond` arms together with their trailing comments. Strings and the contents of
+block strings are left alone; the token stream is guaranteed not to change, and
+formatting is idempotent. `--check` only checks, exiting 1 if anything differs.
 
 ## types
 
-Генерация типов host-языка из объявлений `type` и `enum`:
+Generates host-language types from the `type` and `enum` declarations:
 
 ```console
 aura types config.aura --lang ts
 ```
 
-Одна схема и валидирует конфиг, и типизирует сервис, который читает JSON. Enum
-превращается в юнион строковых литералов (TS), enum с `#[serde(rename)]` (Rust)
-или тип-строку с типизированными константами (Go). Опциональные поля (D15) —
-обязательные в выводе: вычисление всегда вставляет дефолт. Только парсинг —
-манифест не вычисляется, capability не задействованы. `--out` пишет в файл.
+One schema both validates the config and types the service that reads its JSON.
+An enum becomes a string-literal union (TypeScript), an enum with
+`#[serde(rename)]` (Rust), or a named string with typed constants (Go). Optional
+fields (D15) are emitted as required, because evaluation always substitutes the
+default. Parsing only: the manifest is not evaluated and no capabilities are
+involved. `--out` writes to a file.
 
-Вывод сразу канонический для форматтера host-языка: `rustfmt --check`, `gofmt -l`
-и `prettier --check` на сгенерированных файлах молчат. Сгенерированное можно
-коммитить в репозиторий сервиса без форматного шума в диффах.
+The output is already canonical for the host language's formatter — `rustfmt
+--check`, `gofmt -l` and `prettier --check` stay silent on the generated files —
+so it can be committed into a service's repository without formatting churn in
+diffs.
 
 ## add
 
-Установка пакета: скачивание (`github/<owner>/<repo>` → `package.aura` тега
-`vX.Y.Z`; точная версия обязательна), валидация, запись в кэш, фиксация
-в `./aura.lock` с sha256. `--from <file>` — установка из локального файла.
-Единственная сетевая команда.
+Installs a package: downloading it (`github/<owner>/<repo>` → `package.aura` at
+tag `vX.Y.Z`; an exact version is mandatory), validating it, writing it to the
+cache and recording it in `./aura.lock` with a SHA-256. `--from <file>` installs
+from a local file instead. This is the only command that uses the network.
 
-## Exit-коды
+## Exit codes
 
-| Код | Смысл |
+| Code | Meaning |
 | --- | --- |
-| 0 | успех |
-| 1 | диагностики (ошибки языка, провал assert, блокирующий strict) |
-| 2 | ошибки I/O и аргументов |
+| 0 | success |
+| 1 | diagnostics (language errors, a failed assert, a blocking strict warning) |
+| 2 | I/O and argument errors |

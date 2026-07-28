@@ -1,8 +1,8 @@
 [book]
-title = "Язык Aura"
-description = "Безопасный, детерминированный конфигурационный язык"
+title = "The Aura Language"
+description = "A configuration language with schemas, assertions and capability-gated I/O"
 authors = ["Aura contributors"]
-language = "ru"
+language = "en"
 src = "src"
 
 [output.html]

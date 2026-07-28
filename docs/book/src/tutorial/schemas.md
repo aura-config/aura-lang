@@ -1,8 +1,8 @@
-# Схемы и валидация
+# Schemas and validation
 
-## Схемы
+## Schemas
 
-`type` объявляет схему, `new` — инстанцирует с проверкой:
+`type` declares a schema; `new` instantiates one with checking:
 
 ```ruby
 type Container
@@ -18,21 +18,21 @@ main: new Container
 end
 ```
 
-Проверки при инстанцировании:
+What is checked at instantiation:
 
-| Ситуация | Код | Когда |
+| Situation | Code | When |
 | --- | --- | --- |
-| Отсутствует поле схемы | `E0511` | всегда |
-| Неверный тип (`Int` vs `String`, `Int` vs `Float`) | `E0512` | всегда |
-| Лишнее поле, не объявленное в схеме | `E0513` | только `--strict` |
+| A schema field is missing | `E0511` | always |
+| Wrong type (`Int` vs `String`, `Int` vs `Float`) | `E0512` | always |
+| An extra field the schema does not declare | `E0513` | `--strict` only |
 
-Типы полей: `String`, `Int`, `Float`, `Bool`, `List`, `Object`.
-`Int` и `Float` — раздельные типы: лимиты памяти в байтах и 64-битные
-идентификаторы не теряют точность (`E0304` на переполнении, а не тихий wrap).
+Field types are `String`, `Int`, `Float`, `Bool`, `List` and `Object`. `Int` and
+`Float` are separate types, so memory limits in bytes and 64-bit identifiers keep
+their precision — overflow is `E0304`, not a silent wrap.
 
 ## assert
 
-Произвольные инварианты — statement `assert`:
+Arbitrary invariants are the `assert` statement:
 
 ```ruby
 admins = [187650342, 244179081]
@@ -40,21 +40,21 @@ assert admins.uniq().len() == admins.len(), "Duplicate admin ids"
 assert admins.len() >= 1
 ```
 
-Провал — `E0530` с вашим сообщением и точной позицией. `assert` работает
-и в `--dry-run` — тестовый прогон обязан находить отказ валидации.
+A failure is `E0530`, with your message and an exact position. `assert` also runs
+under `--dry-run`: a rehearsal has to be able to find a validation failure.
 
-## fail в выражениях
+## fail inside an expression
 
-Для валидации внутри выражения есть `fail`:
+For validation in the middle of an expression there is `fail`:
 
 ```ruby
 port: p > 0 && p < 65536 ? p : fail("invalid port #{p}")
 ```
 
-## Закрытые наборы: `enum`
+## Closed sets: `enum`
 
-Поле `String` принимает любую строку — опечатка в значении доезжает до прода.
-`enum` задаёт закрытый набор допустимых строк:
+A `String` field accepts any string, so a typo in a value rides all the way to
+production. `enum` declares a closed set of permitted strings:
 
 ```ruby
 enum Tier
@@ -67,23 +67,24 @@ type Service
 end
 
 svc: new Service
-  tier: "backand" # E0514 + подсказка «did you mean "backend"?»
+  tier: "backand" # E0514, with "did you mean \"backend\"?"
 end
 ```
 
-Член `enum` — **обычная строка**: в JSON попадёт `"backend"`, никакой обёртки не
-появится. Это ограничение на значение, а не новый тип данных.
+An `enum` member is **an ordinary string**: the JSON contains `"backend"` and no
+wrapper appears. It constrains the value; it does not introduce a new data type.
 
-`pub enum` экспортируется importer'ам (D12). Члены резолвятся там, где объявлена
-схема, поэтому импортированная схема проверяется против `enum` своего модуля —
-даже если у вас в области видимости есть одноимённый.
+`pub enum` is exported to importers (D12). Members resolve where the schema is
+declared, so an imported schema is validated against its own module's `enum` —
+even if you have one of the same name in scope.
 
-## Статический анализ
+## Static analysis
 
-`aura check` (и автоматически перед каждым `eval`) находит проблемы до запуска:
+`aura check` — and automatically before every `eval` — finds problems before
+anything runs:
 
-- `E0504` — использование необъявленной переменной (в том числе внутри `#{...}`);
-- `W0501/W0502/W0503` — неиспользуемые переменные / импорты / функции и типы;
-- `W0512` — эффектный вызов (`env`, `read_file`) в импортированном модуле.
+- `E0504` — use of an undeclared variable, including inside `#{...}`;
+- `W0501` / `W0502` / `W0503` — unused variables, imports, functions and types;
+- `W0512` — an effectful call (`env`, `read_file`) in an imported module.
 
-В `--strict` предупреждения становятся ошибками — режим для CI.
+Under `--strict` warnings become errors. That is the mode for CI.

@@ -73,15 +73,19 @@ jobs:
           find examples -name '*.aura' -print0 | xargs -0 ./target/debug/aura fmt --check
 
   docs:
-    name: Build docs book
+    name: Build both books
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: peaceiris/actions-mdbook@v2
         with:
           mdbook-version: latest
+      # English is primary, Russian is a full translation. A broken link or a
+      # SUMMARY entry pointing at a missing file only surfaces when the book is
+      # actually built, so both are built here.
       - run: mdbook build docs/book
-      # Деплой на GitHub Pages — после публикации репозитория
+      - run: mdbook build docs/book-ru
+      # Deployment to GitHub Pages lives in pages.yml
 
   strict-gate:
     name: Reference manifest (--strict analysis is intentionally red-tested in conformance)

@@ -1,0 +1,11 @@
+[book]
+title = "Язык Aura"
+description = "Конфигурационный язык со схемами, проверками и I/O по правам"
+authors = ["Aura contributors"]
+language = "ru"
+src = "src"
+
+[output.html]
+default-theme = "rust"
+git-repository-url = "https://github.com/aura-config/aura-lang"
+edit-url-template = "https://github.com/aura-config/aura-lang/edit/main/docs/book-ru/{path}"

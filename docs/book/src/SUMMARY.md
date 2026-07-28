@@ -1,25 +1,25 @@
-# Оглавление
+# Summary
 
-[Введение](introduction.md)
+[Introduction](introduction.md)
 
-# Учебник
+# Tutorial
 
-- [Быстрый старт](tutorial/quick-start.md)
-- [Вычисления и вывод: `=` против `:`](tutorial/bindings.md)
-- [Блоки и области видимости](tutorial/blocks.md)
-- [Схемы и валидация](tutorial/schemas.md)
-- [Функции и методы](tutorial/functions.md)
-- [Модули и пакеты](tutorial/packages.md)
-- [Время без сюрпризов](tutorial/time.md)
+- [Quick start](tutorial/quick-start.md)
+- [Computing and exporting: `=` versus `:`](tutorial/bindings.md)
+- [Blocks and scopes](tutorial/blocks.md)
+- [Schemas and validation](tutorial/schemas.md)
+- [Functions and methods](tutorial/functions.md)
+- [Modules and packages](tutorial/packages.md)
+- [Time without surprises](tutorial/time.md)
 
-# Руководства
+# Guides
 
-- [Модель безопасности](guides/security.md)
-- [Форматы: TOML, JSON, YAML](guides/formats.md)
-- [Встраивание и вызов из других языков](guides/embedding.md)
+- [The security model](guides/security.md)
+- [Formats: TOML, JSON, YAML](guides/formats.md)
+- [Embedding, and calling from other languages](guides/embedding.md)
 
-# Справочник
+# Reference
 
 - [CLI](reference/cli.md)
-- [Встроенные методы](reference/methods.md)
-- [Коды ошибок и предупреждений](reference/error-codes.md)
+- [Built-in methods](reference/methods.md)
+- [Error and warning codes](reference/error-codes.md)

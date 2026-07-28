@@ -1,16 +1,16 @@
-# Быстрый старт
+# Quick start
 
-## Установка
+## Installing
 
 ```console
 git clone https://github.com/aura-config/aura-lang && cd aura-lang
 cargo build --release
-# бинарник: target/release/aura
+# the binary: target/release/aura
 ```
 
-## Первый манифест
+## Your first manifest
 
-Создайте `hello.aura`:
+Create `hello.aura`:
 
 ```ruby
 app_name = "hello"
@@ -34,22 +34,22 @@ $ aura eval hello.aura
 }
 ```
 
-Обратите внимание: `app_name` и `port` (объявленные через `=`) в JSON **не попали** —
-это приватные вычисления. В вывод идут только свойства (`имя:`) и блоки.
-Подробнее — в следующей главе.
+Notice that `app_name` and `port` — declared with `=` — **did not reach** the
+JSON: they are private computations. Only properties (`name:`) and blocks are
+exported. The next chapter goes into that.
 
-## Три команды, которые нужны каждый день
+## The three commands you need daily
 
 ```console
-aura eval app.aura            # вычислить → JSON в stdout
-aura check app.aura --strict  # проверить без вычисления (линтер; для CI)
-aura fmt app.aura             # канонизировать отступы
+aura eval app.aura            # evaluate → JSON on stdout
+aura check app.aura --strict  # check without evaluating (a linter; for CI)
+aura fmt app.aura             # canonicalise the layout
 ```
 
-## Структура без боли
+## Structure without the pain
 
-Aura не использует значимые отступы (травмы YAML лечатся здесь). Структуру
-задают переносы строк и явное `end`:
+Aura has no significant indentation — this is where YAML scar tissue heals.
+Structure comes from line breaks and an explicit `end`:
 
 ```ruby
 server:
@@ -62,5 +62,5 @@ server:
 end
 ```
 
-Отступы — только для людей; `aura fmt` приводит их к канону автоматически
-и гарантированно не меняет смысл (поток токенов до/после идентичен).
+Indentation is for humans only. `aura fmt` canonicalises it automatically and is
+guaranteed not to change meaning: the token stream before and after is identical.

@@ -1,68 +1,69 @@
-# Вычисления и вывод: `=` против `:`
+# Computing and exporting: `=` versus `:`
 
-Главное правило Aura, отличающее её от YAML/JSON (аналог locals vs outputs
-в Terraform):
+The one rule that sets Aura apart from YAML and JSON — the same distinction as
+locals versus outputs in Terraform:
 
-| Форма | Смысл | В выводе? |
+| Form | Meaning | In the output? |
 | --- | --- | --- |
-| `x = expr` | приватная переменная | нет |
-| `key: expr` | свойство | **да** |
-| `domain "name" ... end` | блок | **да** (ключ = имя) |
+| `x = expr` | a private variable | no |
+| `key: expr` | a property | **yes** |
+| `domain "name" ... end` | a block | **yes** (the key is the name) |
 
 ```ruby
-base = 8000     # вычисление
-port: base + 80 # вывод: {"port": 8080}
+base = 8000     # a computation
+port: base + 80 # output: {"port": 8080}
 ```
 
-Благодаря этому анализ мёртвого кода точен: неиспользуемая `=`-переменная —
-всегда настоящий мусор (`W0501`), а не «может, это чей-то вывод».
+This is what makes dead-code analysis exact: an unused `=` variable is always
+genuine litter (`W0501`), never "perhaps someone's output".
 
-## Иммутабельность
+## Immutability
 
-Повторное присваивание в одной области — ошибка:
+Assigning twice in the same scope is an error:
 
 ```ruby
 x = 1
 x = 2 # E0301: variable 'x' is immutable
 ```
 
-## Явное затенение
+## Shadowing is explicit
 
-Переопределить внешнюю переменную во вложенном блоке можно только явно:
+Redefining an outer variable inside a nested block requires saying so:
 
 ```ruby
 log_path = "/var/log/app.log"
 
 domain "debug"
-  log_path        = "/tmp/debug.log" # E0302: требуется shadow
-  shadow log_path = "/tmp/debug.log" # ок — намерение видно в diff'е
+  log_path        = "/tmp/debug.log" # E0302: shadow is required
+  shadow log_path = "/tmp/debug.log" # fine — the intent shows up in the diff
   path: log_path                     # → "/tmp/debug.log"
 end
 ```
 
-«Почему в проде другой путь?» больше не тихий сюрприз — затенение всегда
-видно по слову `shadow`.
+"Why is the path different in production?" stops being a silent surprise:
+shadowing is always visible as the word `shadow`.
 
-## Строки и интерполяция
+## Strings and interpolation
 
 ```ruby
 name = "auth"
 image: "company/#{name}:v#{1 + 1}" # → "company/auth:v2"
 ```
 
-Внутри `#{...}` — обычный синтаксис выражений: кавычки вложенных строк
-не экранируются (`"#{list.join(", ")}"` — валидно).
+Inside `#{...}` the ordinary expression syntax applies, and quotes in nested
+strings need no escaping — `"#{list.join(", ")}"` is valid.
 
-## Доступ к данным
+## Reaching into data
 
-Точка — для полей, скобки — только для индексов списков:
+A dot is for fields; brackets are only for list indices:
 
 ```ruby
-version:  cfg.package.version         # обычные ключи
-special:  cfg."ключ с пробелом"       # любой ключ — строкой
-dynamic:  cfg.envs."#{region}"        # динамический ключ
-first:    apps[0].name                # индекс (за границами — E0317)
-optional: cfg.get("maybe", "default") # промах → default, не ошибка
+version:  cfg.package.version         # ordinary keys
+special:  cfg."key with a space"      # any key, as a string
+dynamic:  cfg.envs."#{region}"        # a computed key
+first:    apps[0].name                # an index (out of range is E0317)
+optional: cfg.get("maybe", "default") # a miss returns the default, not an error
 ```
 
-Опечатка в имени поля — ошибка `E0308` с точной позицией, а не молчаливый `null`.
+A typo in a field name is error `E0308` with an exact position, not a silent
+`null`.

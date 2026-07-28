@@ -1,38 +1,39 @@
-# Модули и пакеты
+# Modules and packages
 
-## Импорты
+## Imports
 
 ```ruby
-import "templates/defaults.aura" as defaults # файл, относительно текущего
-import github/acme/aura-k8s@v1.2 as k8s      # пакет из registry, версия обязательна
+import "templates/defaults.aura" as defaults # a file, relative to this one
+import github/acme/aura-k8s@v1.2 as k8s      # a registry package; the version is mandatory
 ```
 
-Циклические импорты обнаруживаются с полной цепочкой:
+Cyclic imports are reported with the whole chain:
 `E0401: cyclic import: a.aura -> b.aura -> a.aura`.
 
-## Что экспортирует модуль
+## What a module exports
 
-Модуль отдаёт импортёру объект: свойства, блоки и **pub**-элементы:
+A module hands the importer an object: its properties, its blocks, and its **pub**
+items.
 
 ```ruby
 # validators.aura
-pub type Service # схема — часть API
+pub type Service # the schema is part of the API
   name: String
   port: Int
 end
 
-def valid_port(p) # приватный хелпер: импортёру невидим
+def valid_port(p) # a private helper: invisible to importers
   ok: p > 0 && p < 65536
 end
 
-pub def service(name, port) # функция — часть API
+pub def service(name, port) # the function is part of the API
   name: name
   port: valid_port(port).ok ? port : fail("invalid port #{port}")
 end
 ```
 
 ```ruby
-# использование
+# using it
 import "validators.aura" as v
 
 api:    v.service("api", 8080)
@@ -42,27 +43,27 @@ worker: new v.Service
 end
 ```
 
-Ключевая гарантия безопасности: **экспортированная функция выполняется
-с правами своего модуля, а не вызывающего**. Пакет не может «одолжить» ваши
-права на чтение файлов, заставив вас вызвать его функцию.
+The key safety guarantee: **an exported function runs with its own module's
+rights, not the caller's**. A package cannot borrow your permission to read files
+by getting you to call its function.
 
-## Установка пакетов: aura add
+## Installing packages: aura add
 
 ```console
-aura add github/acme/aura-k8s@v1.2.3        # из сети (точная версия)
-aura add pkg/internal@v1.0.0 --from ./pkg.aura   # из локального файла
+aura add github/acme/aura-k8s@v1.2.3           # from the network (an exact version)
+aura add pkg/internal@v1.0.0 --from ./pkg.aura # from a local file
 ```
 
-`aura add` — **единственное место, где Aura обращается к сети**: пакет
-скачивается, валидируется, кладётся в локальный кэш (`~/.aura/registry`)
-и фиксируется в `aura.lock` с sha256-хэшем. `eval` всегда работает оффлайн.
+`aura add` is **the only place Aura touches the network**: the package is
+downloaded, validated, placed in the local cache (`~/.aura/registry`) and recorded
+in `aura.lock` with a SHA-256 hash. `eval` always works offline.
 
-## aura.lock и --frozen
+## aura.lock and --frozen
 
-- лок хранит точную версию + integrity каждого пакета;
-- подмена содержимого пакета → `E0402 integrity mismatch`;
-- в CI запускайте с `--frozen`: резолв строго по локу, отсутствие записи —
-  ошибка `E0403`, лок не переписывается.
+- the lock stores the exact version and integrity hash of every package;
+- if a package's contents change underneath it, that is `E0402 integrity mismatch`;
+- in CI, run with `--frozen`: resolution goes strictly through the lock, a missing
+  entry is `E0403`, and the lock is never rewritten.
 
-Диапазоны версий (`@v1`, `@v1.2`) резолвятся по локальному кэшу в максимальную
-подходящую (`v1.2` → `1.2.*`).
+Version ranges (`@v1`, `@v1.2`) resolve against the local cache to the highest
+match — `v1.2` selects `1.2.*`.

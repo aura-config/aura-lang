@@ -1,6 +1,6 @@
-# Встраивание и вызов из других языков
+# Embedding, and calling from other languages
 
-## Rust: библиотека
+## Rust: as a library
 
 ```toml
 [dependencies]
@@ -16,28 +16,31 @@ let opts = EvalOptions {
     ..Default::default()
 };
 let out = eval_file("config/app.aura".as_ref(), &opts)?;
-let cfg: MyConfig = serde_json::from_value(out.json)?;      // сразу в свои структуры
+let cfg: MyConfig = serde_json::from_value(out.json)?;      // straight into your own structs
 for w in &out.warnings {
     log::warn!("{w}");                                       // Display: error[E..]: ... at file:line:col
 }
 if let Some(lock) = out.updated_lockfile {
-    std::fs::write("config/aura.lock", lock)?;               // писать или нет — решает хост
+    std::fs::write("config/aura.lock", lock)?;               // writing it is the host's decision
 }
 ```
 
-Права задаёт хост-приложение — конфиг не получает больше, чем вы разрешили.
-Диагностики приходят структурированными (`code`, `severity`, `file`, `line`,
-`column`, `help`) — рендерите в свой лог как удобно.
+Rights are set by the host application — the config never gets more than you
+granted. Diagnostics arrive structured (`code`, `severity`, `file`, `line`,
+`column`, `help`), so you can render them into your own log however you like.
 
-Нюанс многопоточности: `Interpreter` не `Send`; каждый вызов `eval_file`
-самодостаточен — в async-контексте заворачивайте вызов целиком
-в `spawn_blocking`.
+A manifest that exists only in memory — a test harness, a browser, an editor
+holding unsaved buffers — goes through `eval_source` instead, which takes a map of
+name to text and resolves imports inside it.
 
-## Любой язык: subprocess
+A note on threads: `Interpreter` is not `Send`, and every `eval_file` call is
+self-contained, so in an async context wrap the whole call in `spawn_blocking`.
 
-CLI-контракт стабилен и является API: JSON в stdout, диагностики с кодами
-`E0xxx`/`W0xxx` в stderr, exit-коды `0` (успех) / `1` (диагностики) /
-`2` (I/O, аргументы).
+## Any language: a subprocess
+
+The CLI contract is stable and is an API: JSON on stdout, diagnostics with
+`E0xxx` / `W0xxx` codes on stderr, exit codes `0` (success), `1` (diagnostics),
+`2` (I/O or arguments).
 
 ```python
 import json, subprocess
@@ -48,41 +51,45 @@ if r.returncode != 0:
 config = json.loads(r.stdout)
 ```
 
-Рекомендации для прода:
+Recommended in production:
 
-- `--frozen` — зависимости строго по `aura.lock`;
-- права минимальные и явные (`--allow-read`, `--allow-env=ИМЕНА`);
-- `--format yaml|toml`, если потребителю удобнее.
+- `--frozen` — dependencies strictly as recorded in `aura.lock`;
+- minimal, explicit rights (`--allow-read`, `--allow-env=NAMES`);
+- `--format yaml|toml` if that suits the consumer better.
 
-## Мобильные и браузерные приложения
+## Mobile and browser applications
 
-Правильный паттерн — вычисление на сервере/CI:
+The right pattern is to evaluate on a server or in CI:
 
 ```text
-configs.aura ──aura eval──▶ config.json ──▶ CDN / бандл
-устройство читает готовый JSON штатным парсером платформы
+configs.aura ──aura eval──▶ config.json ──▶ CDN / bundle
+the device reads finished JSON with its platform's own parser
 ```
 
-Приложения — потребители *результата* Aura; валидация уже прошла в CI.
+Applications consume the *result* of Aura; validation already happened in CI.
 
-## Почему обёртки, а не нативные реализации
+## Why wrappers rather than native reimplementations
 
-Для YAML в каждом языке есть свой парсер, и возникает вопрос, почему у Aura не
-так. Потому что YAML — формат данных: его порт это парсер, байты → данные.
-Aura — вычисляемый язык (функции, импорты, схемы, capability, детерминизм): её
-порт это интерпретатор, который обязан **побайтово** совпадать с этим. Иначе
-один и тот же манифест даст разные значения в CI и в сервисе — то есть в
-проде. Расхождение возникает не на экзотике: наивная реализация на
-`encoding/json` в Go выдаёт `1` там, где Aura выдаёт `1.0`, и
-`1000000000000000000` там, где `1e+18`.
+Every language has its own YAML parser, so it is fair to ask why Aura does not
+work that way. Because YAML is a data format: porting it means writing a parser,
+bytes in and data out. Aura is an evaluated language — functions, imports,
+schemas, capabilities, determinism — so porting it means writing an interpreter
+that is obliged to match this one **byte for byte**. Otherwise the same manifest
+yields different values in CI and in the service, which is to say in production.
+The divergence is not exotic: a naive implementation on Go's `encoding/json`
+emits `1` where Aura emits `1.0`, and `1000000000000000000` where Aura emits
+`1e+18`.
 
-Поэтому реализация одна, а языки получают её через:
+So there is one implementation, and other languages reach it through:
 
-1. **Вычисление на этапе сборки** — основной путь. Рантайм Aura внутри вашего
-   языка не нужен вовсе, а `aura types` вдобавок сгенерирует типы под ваш JSON.
-2. **Обёртки вокруг того же ядра** — в роадмапе, по приоритету: WASM/npm
-   (закрывает Node, браузер и playground одним артефактом), затем `wazero` для
-   Go (чистый Go, без cgo) и wasmtime для Python; PyO3/UniFFI — по мере спроса.
+1. **Evaluation at build time** — the main path. No Aura runtime is needed inside
+   your language at all, and `aura types` will additionally generate types for
+   your JSON.
+2. **Wrappers around the same core** — on the roadmap, in this order: WASM/npm
+   (one artifact covers Node, the browser and a documentation playground), then
+   `wazero` for Go (pure Go, no cgo) and wasmtime for Python; PyO3 and UniFFI as
+   demand appears.
 
-Ядро уже собирается под `wasm32-unknown-unknown`; это проверяется в CI на
-каждом коммите.
+The core already builds for `wasm32-unknown-unknown`; CI checks that on every
+commit, and runs the resulting module under Node so that "it compiles" is not
+mistaken for "it works".
