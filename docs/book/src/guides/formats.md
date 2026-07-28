@@ -41,6 +41,13 @@ end
 TOML's limitations become honest `E0603` errors: it has no `null`, and it requires
 an object at the top level.
 
+`json-flat` joins nested keys with a dot, which stays unambiguous only while no key
+*contains* one. Keys written in Aura are identifiers, so they cannot — but
+`parse_json` and friends return whatever the input held, and then `{"a": {"b": 1}}`
+and `{"a.b": 2}` both want the key `a.b`. That is `E0604` rather than one value
+quietly overwriting the other. An empty object flattens to itself (`a.b: {}`); it is
+a leaf, exactly as an empty list is.
+
 ## Aura as a converter
 
 Because the language reads and writes all three formats, a migration is one line:

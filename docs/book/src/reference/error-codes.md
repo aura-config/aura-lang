@@ -89,3 +89,4 @@ logs and to refer to in discussion. `E` is an error, `W` a warning — and under
 | E0601 | a function or schema inside the exported tree | the key path is in the message; at the top level `pub` items are excluded automatically |
 | E0602 | a non-finite Float (NaN or Inf) | |
 | E0603 | a format limitation (TOML has no null; its root must be an object) | |
+| E0604 | two keys flatten to the same `json-flat` key | a key containing a dot is indistinguishable from a nested path; use `--format json`, or rename the key |

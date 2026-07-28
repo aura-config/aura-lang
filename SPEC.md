@@ -615,7 +615,7 @@ impl serde::Serialize for Value {
 
 - `Int` → a JSON integer with no precision loss (D6). `Float` with `NaN`/`Inf` is `E0602`.
 - A `Schema`/`Function` deep in the tree is `E0601` with a key path; top-level `def`/`type`/lambdas are excluded from the export.
-- Modes: `--format json` (pretty, key order = declaration order) and `--format json-flat` (`a.b.c = v`).
+- Modes: `--format json` (pretty, key order = declaration order) and `--format json-flat` (`a.b.c = v`). Flattening must be injective: an empty object is a leaf (so the key survives), and two keys mapping to the same flat key — possible only when a key contains a dot, which only parsed external data can produce — is `E0604` rather than an overwrite.
 
 ### 7.2. CLI
 

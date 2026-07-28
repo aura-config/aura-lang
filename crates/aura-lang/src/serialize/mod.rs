@@ -230,13 +230,16 @@ pub fn to_toml_string(v: &Value<'_>) -> Result<String, Diagnostic> {
 }
 
 /// `--format json-flat`: nested objects are flattened into `a.b.c`; lists and scalars are leaves.
+///
+/// Two keys can only ever map to one flattened key if a literal key contains a
+/// dot, and that is `E0604` rather than a silent overwrite — see [`flatten`].
 pub fn to_json_flat(v: &Value<'_>) -> Result<serde_json::Value, Diagnostic> {
     let json = to_json(v)?;
     let serde_json::Value::Object(map) = json else {
         return Ok(json);
     };
     let mut out = serde_json::Map::new();
-    flatten("", &serde_json::Value::Object(map), &mut out);
+    flatten("", &serde_json::Value::Object(map), &mut out)?;
     Ok(serde_json::Value::Object(out))
 }
 
@@ -244,8 +247,12 @@ fn flatten(
     prefix: &str,
     v: &serde_json::Value,
     out: &mut serde_json::Map<String, serde_json::Value>,
-) {
+) -> Result<(), Diagnostic> {
     match v {
+        // An empty object has no leaves to descend to, so recursing would drop the
+        // key altogether — present under `--format json`, gone under `json-flat`.
+        // It is a leaf, exactly as an empty list already is.
+        serde_json::Value::Object(m) if m.is_empty() => insert(prefix, v, out),
         serde_json::Value::Object(m) => {
             for (k, inner) in m {
                 let key = if prefix.is_empty() {
@@ -253,13 +260,41 @@ fn flatten(
                 } else {
                     format!("{prefix}.{k}")
                 };
-                flatten(&key, inner, out);
+                flatten(&key, inner, out)?;
             }
+            Ok(())
         }
-        leaf => {
-            out.insert(prefix.to_string(), leaf.clone());
-        }
+        leaf => insert(prefix, leaf, out),
     }
+}
+
+/// Flattening is only injective while no key contains a dot. Keys written in Aura
+/// source cannot — they are identifiers — but `parse_json`/`parse_yaml`/`parse_toml`
+/// return whatever the input held, so `{"a": {"b": 1}, "a.b": 2}` reaches here and
+/// both halves want the key `a.b`.
+///
+/// Overwriting would mean two values in and one out, silently, on data that came
+/// from outside the manifest. Refusing is the only answer that cannot produce a
+/// config nobody asked for.
+fn insert(
+    key: &str,
+    value: &serde_json::Value,
+    out: &mut serde_json::Map<String, serde_json::Value>,
+) -> Result<(), Diagnostic> {
+    if out.contains_key(key) {
+        let mut d = err(
+            "E0604",
+            format!("flattened key '{key}' is ambiguous: two values map to it"),
+        );
+        d.help = Some(
+            "a key containing a dot is indistinguishable from a nested path once \
+             flattened; use --format json, or rename the key"
+                .to_string(),
+        );
+        return Err(d);
+    }
+    out.insert(key.to_string(), value.clone());
+    Ok(())
 }
 
 #[cfg(test)]
@@ -355,6 +390,86 @@ mod tests {
             let back = yaml_to_json(&docs[0]);
             assert_eq!(back, case, "round-trip changed the value:\n{text}");
         }
+    }
+
+    /// `json-flat` is what feeds naive consumers — environment variables, a
+    /// ConfigMap, a `.properties` file — so a key going missing there is a wrong
+    /// deployment, not a cosmetic difference. None of this was pinned before.
+    #[test]
+    fn flattening_keeps_every_key_and_treats_lists_as_leaves() {
+        let flat = flat_of(serde_json::json!({
+            "api": { "port": 8080, "tls": { "on": true } },
+            "tags": ["a", "b"],
+            "objs": [{ "k": 1 }],
+            "n": 1
+        }))
+        .expect("flattens");
+
+        assert_eq!(
+            flat,
+            serde_json::json!({
+                "api.port": 8080,
+                "api.tls.on": true,
+                // A list is a leaf, and an object *inside* a list is left nested:
+                // there is no sensible flat spelling of an index.
+                "tags": ["a", "b"],
+                "objs": [{ "k": 1 }],
+                "n": 1
+            })
+        );
+    }
+
+    /// An empty object used to vanish: `flatten` descended into it looking for
+    /// leaves, found none, and inserted nothing — so a key present under
+    /// `--format json` was absent under `json-flat`. An empty list never had the
+    /// problem, because a list is already a leaf.
+    #[test]
+    fn an_empty_object_survives_flattening() {
+        let flat = flat_of(serde_json::json!({
+            "empty": {},
+            "nested": { "also_empty": {} },
+            "empty_list": [],
+            "kept": 1
+        }))
+        .expect("flattens");
+
+        assert_eq!(
+            flat,
+            serde_json::json!({
+                "empty": {},
+                "nested.also_empty": {},
+                "empty_list": [],
+                "kept": 1
+            })
+        );
+    }
+
+    /// The one case where flattening is not injective. Aura source cannot write a
+    /// dotted key — keys are identifiers — but `parse_json` and friends return
+    /// whatever the file held, so this arrives from outside the manifest. Silently
+    /// letting one value overwrite the other is the failure mode worth refusing.
+    #[test]
+    fn a_dotted_key_colliding_with_a_nested_path_is_e0604() {
+        let d = flat_of(serde_json::json!({
+            "a": { "b": "from-nesting" },
+            "a.b": "from-a-literal-dotted-key"
+        }))
+        .expect_err("a collision must not silently drop a value");
+        assert_eq!(d.code, "E0604");
+        assert!(d.message.contains("a.b"), "{}", d.message);
+        assert!(d.help.is_some(), "the error must say what to do instead");
+
+        // A dotted key on its own is fine: nothing else claims that flat key.
+        let ok = flat_of(serde_json::json!({ "a.b": 1, "c": { "d": 2 } })).expect("no collision");
+        assert_eq!(ok, serde_json::json!({ "a.b": 1, "c.d": 2 }));
+    }
+
+    /// Flattening a JSON tree, without going through a `Value` — `to_json_flat`
+    /// takes the evaluator's type, and these tests are about the reshaping only.
+    fn flat_of(json: serde_json::Value) -> Result<serde_json::Value, Diagnostic> {
+        let mut out = serde_json::Map::new();
+        flatten("", &json, &mut out)?;
+        Ok(serde_json::Value::Object(out))
     }
 
     /// Test-only mirror of the evaluator's YAML bridge, so the round-trip above
