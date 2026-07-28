@@ -538,15 +538,24 @@ Aura is in working-preview status (v0.1): all six specification phases are imple
 - [x] `aura fmt` - indentation canonicalization with a token-stream-preservation guarantee
 - [x] Deterministic time: `parse_duration`/`format_duration`,
       `parse_datetime`/`format_datetime`; `now()` is forbidden by construction (D13)
-- [ ] Extended standard-library methods (`sort`, `split`, `trim`, ...)
-- [ ] LSP server
+- [x] Extended standard-library methods (`sort`, `split`, `trim`, `join`,
+      `slice`, `flatten`, `reverse`, ...) - [the method reference](docs/book/src/reference/methods.md)
+- [x] LSP server: completion, hover, go-to-definition, references, document
+      symbols, rename (with `prepare`), signature help, and format-on-save -
+      [crates/aura-lsp/](crates/aura-lsp/)
 
 **Ecosystem and distribution**:
 
-- [ ] Publication: GitHub (live CI) -> crates.io -> a release process
-      (`cargo-release`, Linux/macOS/Windows binaries on tag)
-- [ ] An official `setup-aura` GitHub Action: install the binary from
-      releases + ready-made `check --strict` / `eval --frozen --dry-run` recipes for PRs
+- [x] A release pipeline: a `v*` tag builds binaries for six targets (Linux
+      gnu/musl, aarch64, macOS Intel and Apple silicon, Windows), each with a
+      `.sha256`, after checking the tag against `Cargo.toml` -
+      [release.yml](.github/workflows/release.yml)
+- [x] A `setup-aura` GitHub Action: resolves the version, verifies the checksum
+      and puts `aura` on `PATH` - [packaging/setup-aura/](packaging/README.md).
+      The release workflow's `self-test` job installs from a real release and
+      runs the result on Linux, macOS and Windows
+- [ ] Publication: crates.io, and `setup-aura` extracted into its own repository
+      for the Marketplace - both are done when this repository becomes public
 - [x] Syntax highlighting: VS Code (TextMate + auto-indent), Vim/Neovim,
       nano - [editors/](editors/README.md)
 - [ ] A tree-sitter grammar (Helix, Zed, Neovim, GitHub Linguist)
@@ -555,8 +564,14 @@ Aura is in working-preview status (v0.1): all six specification phases are imple
       guides (security, formats, embedding), a CLI/method reference,
       and a full error-code catalog; built in CI, deployed to Pages - after
       the repository is published
+- [x] A browser playground - [playground/](playground/): the real compiler as
+      WebAssembly, multi-file, with `aura fmt` and diagnostics; nothing is
+      installed and nothing leaves the page. Deployed to Pages together with the
+      book, after the repository is published
 - [x] Usage from other languages: the subprocess pattern (Python/Node/Go) -
-      see the section above; next up: WASM/npm -> PyO3 -> C ABI on demand
+      see the section above. The WebAssembly module the playground runs on is
+      built and CI-tested ([crates/aura-wasm/](crates/aura-wasm/)); publishing it
+      to npm, then PyO3 and a C ABI, is on demand
 - [x] Cross-platform coverage: a `cargo check` matrix (freebsd, aarch64-linux,
       musl, wasm32) in CI; macOS in the test matrix
 

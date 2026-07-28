@@ -526,15 +526,24 @@ Aura находится в стадии рабочего превью (v0.1): в
 - [x] `aura fmt` — канонизация отступов с гарантией неизменности потока токенов
 - [x] Детерминированное время: `parse_duration`/`format_duration`,
       `parse_datetime`/`format_datetime`; `now()` запрещён по построению (D13)
-- [ ] Расширение стандартной библиотеки методов (`sort`, `split`, `trim`, …)
-- [ ] LSP-сервер
+- [x] Расширение стандартной библиотеки методов (`sort`, `split`, `trim`, `join`,
+      `slice`, `flatten`, `reverse`, …) — [справочник методов](docs/book-ru/src/reference/methods.md)
+- [x] LSP-сервер: автодополнение, hover, переход к определению, поиск ссылок,
+      символы документа, переименование (с `prepare`), подсказка сигнатуры и
+      форматирование при сохранении — [crates/aura-lsp/](crates/aura-lsp/)
 
 **Экосистема и дистрибуция**:
 
-- [ ] Публикация: GitHub (живой CI) → crates.io → release-процесс
-      (`cargo-release`, бинарники под Linux/macOS/Windows на тег)
-- [ ] Официальный GitHub Action `setup-aura`: установка бинарника из релизов +
-      готовые рецепты `check --strict` / `eval --frozen --dry-run` на PR
+- [x] Релизный конвейер: тег `v*` собирает бинарники под шесть целей (Linux
+      gnu/musl, aarch64, macOS Intel и Apple silicon, Windows), к каждому
+      `.sha256`, после сверки тега с `Cargo.toml` —
+      [release.yml](.github/workflows/release.yml)
+- [x] GitHub Action `setup-aura`: определяет версию, проверяет контрольную сумму
+      и кладёт `aura` в `PATH` — [packaging/setup-aura/](packaging/README.md).
+      Джоба `self-test` в релизном workflow ставит бинарник из настоящего релиза
+      и запускает его на Linux, macOS и Windows
+- [ ] Публикация: crates.io и вынос `setup-aura` в отдельный репозиторий для
+      Marketplace — оба шага выполняются в момент открытия репозитория
 - [x] Подсветка синтаксиса: VS Code (TextMate + автоотступы), Vim/Neovim,
       nano — [editors/](editors/README.md)
 - [ ] tree-sitter-грамматика (Helix, Zed, Neovim, GitHub Linguist)
@@ -543,8 +552,14 @@ Aura находится в стадии рабочего превью (v0.1): в
       руководства (безопасность, форматы, встраивание), справочник CLI/методов
       и полный каталог кодов ошибок; сборка в CI, деплой на Pages — после
       публикации репозитория
+- [x] Playground в браузере — [playground/](playground/): настоящий компилятор
+      как WebAssembly, несколько файлов, `aura fmt` и диагностика; ничего не
+      устанавливается и ничего не покидает страницу. Деплоится на Pages вместе с
+      книгой, после публикации репозитория
 - [x] Использование из других языков: subprocess-паттерн (Python/Node/Go) —
-      см. раздел выше; далее WASM/npm → PyO3 → C ABI по спросу
+      см. раздел выше. WebAssembly-модуль, на котором работает playground,
+      собран и проверяется в CI ([crates/aura-wasm/](crates/aura-wasm/));
+      публикация в npm, затем PyO3 и C ABI — по спросу
 - [x] Кросс-платформенность: `cargo check` матрица (freebsd, aarch64-linux,
       musl, wasm32) в CI; macOS в тестовую матрицу
 
