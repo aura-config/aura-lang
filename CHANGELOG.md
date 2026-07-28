@@ -5,99 +5,123 @@ All notable changes to Aura are documented here. The format follows
 [Semantic Versioning](https://semver.org/) — while `0.x`, minor releases may
 still change the language.
 
-## [Unreleased]
+## [0.1.0] — 2026-07-29
 
-### Added
-- **LSP: enum members for imported schemas and go-to-definition on registry
-  imports.** Inside `new lib.Endpoint`, a field typed by a `pub enum` in the
-  imported module now offers exactly its members (the module is read from the open
-  buffer if there is one, otherwise from disk). Go-to-definition on a registry
-  import (`org/pkg@v1.2`) opens the cached package, delegating version selection to
-  the same `LocalFsResolver` the interpreter uses, so it cannot pick a different
-  file than evaluation would. The cache location comes from the new
-  `aura.registryDir` setting (default `~/.aura/registry`).
-- **Rename in the LSP (F2)**, built on scope-precise name resolution. A new
-  `resolve` module in the core answers *which binding* an identifier refers to,
-  so `x` in a lambda and `x` at the top level are no longer conflated, and uses
-  inside `#{...}` are found. Go-to-definition and find-references use it too,
-  falling back to the old lexical sweep only while a file does not parse.
-  Rename never guesses: it refuses, with a reason, on a file with syntax errors,
-  on anything that is not a binding, on a keyword or malformed new name, on a
-  name already bound in an overlapping scope, and on `pub` items whose importers
-  are not visible. A test renames every binding in `examples/showcase` and
-  asserts the evaluated JSON stays byte-identical.
-- **`aura types`** — generate host-language types from a manifest's `type` and
-  `enum` declarations: `aura types config.aura --lang rust|ts|go`. One schema
-  then both validates the config and types the service consuming its JSON. An
-  enum maps idiomatically (Rust enum with `#[serde(rename)]`, TypeScript literal
-  union, Go named string plus constants). Parsing only — no evaluation, no
-  capabilities, deterministic output. Output is already canonical for the host
-  language's formatter (`rustfmt`, `gofmt`, `prettier`), so generated files can be
-  committed without formatting churn.
-- **`enum` (D18)** — a closed set of allowed string values, usable as a schema
-  field type. A member stays an ordinary `String`, so output is unchanged; a
-  non-member is `E0514` with a did-you-mean suggestion and the member list.
-  `pub enum` is exported (D12), and members resolve where the schema is declared,
-  so an imported schema validates against its own module's enum.
-- **`aura-lang` crate** — the library and the `aura` CLI are now a single
-  publishable crate (`cargo add aura-lang` to embed, `cargo install aura-lang`
-  for the CLI). Replaces the internal `aura-core` + `aura-cli` split.
-- **Language server** (`aura-lsp`, ships in the VS Code extension): live
-  diagnostics, context- and type-aware completion, hover, go-to-definition
-  (in-file and cross-file to an imported module's member), find-references,
-  document symbols, and formatting / format-on-save. Its completion database is
-  built by evaluating an Aura manifest with the language itself (dogfooding).
+The first release. Aura compiles readable manifests to JSON, YAML or TOML,
+with schemas, assertions that fail the build rather than the deploy, and a
+capability model in which `env()` and `read_file()` are granted per run and the
+grant does not reach imported modules.
 
-### Changed
-- **BREAKING (D17): `component` is removed, and every code body is a scope.**
-  A `def` body and a lambda body now accept statements (`=`, `shadow`,
-  `assert`), like a module or a `domain` — so a function can finally name a
-  subexpression. A list item is written as ordinary properties inside the `map`
-  lambda, with `name:` spelled out instead of injected by the keyword:
-
-  ```ruby
-  # before
-  services: names.map (n, i) ->
-    component n
-      port: 8000 + i
-    end
-  end
-
-  # after
-  services: names.map (n, i) ->
-    name: n
-    port: 8000 + i
-  end
-  ```
-
-  A block in expression position went with it. An object literal
-  (`key:` … `end`) stays data-only. Evaluated output is unchanged — the pinned
-  conformance snapshots still match byte for byte.
-- **`aura fmt` is now a canonical formatter**: besides indentation it
-  canonicalizes intra-line spacing and column-aligns runs of `name = value`,
-  `key: value`, and `cond` arms together with their trailing comments. Strings
-  and block-string interiors are untouched; the token stream is never changed
-  and formatting is idempotent (both fuzzed).
-- `aura --version` now prints just the crate version (`aura 0.1.0`).
-
-## [0.1.0] — preview
-
-First public preview. Aura compiles readable manifests to JSON/YAML/TOML.
+Nothing shipped before this, so there is nothing to migrate from and no
+compatibility section. While `0.x`, minor releases may still change the
+language.
 
 ### Language
-- Deterministic evaluation; no `now()`/randomness (D13). Durations and dates
-  are epoch integers (`parse_duration`/`parse_datetime` and their formatters).
-- Capability model (D1): imported modules have no file/env access by default.
-- `key:` properties are exported; `x =` bindings are private (D10), enabling
-  sound dead-code analysis.
-- Schemas with type-checking; optional fields with `= default` (D15).
-- Immutability with explicit `shadow` (D7); `Int`/`Float` are distinct (D6).
-- `pub def`/`pub type` packages with versioned imports + `aura.lock` (D8/D12).
-- Multi-way `cond` (D14), `range(n)`, and `text … end` block strings (D16).
-- ~50 stdlib methods across String/Int/Float/Bool/List/Object.
+
+- Deterministic evaluation. `now()` and randomness do not exist (D13); durations
+  and dates are epoch integers, via `parse_duration`/`parse_datetime` and their
+  formatters. The same manifest with the same inputs produces byte-identical
+  output.
+- `key:` properties are exported, `x =` bindings are private (D10) — which is
+  also what makes dead-code analysis sound.
+- Schemas with type checking, and optional fields through `= default` (D15).
+- **`enum` (D18)**: a closed set of allowed strings, usable as a schema field
+  type. A member is an ordinary `String`, so output is unchanged; a non-member is
+  `E0514`, with a did-you-mean suggestion and the full member list. `pub enum` is
+  exported, and members resolve where the schema is declared, so an imported
+  schema validates against its own module's enum.
+- Immutability with an explicit `shadow` (D7). `Int` and `Float` are distinct
+  types (D6).
+- Packages: `pub def` / `pub type`, versioned imports, and `aura.lock` (D8/D12).
+  An exported function runs with its *origin* module's capabilities, so
+  isolation cannot be borrowed by asking the caller to invoke it.
+- Multi-way `cond` (D14), `range(n)`, and `text … end` block strings (D16), whose
+  interiors interpolate with `#{}` while leaving braces alone — which is what
+  makes generating nginx configs and Dockerfiles practical.
+- Every code body is a scope (D17): a `def` or lambda body takes statements
+  (`=`, `shadow`, `assert`) exactly as a module does.
+- Sixty standard-library methods across String, Int, Float, Bool, List and
+  Object.
 
 ### Tooling
-- `aura eval` / `check` / `fmt` / `add`; `--strict`, `--frozen`, `--dry-run`.
-- Rich diagnostics (ariadne); JSON/YAML/TOML output.
-- Coverage-guided fuzzing (lexer, parser, pipeline, formatter).
-- Editor support: TextMate grammar + the `aura-lsp` language server.
+
+- `aura eval` / `check` / `fmt` / `types` / `add` / `docs`, with `--strict`,
+  `--frozen`, `--hermetic` and `--dry-run`. Rich diagnostics through ariadne;
+  JSON, flattened JSON, YAML and TOML output.
+- **`aura fmt` is a canonical formatter**: indentation, intra-line spacing, and
+  column-aligned runs of `name = value`, `key: value` and `cond` arms together
+  with their trailing comments. Strings and block-string interiors are untouched,
+  the token stream never changes, and formatting is idempotent — both fuzzed.
+- **`aura types`** generates host-language types from a manifest's `type` and
+  `enum` declarations (`--lang rust|ts|go`), so one schema both validates the
+  config and types the service consuming its JSON. Parsing only: no evaluation,
+  no capabilities, deterministic output, already canonical for `rustfmt`,
+  `gofmt` and `prettier`.
+- **`aura docs --agent`** prints the complete language reference — syntax,
+  standard library, every diagnostic code — assembled from the compiler's own
+  definitions, at roughly four thousand tokens. Also published as
+  [`llms.txt`](https://aura-config.github.io/aura-lang/llms.txt).
+- **Language server** (`aura-lsp`): live diagnostics, context- and type-aware
+  completion, hover, go-to-definition in-file and across modules, find
+  references, document symbols, rename (F2), signature help, and
+  formatting/format-on-save. Its completion database is built by evaluating an
+  Aura manifest with Aura itself.
+  - Rename rests on scope-precise resolution, so `x` in a lambda and `x` at the
+    top level are never conflated and uses inside `#{…}` are found. It refuses,
+    with a reason, rather than guessing: on a file with syntax errors, on
+    anything that is not a binding, on a malformed name, on a name already bound
+    in an overlapping scope, and on `pub` items whose importers it cannot see. A
+    test renames every binding in `examples/showcase` and asserts the evaluated
+    JSON stays byte-identical.
+  - Inside `new lib.Endpoint`, a field typed by an imported `pub enum` offers
+    exactly its members. Go-to-definition on a registry import opens the cached
+    package through the same resolver evaluation uses, so it cannot land on a
+    different file than the one that would be evaluated.
+- **A browser playground** — the real compiler as WebAssembly, multi-file, with
+  `aura fmt` and diagnostics. Nothing is installed and nothing leaves the page.
+- Editor support: TextMate grammar for VS Code, plus Vim/Neovim and nano.
+- The library and the CLI are one publishable crate: `cargo add aura-lang` to
+  embed, `cargo install aura-lang` for the tool. The `cli` feature is
+  detachable, which is what keeps the library free of clap, ariadne and ureq and
+  able to build for wasm.
+
+### Security and supply chain
+
+- **`--hermetic`** turns `env()` and `read_file()` into `E0505` in every module.
+  Because that is an analysis error, `aura check --hermetic` proves a manifest
+  performs no I/O without evaluating it — including for branches a given run
+  would not take.
+- Capability refusals distinguish their causes: `E0310` when nothing was
+  granted, `E0311` when a grant exists but the path resolves outside it, with
+  the allowed directories named.
+- `aura.lock` pins a package's exact version and a hash of its **token stream**
+  rather than its bytes, so reformatting or editing a comment does not fire the
+  integrity check while any change that can alter behaviour does. Locks written
+  with the older byte hash still verify, and are upgraded in place.
+- Six coverage-guided fuzz targets: lexer, parser, pipeline, formatter, codegen
+  and resolver.
+
+### Distribution
+
+- Binaries for six targets on a tag — Linux gnu and musl, aarch64 Linux, macOS
+  Intel and Apple silicon, Windows — each with a `.sha256`.
+- **[`aura-config/setup-aura@v1`](https://github.com/aura-config/setup-aura)**
+  installs the CLI in GitHub Actions, verifying the checksum before unpacking.
+  On x86_64 Linux it installs the musl build: the gnu build requires
+  `GLIBC_2.34` and does not start on Ubuntu 20.04, Debian 11, CentOS 8 or Amazon
+  Linux 2, while the static build has no such floor and is measurably faster.
+- `packaging/e2e.sh` drives the built binary through the claims this
+  documentation makes — exit codes, capability refusals, hermetic mode, output
+  formats, and byte-identical output across two runs. It runs on three operating
+  systems per push, and on a tag against the real artifacts inside five
+  containers, including aarch64 under emulation.
+
+### Performance
+
+Measured on x86_64 Linux; re-run `cargo bench -p aura-lang` on your own machine.
+
+- 258 MiB/s lexing, 178 MiB/s through the parser, **33 µs** for a full
+  lex-parse-evaluate of the reference manifest.
+- The binary is 3.5 MB, a 1.7 MB download, with link-time optimisation and no
+  symbol table. LTO is not a size-against-speed trade here: it made the binary
+  17% smaller *and* about 9% faster.

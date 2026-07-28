@@ -22,6 +22,13 @@ jobs:
           BASE_VERSION="${TAG_VERSION%%-*}"
           echo "Cargo.toml: $CARGO_VERSION, tag: $TAG_VERSION (base $BASE_VERSION)"
           test "$CARGO_VERSION" = "$BASE_VERSION"
+          # And the changelog must have a section for it. The release notes are
+          # cut from that section below, so a missing one would publish a release
+          # describing nothing.
+          grep -qF "## [$BASE_VERSION]" CHANGELOG.md || {
+            echo "::error::CHANGELOG.md has no '## [$BASE_VERSION]' section"
+            exit 1
+          }
 
   build:
     name: Build (${{ matrix.target }})
@@ -210,10 +217,31 @@ jobs:
           COUNT=$(ls aura-* | wc -l)
           test "$COUNT" -eq 12 || {
             echo "expected 12 files, found $COUNT"; exit 1; }
+      # Notes come from the changelog rather than being written twice. `verify`
+      # has already established the section exists.
+      - uses: actions/checkout@v7
+        with:
+          path: repo
+      - name: Cut the release notes from CHANGELOG.md
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${VERSION%%-*}"
+          # index() rather than a regex: a dynamic awk pattern would need `\[`,
+          # which awk folds back into a character class, and the extraction
+          # silently produces nothing. Tested before it ever ran on a tag.
+          awk -v hdr="## [$VERSION]" '
+            index($0, hdr) == 1 { on = 1; next }
+            on && index($0, "## [") == 1 { exit }
+            on { print }
+          ' repo/CHANGELOG.md > NOTES.md
+          test -s NOTES.md || { echo "::error::empty release notes"; exit 1; }
+          echo "--- notes ---"; head -20 NOTES.md
+
       - uses: softprops/action-gh-release@v3
         with:
           draft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
+          body_path: NOTES.md
           files: |
             aura-*.tar.gz
             aura-*.zip
