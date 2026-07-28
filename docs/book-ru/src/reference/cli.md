@@ -6,6 +6,7 @@ aura eval <file.aura>  [--strict] [--dry-run] [--frozen]
                        [--hermetic]
                        [--format json|json-flat|yaml|toml] [-o out] [--registry-dir=<dir>]
 aura check <file.aura> [--strict] [--hermetic]
+aura docs --agent [-o <file>]
 aura fmt <files...> [--check]
 aura types <file.aura> --lang rust|ts|go [--out <file>]
 aura add <path>@vX.Y.Z [--from <file>] [--registry-dir=<dir>]
@@ -32,6 +33,35 @@ aura --version
 ## check
 
 Только lex + parse + статический анализ — быстрый гейт для pre-commit и CI.
+
+## docs
+
+`aura docs --agent` печатает полный справочник по языку — синтаксис, стандартную
+библиотеку, все коды диагностик, — собранный из определений самого компилятора.
+Это около четырёх тысяч токенов: достаточно мало, чтобы отдать ИИ-ассистенту
+целиком.
+
+Смысл печатать его из бинарника, а не давать ссылку на страницу, — в версиях:
+вывод описывает тот `aura`, который его произвёл, и не может разойтись с ним, как
+это бывает с размещённым в сети документом.
+
+Полезнее всего дать ассистенту забрать справку самому. Одна строка в вашем
+`AGENTS.md`, `CLAUDE.md` или аналоге:
+
+```text
+Before writing or editing .aura files, run `aura docs --agent` for the complete
+language reference.
+```
+
+Либо закоммитить — для ассистентов, которые читают файлы, но не запускают команды:
+
+```console
+$ aura docs --agent -o AURA.md
+```
+
+Тот же текст публикуется по адресу
+[/llms.txt](https://aura-config.github.io/aura-lang/llms.txt) для инструментов,
+которые ходят по сети.
 
 ## fmt
 

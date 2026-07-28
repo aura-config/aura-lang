@@ -84,7 +84,7 @@ fn codes_in_book(rel: &str) -> BTreeSet<String> {
 #[test]
 fn the_english_catalogue_matches_the_compiler_exactly() {
     let source = codes_in_source();
-    let book = codes_in_book("docs/book/src/reference/error-codes.md");
+    let book = codes_in_book("crates/aura-lang/diagnostics.md");
 
     assert!(
         source.len() > 50,
@@ -112,7 +112,7 @@ fn the_english_catalogue_matches_the_compiler_exactly() {
 /// The translation must list the same codes. Wording is free; the set is not.
 #[test]
 fn the_russian_catalogue_lists_the_same_codes() {
-    let english = codes_in_book("docs/book/src/reference/error-codes.md");
+    let english = codes_in_book("crates/aura-lang/diagnostics.md");
     let russian = codes_in_book("docs/book-ru/src/reference/error-codes.md");
     let missing: Vec<_> = english.difference(&russian).collect();
     let extra: Vec<_> = russian.difference(&english).collect();

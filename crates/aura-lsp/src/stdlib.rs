@@ -9,8 +9,10 @@ use aura_lang::lexer::Lexer;
 use aura_lang::parser::Parser;
 use aura_lang::serialize::to_json;
 
-/// The manifest is embedded so the server is a single self-contained binary.
-const MANIFEST: &str = include_str!("../stdlib.aura");
+/// The manifest describes the language, not the server, so it lives in
+/// aura-lang and is shared: the language server builds completion from it and
+/// `aura docs --agent` renders the same entries. One file, two consumers.
+const MANIFEST: &str = aura_lang::STDLIB_MANIFEST;
 
 /// Aura keywords offered as completions: the lexer's reserved words (single
 /// source of truth) plus the contextual block-string opener `text` (D16).

@@ -30,7 +30,7 @@ If it changes how a manifest is **parsed, evaluated or rendered**:
 If it adds a builtin method or a CLI flag:
 
 - [ ] Documented in `SPEC.md` and in the book, and the stdlib manifest
-      (`crates/aura-lsp/stdlib.aura`) lists it, so completion and hover know
+      (`crates/aura-lang/stdlib.aura`) lists it, so completion and hover know
       about it. A test enforces that the manifest and the registry agree.
 
 If it touches diagnostics:

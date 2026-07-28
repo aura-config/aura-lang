@@ -198,6 +198,13 @@ expect_code "E0505" "the hermetic refusal is E0505"
 run check --hermetic app.aura
 expect_rc 0 "check --hermetic accepts a manifest that performs no I/O"
 
+# The reference an assistant is told to fetch has to actually come out of the
+# shipped binary, not just out of a test.
+run docs --agent
+expect_rc 0 "docs --agent succeeds"
+expect_out "language reference" "docs --agent prints the reference"
+expect_out "Diagnostics" "the reference includes the diagnostic catalogue"
+
 run fmt --check app.aura
 expect_rc 0 "fmt --check accepts canonical formatting"
 

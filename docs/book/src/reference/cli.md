@@ -6,6 +6,7 @@ aura eval <file.aura>  [--strict] [--dry-run] [--frozen]
                        [--hermetic]
                        [--format json|json-flat|yaml|toml] [-o out] [--registry-dir=<dir>]
 aura check <file.aura> [--strict] [--hermetic]
+aura docs --agent [-o <file>]
 aura fmt <files...> [--check]
 aura types <file.aura> --lang rust|ts|go [--out <file>]
 aura add <path>@vX.Y.Z [--from <file>] [--registry-dir=<dir>]
@@ -48,6 +49,35 @@ Reach for it when a manifest's output must depend on nothing but its own text: a
 CI gate on a directory of manifests, or a build whose result you want to be
 reproducible on another machine. `eval --hermetic` enforces the same thing, and is
 the right flag when the manifest is untrusted.
+
+## docs
+
+`aura docs --agent` prints the complete language reference — syntax, the standard
+library, every diagnostic code — assembled from the compiler's own definitions.
+It is about four thousand tokens, which is small enough to hand to a coding
+assistant whole.
+
+The reason to print it from the binary rather than link to a page is versions: the
+output describes the `aura` that produced it, and cannot drift the way a hosted
+document can.
+
+The most useful way to use it is to let the assistant fetch it. One line in your
+repository's `AGENTS.md`, `CLAUDE.md` or equivalent:
+
+```text
+Before writing or editing .aura files, run `aura docs --agent` for the complete
+language reference.
+```
+
+Or commit it, for assistants that read files but cannot run commands:
+
+```console
+$ aura docs --agent -o AURA.md
+```
+
+The same text is published at
+[/llms.txt](https://aura-config.github.io/aura-lang/llms.txt) for tools that
+fetch over the network.
 
 ## fmt
 

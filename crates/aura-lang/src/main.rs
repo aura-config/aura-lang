@@ -104,6 +104,16 @@ enum Cmd {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Print the language reference a coding assistant needs to write Aura
+    Docs {
+        /// The only mode today; named so other renderings can be added without
+        /// changing what `aura docs` alone means.
+        #[arg(long)]
+        agent: bool,
+        /// Write to a file instead of stdout
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
     /// Canonical formatter: indentation, spacing, and column alignment (rewrites files in place)
     Fmt {
         files: Vec<PathBuf>,
@@ -120,6 +130,7 @@ fn main() -> ExitCode {
             strict,
             hermetic,
         } => run_check(&file, strict, hermetic),
+        Cmd::Docs { agent, output } => run_docs(agent, output.as_deref()),
         Cmd::Fmt { files, check } => run_fmt(&files, check),
         Cmd::Types { file, lang, out } => run_types(&file, &lang, out.as_deref()),
         Cmd::Add {
@@ -214,6 +225,31 @@ fn run_check(file: &Path, strict: bool, hermetic: bool) -> ExitCode {
         Ok(true) => ExitCode::from(1),
         Ok(false) => {
             println!("ok: {}", file.display());
+            ExitCode::SUCCESS
+        }
+    }
+}
+
+/// `aura docs --agent`: the whole language as one document, assembled from the
+/// compiler's own definitions. Printing it from the binary rather than serving a
+/// file means an assistant always gets the reference for the version it is
+/// actually running.
+fn run_docs(agent: bool, output: Option<&Path>) -> ExitCode {
+    if !agent {
+        eprintln!("error: `aura docs` needs a mode; today that is --agent");
+        return ExitCode::from(2);
+    }
+    let text = aura_lang::agentdocs::render();
+    match output {
+        Some(path) => match std::fs::write(path, &text) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("error: cannot write {}: {e}", path.display());
+                ExitCode::from(2)
+            }
+        },
+        None => {
+            print!("{text}");
             ExitCode::SUCCESS
         }
     }
