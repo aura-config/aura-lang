@@ -139,6 +139,36 @@ jobs:
           ../target/debug/aura eval production_deploy.aura \
             --allow-read=. --allow-env=APP_ENV --registry-dir=registry --frozen > /dev/null
 
+  # The unit and conformance suites run in-process, so they say nothing about the
+  # thing users actually download. This drives the built binary the way the
+  # documentation promises it behaves: exit codes, capability refusals, hermetic
+  # mode, output formats, and byte-identical output across two runs (D13).
+  #
+  # Here it runs on every push against a locally built binary, which is the fast
+  # feedback loop. `release.yml` runs the same script against the real release
+  # artifacts, inside old and clean containers, which is where a libc floor or a
+  # never-executed cross-compiled target shows up.
+  e2e:
+    name: End-to-end (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo build --release -p aura-lang
+      - name: Drive the built binary
+        shell: bash
+        run: |
+          BIN="target/release/aura"
+          [ "$RUNNER_OS" = "Windows" ] && BIN="target/release/aura.exe"
+          sh packaging/e2e.sh "$PWD/$BIN"
+
   # `cargo check --target wasm32` proves only that it compiles. It compiled for
   # months while the parser tried to spawn a thread, which wasm does not have, so
   # the module aborted on the first manifest it was given. This runs it.

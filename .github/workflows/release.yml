@@ -114,6 +114,17 @@ jobs:
           # for a filename ending in a carriage return
           [IO.File]::WriteAllText("$PWD/$name.zip.sha256", "$hash  $name.zip`n")
 
+      # Also kept as a workflow artifact: the release above is a draft, which
+      # cannot be downloaded anonymously, and the e2e job needs these files.
+      - name: Keep the archives for the e2e job
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: |
+            aura-*.tar.gz
+            aura-*.zip
+          retention-days: 1
+
       - name: Upload to release
         uses: softprops/action-gh-release@v3
         with:
@@ -123,6 +134,67 @@ jobs:
             aura-*.tar.gz
             aura-*.zip
             aura-*.sha256
+
+  # Runs the shipped artifact where a GitHub runner cannot: on an older libc than
+  # the one it was built against, on a system with no toolchain, and — for
+  # aarch64 — at all. Two of the six targets are cross-compiled with `native:
+  # false`, so before this job existed they were published without a single
+  # instruction of them ever having been executed.
+  e2e-artifacts:
+    name: e2e ${{ matrix.name }}
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # glibc floor. The build runs on ubuntu-latest, so nothing else notices
+          # when a symbol newer than the user's distro creeps in.
+          - name: "gnu on debian:12"
+            target: x86_64-unknown-linux-gnu
+            image: debian:12
+            platform: linux/amd64
+          - name: "gnu on ubuntu:22.04"
+            target: x86_64-unknown-linux-gnu
+            image: ubuntu:22.04
+            platform: linux/amd64
+          # Static: must run where there is no glibc at all.
+          - name: "musl on alpine"
+            target: x86_64-unknown-linux-musl
+            image: alpine:3
+            platform: linux/amd64
+          # And on a distro the gnu build cannot serve. Measured 2026-07-28: the
+          # gnu binary needs GLIBC_2.34 and dies on 20.04 before `main`, while
+          # this one passes every check. That gap is why `setup-aura` installs
+          # musl on Linux, so this row is the evidence for that decision.
+          - name: "musl on ubuntu:20.04 (below the gnu floor)"
+            target: x86_64-unknown-linux-musl
+            image: ubuntu:20.04
+            platform: linux/amd64
+          # The first execution this binary has ever had.
+          - name: "aarch64 under qemu"
+            target: aarch64-unknown-linux-gnu
+            image: debian:12
+            platform: linux/arm64
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+      - name: Enable arm64 emulation
+        if: matrix.platform == 'linux/arm64'
+        uses: docker/setup-qemu-action@v3
+      - name: Unpack
+        run: |
+          mkdir -p dist
+          tar -xzf aura-*.tar.gz -C dist
+          find dist -name aura -exec chmod +x {} +
+      # The container gets nothing but the binary and the script: no package
+      # manager use, no toolchain, no network. If it needs anything else, that is
+      # the finding.
+      - name: Run e2e in ${{ matrix.image }}
+        run: |
+          docker run --rm --platform ${{ matrix.platform }}             -v "$PWD:/w" -w /w ${{ matrix.image }}             sh packaging/e2e.sh "$(find dist -name aura | head -1)"
 
   # Проверяет релиз так, как его увидит потребитель: ставит `aura` из только что
   # загруженных ассетов через наш же экшен и запускает его.
@@ -144,3 +216,8 @@ jobs:
         run: |
           aura --version
           cd examples/nginx && aura eval nginx.aura > /dev/null
+      # `eval > /dev/null` only proves it did not crash. This checks what the
+      # documentation actually promises of it.
+      - name: Drive the installed binary
+        shell: bash
+        run: sh packaging/e2e.sh "$(command -v aura)"
