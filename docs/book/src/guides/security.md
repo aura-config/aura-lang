@@ -18,6 +18,25 @@ they do not leak.
 
 A call without the right is `E0310`, with a hint naming the flag to add.
 
+## Hermetic mode
+
+`--hermetic` is the opposite end of the same dial: instead of granting rights, it
+declares that none exist. `env()` and `read_file()` become `E0505` wherever they
+appear — root or import — and the flag cannot be combined with any `--allow-*`.
+
+The distinction from simply omitting the grants is *when* you find out. A denied
+call is `E0310` at runtime, on the branch that happened to execute; `E0505` is an
+analysis error, so `aura check --hermetic` proves the property for the whole
+manifest without evaluating it. That makes it usable as a gate:
+
+```console
+$ aura check --hermetic manifests/*.aura
+```
+
+CUE, KCL and Starlark are hermetic by construction. Aura makes it a mode, so one
+repository can hold both the manifests that must read the environment and the
+manifests that must not, and CI can require the strict kind per directory.
+
 ## Import isolation
 
 Rights belong to the **root manifest**. An imported module:

@@ -3,8 +3,9 @@
 ```text
 aura eval <file.aura>  [--strict] [--dry-run] [--frozen]
                        [--allow-read=<dir>]... [--allow-env[=A,B]] [--allow-imports-io]
+                       [--hermetic]
                        [--format json|json-flat|yaml|toml] [-o out] [--registry-dir=<dir>]
-aura check <file.aura> [--strict]
+aura check <file.aura> [--strict] [--hermetic]
 aura fmt <files...> [--check]
 aura types <file.aura> --lang rust|ts|go [--out <file>]
 aura add <path>@vX.Y.Z [--from <file>] [--registry-dir=<dir>]
@@ -22,6 +23,7 @@ aura --version
 | `--frozen` | зависимости строго по `aura.lock` (`E0403` при расхождении), лок не переписывается — режим CI |
 | `--allow-read=<dir>` | право на `read_file()` внутри каталога (повторяемый) |
 | `--allow-env[=A,B]` | право на `env()`: список имён либо все |
+| `--hermetic` | никакого I/O: `env()` и `read_file()` — это `E0505` где угодно. Несовместим с флагами `--allow-*` |
 | `--allow-imports-io` | выдать импортам права корня |
 | `--format` | `json` (по умолчанию) / `json-flat` / `yaml` / `toml` |
 | `-o, --output <file>` | записать в файл вместо stdout |

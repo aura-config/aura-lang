@@ -27,6 +27,9 @@ pub struct Loader<'a, 'r> {
     pub lock: Lockfile,
     /// --frozen (CI): no matching lock entry is an E0403 error.
     pub frozen: bool,
+    /// --hermetic: every effectful call is an analysis error (E0505), in every
+    /// module including the root.
+    pub hermetic: bool,
     /// Static analysis diagnostics for ALL loaded modules (SPEC §6.1):
     /// warnings accumulate here; analysis errors abort loading the module.
     pub diags: Vec<Diagnostic>,
@@ -46,6 +49,7 @@ impl<'a, 'r> Loader<'a, 'r> {
             resolver,
             lock: Lockfile::default(),
             frozen: false,
+            hermetic: false,
             diags: Vec::new(),
             state: HashMap::new(),
             values: HashMap::new(),
@@ -132,7 +136,7 @@ impl<'a, 'r> Loader<'a, 'r> {
         // Static analysis of every loaded module (SPEC §6.1): errors
         // (E0504 etc.) block the module before evaluation; warnings (W0501,
         // W0512 in imports) accumulate in self.diags — the host decides the strict policy.
-        let mut analysis = crate::analysis::analyze(&module, is_root);
+        let mut analysis = crate::analysis::analyze_with(&module, is_root, self.hermetic);
         if let Some(pos) = analysis
             .iter()
             .position(|d| d.severity == crate::error::Severity::Error)

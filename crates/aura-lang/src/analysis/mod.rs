@@ -5,6 +5,7 @@
 //! Warnings (promoted to errors by the caller under --strict):
 //! W0501 unused variable, W0502 unused import, W0503 unused function/type,
 //! W0303 useless shadow, W0512 effectful call in imported module.
+//! Under `hermetic`: E0505 for any effectful call at all.
 
 use indexmap::IndexMap;
 
@@ -38,14 +39,27 @@ pub struct SemanticAnalyzer<'a> {
     scopes: Vec<IndexMap<&'a str, Decl>>,
     diags: Vec<Diagnostic>,
     is_root: bool,
+    /// Deny `env()` and `read_file()` outright, as an analysis error.
+    hermetic: bool,
 }
 
 /// `is_root = false` — analysis of an imported module (includes W0512).
 pub fn analyze<'a>(module: &Module<'a>, is_root: bool) -> Vec<Diagnostic> {
+    analyze_with(module, is_root, false)
+}
+
+/// As [`analyze`], with `hermetic` denying every effectful call (E0505).
+///
+/// The denial lives here rather than in the interpreter on purpose: an analysis
+/// error is provable without running the manifest, so `aura check --hermetic` can
+/// be a CI gate. A runtime refusal would only tell you after the fact, and only
+/// for the branch that happened to execute.
+pub fn analyze_with<'a>(module: &Module<'a>, is_root: bool, hermetic: bool) -> Vec<Diagnostic> {
     let mut a = SemanticAnalyzer {
         scopes: Vec::new(),
         diags: Vec::new(),
         is_root,
+        hermetic,
     };
     a.push_scope();
     for imp in &module.imports {
@@ -291,6 +305,22 @@ impl<'a> SemanticAnalyzer<'a> {
             Expr::Call { callee, args, span } => {
                 // W0512: an effectful call in an imported module (SPEC §6.1, D1)
                 if let Expr::Variable(name, _) = callee.as_ref() {
+                    // Hermetic mode: no I/O anywhere, root included. This is the
+                    // guarantee CUE, KCL and Starlark give by construction; here it
+                    // is a mode, so one repository can hold both kinds of manifest
+                    // and CI can require the strict kind per directory.
+                    if self.hermetic && EFFECTFUL.contains(name) {
+                        let mut d = Diagnostic::error(
+                            "E0505",
+                            format!("{name}() is not allowed in hermetic mode"),
+                            *span,
+                            "no I/O is permitted here",
+                        );
+                        d.help = Some(format!(
+                            "pass the value in from the host, or drop --hermetic to grant {name}() explicitly"
+                        ));
+                        self.diags.push(d);
+                    }
                     if !self.is_root && EFFECTFUL.contains(name) {
                         self.diags.push(Diagnostic::warning(
                             "W0512",

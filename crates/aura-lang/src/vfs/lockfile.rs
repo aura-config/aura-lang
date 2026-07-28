@@ -310,6 +310,100 @@ mod tests {
         assert_ne!(old, new, "the two algorithms must be distinguishable");
     }
 
+    /// Every token kind must carry its own tag. A duplicated tag would be a
+    /// collision in the integrity hash — two different modules hashing the same,
+    /// which is exactly what an attacker substituting a package would want. The
+    /// tag table is a hand-written `match` of 46 arms, so nothing but a test
+    /// stops two of them from being given the same number.
+    ///
+    /// Each snippet below differs from its neighbours only in which token kinds
+    /// it contains, so any two sharing a tag would produce an equal hash.
+    #[test]
+    fn every_token_kind_hashes_distinctly() {
+        // Keyed by the kind under test, so a failure names it.
+        let cases: &[(&str, &str)] = &[
+            ("Ident", "x: a\n"),
+            ("Int", "x: 1\n"),
+            ("Float", "x: 1.5\n"),
+            ("Str", "x: \"s\"\n"),
+            ("InterpStr", "a = 1\nx: \"v#{a}\"\n"),
+            ("ImportPath", "import github/o/r@v1.0 as m\nx: m\n"),
+            ("True", "x: true\n"),
+            ("False", "x: false\n"),
+            ("Null", "x: null\n"),
+            ("Import/As", "import \"m.aura\" as m\nx: m\n"),
+            ("Type", "type T\n  a: Int\nend\n"),
+            ("Enum", "enum E\n  \"a\"\nend\n"),
+            ("Def/End", "def f()\n  x: 1\nend\n"),
+            ("Domain", "domain d\n  x: 1\nend\n"),
+            ("New", "type T\n  a: Int\nend\n\nx: new T\n  a: 1\nend\n"),
+            ("Assert", "assert 1 == 1, \"m\"\n"),
+            ("Shadow", "a = 1\n\ndef f()\n  shadow a = 2\n  x: a\nend\n"),
+            ("Pub", "pub def f()\n  x: 1\nend\n"),
+            ("Cond/Else", "x: cond\n  1 > 2 -> 1\n  else -> 2\nend\n"),
+            ("LParen/RParen", "x: (1)\n"),
+            ("LBracket/RBracket", "x: [1]\n"),
+            ("Comma", "x: [1, 2]\n"),
+            ("Dot", "x: \"s\".upper()\n"),
+            ("Assign", "a = 1\nx: a\n"),
+            ("Arrow", "f = (a) -> a\nx: f(1)\n"),
+            ("Question", "x: true ? 1 : 2\n"),
+            ("Plus", "x: 1 + 2\n"),
+            ("Minus", "x: 1 - 2\n"),
+            ("Star", "x: 1 * 2\n"),
+            ("Slash", "x: 1 / 2\n"),
+            ("Percent", "x: 1 % 2\n"),
+            ("EqEq", "x: 1 == 2\n"),
+            ("NotEq", "x: 1 != 2\n"),
+            ("Lt", "x: 1 < 2\n"),
+            ("Gt", "x: 1 > 2\n"),
+            ("LtEq", "x: 1 <= 2\n"),
+            ("GtEq", "x: 1 >= 2\n"),
+            ("And", "x: true && false\n"),
+            ("Or", "x: true || false\n"),
+            ("Not", "x: !true\n"),
+        ];
+
+        // Two things have to hold before distinctness means anything: the snippet
+        // must lex (otherwise `integrity_of` falls back to the byte hash and the
+        // test is comparing raw text), and it must actually contain the token kind
+        // it is named after — a mislabelled snippet would leave a tag untested
+        // while appearing to cover it.
+        for (label, src) in cases {
+            let tokens = crate::lexer::Lexer::new(src, 0)
+                .tokenize()
+                .unwrap_or_else(|d| {
+                    panic!(
+                        "the {label} snippet does not lex ({}), so it never reaches \
+                     encode_tokens: {src:?}",
+                        d.message
+                    )
+                });
+            let present: Vec<String> = tokens
+                .iter()
+                .map(|t| {
+                    let dbg = format!("{:?}", t.kind);
+                    dbg.split(['(', ' ']).next().unwrap_or_default().to_string()
+                })
+                .collect();
+            for kind in label.split('/') {
+                assert!(
+                    present.iter().any(|p| p == kind),
+                    "the {label} snippet contains no {kind} token, so that tag is \
+                     untested: {src:?} lexed as {present:?}"
+                );
+            }
+        }
+
+        let mut seen: std::collections::HashMap<String, &str> = std::collections::HashMap::new();
+        for (kind, src) in cases {
+            let hash = integrity_of(src);
+            if let Some(other) = seen.insert(hash, kind) {
+                panic!("{kind} and {other} hash identically — they share a tag byte");
+            }
+        }
+    }
+
     /// The encoding is a compatibility contract: if this value moves, every lock
     /// in existence stops matching. Changing the algorithm means a new prefix,
     /// not a new expected value here.

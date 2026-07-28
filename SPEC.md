@@ -573,6 +573,7 @@ A single pass with a scope stack mirroring the Environment:
 3. `pop_scope`: unused ones become `W0501 unused variable` / `W0502 unused import` / `W0503 unused function/type` (in the manifest - `unused_config_version`).
 4. `E0504 use of undefined variable` - always an error.
 5. Static checks for D7 (`shadow` required/useless) and D1 (`W0512` - an effectful call in an imported module).
+6. Under `--hermetic`, an effectful call anywhere - root included - is `E0505`, always an error. The check is static by design: `aura check --hermetic` decides the property for the whole module without evaluating it, so it holds for branches a given run would not take.
 
 Under `--strict`, every `W05xx` becomes an error, exit code ≠ 0.
 

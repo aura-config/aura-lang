@@ -58,6 +58,10 @@ enum Cmd {
         /// Grant imported modules the root's I/O capabilities (D1)
         #[arg(long)]
         allow_imports_io: bool,
+        /// No I/O at all: env() and read_file() become errors (E0505) rather than
+        /// silently-denied calls. Cannot be combined with the --allow-* grants.
+        #[arg(long, conflicts_with_all = ["allow_read", "allow_env", "allow_imports_io"])]
+        hermetic: bool,
         #[arg(long, value_enum, default_value = "json")]
         format: OutFormat,
         /// Write JSON to a file instead of stdout
@@ -72,6 +76,11 @@ enum Cmd {
         file: PathBuf,
         #[arg(long)]
         strict: bool,
+        /// Prove the manifest performs no I/O: env() and read_file() are errors
+        /// (E0505). Decided statically, so `check` alone answers it without
+        /// evaluating anything.
+        #[arg(long)]
+        hermetic: bool,
     },
     /// Install a package into the local registry cache and pin it in aura.lock.
     /// The network is used ONLY here: eval always runs offline.
@@ -106,7 +115,11 @@ enum Cmd {
 
 fn main() -> ExitCode {
     match Cli::parse().cmd {
-        Cmd::Check { file, strict } => run_check(&file, strict),
+        Cmd::Check {
+            file,
+            strict,
+            hermetic,
+        } => run_check(&file, strict, hermetic),
         Cmd::Fmt { files, check } => run_fmt(&files, check),
         Cmd::Types { file, lang, out } => run_types(&file, &lang, out.as_deref()),
         Cmd::Add {
@@ -122,6 +135,7 @@ fn main() -> ExitCode {
             allow_read,
             allow_env,
             allow_imports_io,
+            hermetic,
             format,
             output,
             registry_dir,
@@ -133,6 +147,7 @@ fn main() -> ExitCode {
             allow_read,
             allow_env,
             allow_imports_io,
+            hermetic,
             format,
             output,
             registry_dir,
@@ -148,13 +163,19 @@ struct EvalConfig {
     allow_read: Vec<PathBuf>,
     allow_env: Option<String>,
     allow_imports_io: bool,
+    hermetic: bool,
     format: OutFormat,
     output: Option<PathBuf>,
     registry_dir: Option<PathBuf>,
 }
 
 /// lex + parse + analysis; returns whether the result blocks (exit 1).
-fn front_end(cache: &SourceCache, file: &Path, strict: bool) -> Result<bool, ExitCode> {
+fn front_end(
+    cache: &SourceCache,
+    file: &Path,
+    strict: bool,
+    hermetic: bool,
+) -> Result<bool, ExitCode> {
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
         Err(e) => {
@@ -179,16 +200,16 @@ fn front_end(cache: &SourceCache, file: &Path, strict: bool) -> Result<bool, Exi
             return Ok(true);
         }
     };
-    let diags = analyze(&module, true);
+    let diags = aura_lang::analysis::analyze_with(&module, true, hermetic);
     for d in &diags {
         render(d, cache);
     }
     Ok(has_blocking(&diags, strict))
 }
 
-fn run_check(file: &Path, strict: bool) -> ExitCode {
+fn run_check(file: &Path, strict: bool, hermetic: bool) -> ExitCode {
     let cache = SourceCache::new();
-    match front_end(&cache, file, strict) {
+    match front_end(&cache, file, strict, hermetic) {
         Err(code) => code,
         Ok(true) => ExitCode::from(1),
         Ok(false) => {
@@ -437,6 +458,7 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
     let lock_path = root.join("aura.lock");
     let mut loader = Loader::new(&cache, resolver_ref);
     loader.frozen = cfg.frozen;
+    loader.hermetic = cfg.hermetic;
     if let Ok(text) = std::fs::read_to_string(&lock_path) {
         match Lockfile::parse(&text) {
             Ok(l) => loader.lock = l,

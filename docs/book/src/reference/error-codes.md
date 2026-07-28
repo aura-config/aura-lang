@@ -73,6 +73,7 @@ logs and to refer to in discussion. `E` is an error, `W` a warning — and under
 | W0502 | an unused import | |
 | W0503 | an unused function or type | if it is a package's API, mark it `pub` |
 | E0504 | an undeclared variable | a declaration must precede its use |
+| E0505 | `env()` or `read_file()` under `--hermetic` | pass the value in from the host, or drop the flag and grant the capability |
 | E0511 | a field the schema requires is missing | |
 | E0512 | a field's type does not match the schema | `Int` and `Float` are different types |
 | E0513 | an extra field (`--strict` only) | remove the field, or add it to the schema |

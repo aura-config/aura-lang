@@ -375,18 +375,25 @@ imported modules.
 | `--allow-read=<dir>` | `read_file()` inside the directory (repeatable; paths are canonicalized, `..` cannot escape) |
 | `--allow-env[=A,B]` | `env()` for the listed variables (no list - all of them) |
 | `--allow-imports-io` | grant imported modules the root's capabilities |
+| `--hermetic` | the opposite: no I/O at all. `env()` and `read_file()` are `E0505` in every module, and the flag excludes the `--allow-*` ones |
 
 A call without a grant is an `E0310` error with a hint about which flag to
 add. An effectful call inside an imported module is additionally caught
 statically (`W0512`).
+
+`--hermetic` inverts the question: rather than granting rights, it requires that
+none are needed. Because `E0505` is an analysis error, `aura check --hermetic
+deploy.aura` proves a manifest touches nothing at all - no evaluation, no
+branch-dependent answer - which makes it a CI gate.
 
 ## CLI
 
 ```text
 aura eval <file.aura>  [--strict] [--dry-run] [--frozen]
                        [--allow-read=<dir>] [--allow-env[=A,B]] [--allow-imports-io]
+                       [--hermetic]
                        [--format json|json-flat|yaml|toml] [-o out.json] [--registry-dir=<dir>]
-aura check <file.aura> [--strict]
+aura check <file.aura> [--strict] [--hermetic]
 aura fmt <files...> [--check]
 aura add <path>@vX.Y.Z [--from <file>] [--registry-dir=<dir>]
 ```

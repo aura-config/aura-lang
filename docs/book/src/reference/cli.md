@@ -3,8 +3,9 @@
 ```text
 aura eval <file.aura>  [--strict] [--dry-run] [--frozen]
                        [--allow-read=<dir>]... [--allow-env[=A,B]] [--allow-imports-io]
+                       [--hermetic]
                        [--format json|json-flat|yaml|toml] [-o out] [--registry-dir=<dir>]
-aura check <file.aura> [--strict]
+aura check <file.aura> [--strict] [--hermetic]
 aura fmt <files...> [--check]
 aura types <file.aura> --lang rust|ts|go [--out <file>]
 aura add <path>@vX.Y.Z [--from <file>] [--registry-dir=<dir>]
@@ -23,6 +24,7 @@ Evaluates a manifest with all its imports and prints the result.
 | `--allow-read=<dir>` | permits `read_file()` inside that directory (repeatable) |
 | `--allow-env[=A,B]` | permits `env()`: either a list of names, or all of them |
 | `--allow-imports-io` | extends the root's rights to imported modules |
+| `--hermetic` | no I/O at all: `env()` and `read_file()` are `E0505` wherever they appear. Mutually exclusive with the `--allow-*` flags |
 | `--format` | `json` (default), `json-flat`, `yaml` or `toml` |
 | `-o, --output <file>` | write to a file instead of stdout |
 | `--registry-dir=<dir>` | the package cache directory (default `~/.aura/registry`) |
@@ -30,6 +32,22 @@ Evaluates a manifest with all its imports and prints the result.
 ## check
 
 Lex, parse and static analysis only — a fast gate for pre-commit hooks and CI.
+
+`--hermetic` additionally requires that the manifest performs no I/O: `env()` and
+`read_file()` anywhere in it, or in anything it imports, is `E0505`. It is decided
+statically, so `check` answers it without evaluating — including for branches that
+this particular run would not have taken:
+
+```console
+$ aura check --hermetic deploy.aura
+[E0505] Error: env() is not allowed in hermetic mode
+   ╭─[ deploy.aura:4:11 ]
+```
+
+Reach for it when a manifest's output must depend on nothing but its own text: a
+CI gate on a directory of manifests, or a build whose result you want to be
+reproducible on another machine. `eval --hermetic` enforces the same thing, and is
+the right flag when the manifest is untrusted.
 
 ## fmt
 

@@ -33,6 +33,11 @@ pub struct EvalOptions {
     pub registry_dir: Option<PathBuf>,
     /// Resolve strictly via aura.lock (E0403 on a mismatch).
     pub frozen: bool,
+    /// Deny all I/O statically: `env()` and `read_file()` become E0505 in every
+    /// module, so `check` alone proves the manifest touches nothing. Setting this
+    /// alongside `allow_read` or `allow_env` is a contradiction — the grants are
+    /// ignored, and the CLI refuses the combination outright.
+    pub hermetic: bool,
     /// Values `env()` sees before the process environment is consulted. A host
     /// without a process environment — wasm in a browser — supplies them here.
     pub env_overrides: HashMap<String, String>,
@@ -103,7 +108,7 @@ pub fn eval_file(path: &Path, opts: &EvalOptions) -> Result<Evaluated, Vec<Repor
             .map_err(|e| vec![io_report(format!("invalid aura.lock: {e}"))])?,
         Err(_) => Lockfile::default(),
     };
-    let fs: Box<dyn FileAccess> = if opts.allow_read.is_empty() {
+    let fs: Box<dyn FileAccess> = if opts.hermetic || opts.allow_read.is_empty() {
         Box::new(DenyFs)
     } else {
         Box::new(RealFs {
@@ -135,7 +140,7 @@ pub fn eval_source(
     let resolver = MemoryResolver {
         files: files.clone(),
     };
-    let fs: Box<dyn FileAccess> = if opts.allow_read.is_empty() {
+    let fs: Box<dyn FileAccess> = if opts.hermetic || opts.allow_read.is_empty() {
         Box::new(DenyFs)
     } else {
         Box::new(MemFs(files))
@@ -155,6 +160,7 @@ fn run(
 ) -> Result<Evaluated, Vec<Report>> {
     let mut loader = Loader::new(cache, resolver);
     loader.frozen = opts.frozen;
+    loader.hermetic = opts.hermetic;
     loader.lock = lock;
 
     let mut interp = Interpreter::new(Options {
@@ -162,7 +168,13 @@ fn run(
         dry_run: false,
     });
     interp.fs = fs;
-    interp.env_cap = opts.allow_env.clone();
+    // Belt as well as braces: analysis already rejects the calls, but a host that
+    // sets `hermetic` should not be able to leave a capability open by accident.
+    interp.env_cap = if opts.hermetic {
+        EnvCap::Deny
+    } else {
+        opts.allow_env.clone()
+    };
     interp.allow_imports_io = opts.allow_imports_io;
     interp.env_overrides = opts.env_overrides.clone();
 
@@ -333,5 +345,95 @@ mod tests {
             reports.iter().any(|r| r.code == "E0310"),
             "expected E0310, got {reports:?}"
         );
+    }
+
+    /// Hermetic mode refuses the call itself, not the access — the difference
+    /// between E0505 and E0310 is the whole point, since only the former is
+    /// decidable without running the branch.
+    #[test]
+    fn hermetic_turns_effectful_calls_into_analysis_errors() {
+        for source in ["x: env(\"HOME\", \"/\")\n", "x: read_file(\"data.json\")\n"] {
+            let fs = files(&[("main.aura", source), ("data.json", "{}")]);
+            let reports = eval_source(
+                fs,
+                "main.aura",
+                &EvalOptions {
+                    hermetic: true,
+                    ..Default::default()
+                },
+            )
+            .expect_err("hermetic mode must refuse effectful calls");
+            assert!(
+                reports.iter().any(|r| r.code == "E0505"),
+                "expected E0505 for {source:?}, got {reports:?}"
+            );
+        }
+    }
+
+    /// A host that sets `hermetic` alongside grants gets the hermetic answer. The
+    /// CLI rejects the combination outright, but an embedder assembling options
+    /// from config could produce it, and the safe reading is the restrictive one.
+    #[test]
+    fn hermetic_wins_over_grants_that_contradict_it() {
+        let fs = files(&[
+            ("main.aura", "data: read_file(\"data.json\")\n"),
+            ("data.json", "{}"),
+        ]);
+        let reports = eval_source(
+            fs,
+            "main.aura",
+            &EvalOptions {
+                hermetic: true,
+                allow_read: vec![".".into()],
+                allow_env: EnvCap::AllowAll,
+                ..Default::default()
+            },
+        )
+        .expect_err("a grant must not re-open a hermetic evaluation");
+        assert!(
+            reports.iter().any(|r| r.code == "E0505"),
+            "expected E0505, got {reports:?}"
+        );
+    }
+
+    /// It reaches imports too: a dependency that reads the environment cannot be
+    /// used in a hermetic build, and that is reported before evaluation of the
+    /// root gets anywhere near the value.
+    #[test]
+    fn hermetic_reaches_imported_modules() {
+        let fs = files(&[
+            ("main.aura", "import \"dep.aura\" as dep\nx: dep.who\n"),
+            ("dep.aura", "who: env(\"USER\", \"nobody\")\n"),
+        ]);
+        let reports = eval_source(
+            fs,
+            "main.aura",
+            &EvalOptions {
+                hermetic: true,
+                ..Default::default()
+            },
+        )
+        .expect_err("an import must not perform I/O in hermetic mode");
+        assert!(
+            reports.iter().any(|r| r.code == "E0505"),
+            "expected E0505, got {reports:?}"
+        );
+    }
+
+    /// And a manifest that needs nothing is unaffected: the mode must not become a
+    /// reason to avoid using it.
+    #[test]
+    fn hermetic_leaves_a_pure_manifest_alone() {
+        let fs = files(&[("main.aura", "base = 8000\napi:\n  port: base + 80\nend\n")]);
+        let out = eval_source(
+            fs,
+            "main.aura",
+            &EvalOptions {
+                hermetic: true,
+                ..Default::default()
+            },
+        )
+        .unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(out.json["api"]["port"], 8080);
     }
 }
