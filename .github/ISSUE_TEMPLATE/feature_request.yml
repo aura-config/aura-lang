@@ -1,0 +1,58 @@
+name: Feature request
+description: A method, a flag, an integration — something Aura should be able to do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before writing: if this is a **change to the syntax**, please read
+        "Language changes" in [CONTRIBUTING.md](https://github.com/aura-config/aura-lang/blob/main/CONTRIBUTING.md)
+        first. The syntax is frozen as of 0.1, and the design decisions behind it
+        (the `D1`–`D18` series) are recorded in `SPEC.md` with their reasoning —
+        several plausible-sounding additions were considered and deliberately
+        rejected there.
+
+        Everything else — builtin methods, CLI flags, output formats, editor
+        features, integrations — is genuinely open.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What you were trying to configure, and where Aura got in the way. A real
+        situation is more persuasive than a proposed feature: it often has a
+        better answer than the one you had in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: How you work around it today
+      description: Duplicated blocks, a shell script around `aura eval`, a post-processing step.
+    validations:
+      required: true
+
+  - type: textarea
+    id: sketch
+    attributes:
+      label: What it might look like
+      description: Aura source, or a command line. A rough sketch is fine.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Does it hold up against the language's constraints?
+      description: >
+        Not gatekeeping — these are the two rules that most rejected proposals
+        broke, so checking early saves everyone the round trip.
+      options:
+        - label: >
+            It stays deterministic: the same manifest and the same grants always
+            produce the same bytes. Nothing reads the clock, the network or a
+            random source during evaluation (D13).
+        - label: >
+            It does not widen what an imported module can do. Grants are per run
+            and never inherited across an import (D1).

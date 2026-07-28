@@ -1,0 +1,13 @@
+# Blank issues stay enabled on purpose: a question that fits no template should
+# not be turned away by a form.
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/aura-config/aura-lang/security/advisories/new
+    about: A capability escape, a read outside a grant, a lockfile integrity failure — reported privately.
+  - name: Documentation
+    url: https://aura-config.github.io/aura-lang/book/
+    about: The language reference, the CLI, and every error code with an explanation.
+  - name: Playground
+    url: https://aura-config.github.io/aura-lang/playground/
+    about: Reproduce it in the browser first — a link to a failing manifest is the fastest bug report.
