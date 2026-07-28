@@ -1,12 +1,12 @@
-# Пакет валидаторов (D12): pub-элементы — API для импортёров,
-# приватные хелперы снаружи невидимы.
+# A package of validators (D12): pub items are the API for importers, while
+# private helpers are invisible from outside.
 
 pub type Service
   name: String
   port: Int
 end
 
-# Приватный хелпер: импортёру недоступен (E0309); объявляется до использования
+# A private helper: unavailable to an importer (E0309); declared before it is used
 def valid_port(p)
   ok: p > 0 && p < 65536
 end

@@ -1,5 +1,6 @@
-# Kubernetes Deployment со схемой: опечатка в типе порта ловится ДО kubectl apply.
-# Запуск: aura eval k8s_deploy.aura --format yaml
+# A Kubernetes Deployment with a schema: a typo in the port's type is caught
+# BEFORE kubectl apply.
+# Run: aura eval k8s_deploy.aura --format yaml
 
 type Container
   name:  String

@@ -1,5 +1,5 @@
-# Мульти-окружение без копипасты: одна функция вместо трёх YAML-файлов.
-# Запуск: aura eval environments.aura
+# Multiple environments without copy-paste: one function instead of three YAML files.
+# Run: aura eval environments.aura
 
 def make_env(name, replicas, debug)
   replicas:  replicas

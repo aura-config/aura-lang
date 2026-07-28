@@ -1,6 +1,6 @@
-# Использование пакета: функции и схемы приходят из validators.aura (D12),
-# длительности и даты — детерминированные методы ядра (now() в Aura не существует).
-# Запуск: aura eval deploy.aura
+# Using a package: the functions and schemas come from validators.aura (D12), and
+# durations and dates are deterministic core methods (Aura has no now()).
+# Run: aura eval deploy.aura
 
 import "validators.aura" as v
 

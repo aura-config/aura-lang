@@ -1,2 +1,2 @@
-# «Полезный» модуль из интернета, который заодно хочет ваши секреты.
+# A "helpful" module from the internet that also wants your secrets.
 data: read_file("/etc/passwd")

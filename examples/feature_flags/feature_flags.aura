@@ -1,6 +1,7 @@
-# Feature-флаги с защитой прода: assert останавливает опасную комбинацию до деплоя.
-# Запуск: aura eval feature_flags.aura --allow-env=APP_ENV
-# Попробуйте: APP_ENV=production aura eval ... — получите E0530.
+# Feature flags with a production guard: assert stops a dangerous combination
+# before it deploys.
+# Run: aura eval feature_flags.aura --allow-env=APP_ENV
+# Try it: APP_ENV=production aura eval ... — you get E0530.
 
 is_prod = env("APP_ENV", "dev") == "production"
 

@@ -1,18 +1,18 @@
-# Сборка i18n-каталога: переводчики работают с плоскими JSON,
-# Aura валидирует и мержит. Runtime-плейсхолдеры {user} остаются строками.
-# Запуск (из этого каталога): aura eval i18n.aura --allow-read=.
+# Assembling an i18n catalogue: translators work with flat JSON, Aura validates
+# and merges it. Runtime placeholders like {user} stay as text.
+# Run (from this directory): aura eval i18n.aura --allow-read=.
 
 en = read_file("./locales/en.json").parse_json()
 ru = read_file("./locales/ru.json").parse_json()
 
-# В ru не должно быть ключей-сирот, отсутствующих в базовой локали
+# ru must have no orphan keys — ones missing from the base locale
 orphans = ru.keys().filter (k, i) -> !en.contains(k) end
-# Внутри #{...} — обычный синтаксис выражений, кавычки не экранируются
+# Inside #{...} the ordinary expression syntax applies; quotes need no escaping
 assert orphans.len() == 0, "ru has orphan keys: #{orphans.join(", ")}"
 
 locales:
   en: en
-  # Fallback: непереведённые ключи остаются английскими (menu.settings)
+  # Fallback: untranslated keys stay English (menu.settings)
   ru: en.merge(ru)
 end
 

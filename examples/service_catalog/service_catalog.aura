@@ -1,5 +1,6 @@
-# Каталог сервисов: данные берутся из существующих файлов проекта, а не дублируются.
-# Запуск (из этого каталога): aura eval service_catalog.aura --allow-read=.
+# A service catalogue: the data is read from the project's existing files rather
+# than duplicated.
+# Run (from this directory): aura eval service_catalog.aura --allow-read=.
 
 cargo = read_file("./Cargo.toml").parse_toml()
 team  = read_file("./team.json").parse_json()

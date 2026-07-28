@@ -1,7 +1,7 @@
-# Конфиг телеграм-бота: секреты через capabilities, команды со схемой,
-# dev/prod-режимы и локализация — без единого повтора.
-# Запуск: aura eval bot.aura --allow-env=BOT_ENV
-# Прод:   BOT_ENV=production aura eval bot.aura --allow-env=BOT_ENV
+# A Telegram bot config: secrets through capabilities, commands with a schema,
+# dev/prod modes and localisation — without a single repetition.
+# Run:  aura eval bot.aura --allow-env=BOT_ENV
+# Prod: BOT_ENV=production aura eval bot.aura --allow-env=BOT_ENV
 
 bot_name = "aura_demo_bot"
 is_prod  = env("BOT_ENV", "dev") == "production"
@@ -22,8 +22,8 @@ assert admin_ids.len() >= 1, "Bot must have at least one admin"
 
 bot:
   username: bot_name
-  # Секрет НЕ хранится в конфиге и не попадает в JSON:
-  # приложение само прочитает токен из переменной окружения по этому имени
+  # The secret is NOT stored in the config and never reaches the JSON:
+  # the application reads the token itself, from the variable named here
   token_env_var: "BOT_TOKEN"
 
   mode: is_prod ? "webhook" : "long_polling"
@@ -34,15 +34,15 @@ bot:
 
   admins: admin_ids
 
-  # Готовый payload для setMyCommands; схема ловит опечатку в поле
+  # A ready payload for setMyCommands; the schema catches a typo in a field
   menu_button: new Command
     command:     "help"
-    description: "Список команд"
+    description: "List of commands"
   end
   commands: [
-    cmd("start", "Начать работу с ботом")
-    cmd("help", "Список команд")
-    cmd("subscribe", "Подписаться на уведомления")
+    cmd("start", "Start working with the bot")
+    cmd("help", "List of commands")
+    cmd("subscribe", "Subscribe to notifications")
   ]
 
   limits:
@@ -51,7 +51,7 @@ bot:
   end
 
   messages:
-    "start.greeting":      "Привет! Я @#{bot_name}. Наберите /help."
-    "errors.rate_limited": "Слишком часто. Подождите минуту."
+    "start.greeting":      "Hello! I am @#{bot_name}. Type /help."
+    "errors.rate_limited": "Too fast. Please wait a minute."
   end
 end

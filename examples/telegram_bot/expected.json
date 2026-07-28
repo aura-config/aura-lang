@@ -13,20 +13,20 @@
     ],
     "menu_button": {
       "command": "help",
-      "description": "Список команд"
+      "description": "List of commands"
     },
     "commands": [
       {
         "command": "start",
-        "description": "Начать работу с ботом"
+        "description": "Start working with the bot"
       },
       {
         "command": "help",
-        "description": "Список команд"
+        "description": "List of commands"
       },
       {
         "command": "subscribe",
-        "description": "Подписаться на уведомления"
+        "description": "Subscribe to notifications"
       }
     ],
     "limits": {
@@ -34,8 +34,8 @@
       "max_file_mb": 50
     },
     "messages": {
-      "start.greeting": "Привет! Я @aura_demo_bot. Наберите /help.",
-      "errors.rate_limited": "Слишком часто. Подождите минуту."
+      "start.greeting": "Hello! I am @aura_demo_bot. Type /help.",
+      "errors.rate_limited": "Too fast. Please wait a minute."
     }
   }
 }

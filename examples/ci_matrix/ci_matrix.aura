@@ -1,5 +1,5 @@
-# CI-матрица: генерация набора сборок вместо ручного перечисления комбинаций.
-# Запуск: aura eval ci_matrix.aura
+# A CI matrix: generating the set of builds instead of listing combinations by hand.
+# Run: aura eval ci_matrix.aura
 
 rust_versions = ["1.75", "stable", "beta"]
 targets       = ["x86_64-unknown-linux-gnu", "aarch64-apple-darwin"]
