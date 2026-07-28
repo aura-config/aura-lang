@@ -20,3 +20,14 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/aura-config/aura-lang"
 homepage = "https://github.com/aura-config/aura-lang"
 authors = ["Ilya Brin", "Aura contributors"]
+
+# Release binaries carry no symbol table. The CLI's user-facing errors are
+# ariadne diagnostics, not panics, so the symbols only ever cost download size —
+# measured at 5.02 MB against 4.08 MB stripped on x86_64 Linux. A panic still
+# prints its message and location; only the backtrace loses names, and anyone
+# chasing one builds from source anyway.
+#
+# Not set for aura-wasm, which has its own workspace and its own size-tuned
+# profile: a profile in a non-root package is ignored.
+[profile.release]
+strip = true
