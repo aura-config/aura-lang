@@ -62,7 +62,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      # Read main's cache, never write. A tag run writes under its own ref, which
+      # nothing ever reads back: the next release is a different tag, and a
+      # deleted tag leaves its caches stranded until they age out. Three throwaway
+      # tags had already left nine unreachable entries behind.
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
 
       - name: Install musl tools
         if: matrix.target == 'x86_64-unknown-linux-musl'
