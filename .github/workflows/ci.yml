@@ -139,6 +139,36 @@ jobs:
           ../target/debug/aura eval production_deploy.aura \
             --allow-read=. --allow-env=APP_ENV --registry-dir=registry --frozen > /dev/null
 
+  # The whole workspace contains three `unsafe` blocks, all in the source arena
+  # that every `&'a str` in the pipeline borrows from. Reasoning about them was
+  # not enough: the original version looked obviously correct and Miri rejected
+  # it, because moving a `Box` into a Vec re-asserts unique ownership of its
+  # contents and invalidates the slices already handed out.
+  #
+  # Scoped to that module. Miri is slow, and it is the only place with anything
+  # for it to find.
+  miri:
+    name: Miri (source arena)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # Both aliasing models: they disagree, and the arena has to satisfy the
+      # stricter one rather than the one that happens to accept it today.
+      - name: Stacked Borrows
+        run: "cargo miri test -p aura-lang --lib source::"
+        env:
+          MIRIFLAGS: -Zmiri-strict-provenance
+      - name: Tree Borrows
+        run: "cargo miri test -p aura-lang --lib source::"
+        env:
+          MIRIFLAGS: -Zmiri-tree-borrows
+
   # The unit and conformance suites run in-process, so they say nothing about the
   # thing users actually download. This drives the built binary the way the
   # documentation promises it behaves: exit codes, capability refusals, hermetic
