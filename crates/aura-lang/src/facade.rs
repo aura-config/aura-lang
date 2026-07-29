@@ -1,5 +1,15 @@
 //! A high-level facade for embedding Aura in Rust applications.
 //!
+//! ```toml
+//! [dependencies]
+//! aura-lang = { version = "0.1", default-features = false }
+//! ```
+//!
+//! Turning off default features drops the `cli` feature and with it clap,
+//! ariadne and ureq, which nothing in the library uses: 38 packages instead of
+//! 96 on an empty project. `cli` is on by default only so that
+//! `cargo install aura-lang` produces the `aura` binary.
+//!
 //! ```no_run
 //! let opts = aura_lang::facade::EvalOptions {
 //!     allow_read: vec!["config/".into()],

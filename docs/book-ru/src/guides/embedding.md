@@ -4,7 +4,11 @@
 
 ```toml
 [dependencies]
-aura-lang = { git = "https://github.com/aura-config/aura-lang" }
+# `default-features = false` отключает фичу `cli`, а с ней clap, ariadne и ureq —
+# библиотеке они не нужны. Замер на пустом проекте: 38 пакетов вместо 96. Фича
+# включена по умолчанию только чтобы `cargo install aura-lang` давал бинарник
+# `aura`.
+aura-lang = { version = "0.1", default-features = false }
 ```
 
 ```rust
