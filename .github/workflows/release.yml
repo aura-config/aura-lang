@@ -190,6 +190,11 @@ jobs:
       - name: Enable arm64 emulation
         if: matrix.platform == 'linux/arm64'
         uses: docker/setup-qemu-action@v4
+        with:
+          # It otherwise caches the binfmt image under the tag's own ref, which
+          # nothing reads back — the same 31 MB stranded per release that
+          # `save-if: false` already stops for the Rust caches.
+          cache-image: false
       - name: Unpack
         run: |
           mkdir -p dist
