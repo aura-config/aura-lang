@@ -37,6 +37,14 @@ struct Decl {
 
 pub struct SemanticAnalyzer<'a> {
     scopes: Vec<IndexMap<&'a str, Decl>>,
+    /// Property names (`key:`) per scope, parallel to `scopes`.
+    ///
+    /// A property is not a binding — that is the language's central rule — so it
+    /// never enters `scopes`. But referring to one by name is the mistake that
+    /// rule produces, and answering it with a bare "undefined variable" explains
+    /// nothing. Collected up front so the hint works regardless of whether the
+    /// reference comes before or after the property.
+    properties: Vec<Vec<&'a str>>,
     diags: Vec<Diagnostic>,
     is_root: bool,
     /// Deny `env()` and `read_file()` outright, as an analysis error.
@@ -57,6 +65,7 @@ pub fn analyze<'a>(module: &Module<'a>, is_root: bool) -> Vec<Diagnostic> {
 pub fn analyze_with<'a>(module: &Module<'a>, is_root: bool, hermetic: bool) -> Vec<Diagnostic> {
     let mut a = SemanticAnalyzer {
         scopes: Vec::new(),
+        properties: Vec::new(),
         diags: Vec::new(),
         is_root,
         hermetic,
@@ -65,6 +74,7 @@ pub fn analyze_with<'a>(module: &Module<'a>, is_root: bool, hermetic: bool) -> V
     for imp in &module.imports {
         a.declare(imp.alias, imp.span, DeclKind::Import, false);
     }
+    a.note_properties(&module.stmts);
     for stmt in &module.stmts {
         a.walk_stmt(stmt);
     }
@@ -82,10 +92,30 @@ pub fn has_blocking(diags: &[Diagnostic], strict: bool) -> bool {
 impl<'a> SemanticAnalyzer<'a> {
     fn push_scope(&mut self) {
         self.scopes.push(IndexMap::new());
+        self.properties.push(Vec::new());
+    }
+
+    /// Records the property names a scope declares, before walking it.
+    fn note_properties(&mut self, stmts: &[Stmt<'a>]) {
+        let names: Vec<&'a str> = stmts
+            .iter()
+            .filter_map(|st| match st {
+                Stmt::Property { key, .. } => Some(*key),
+                _ => None,
+            })
+            .collect();
+        if let Some(top) = self.properties.last_mut() {
+            top.extend(names);
+        }
+    }
+
+    fn is_property(&self, name: &str) -> bool {
+        self.properties.iter().any(|s| s.contains(&name))
     }
 
     /// On leaving a scope — report dead code (SPEC §6.1, step 3).
     fn pop_scope(&mut self) {
+        self.properties.pop();
         let scope = self.scopes.pop().expect("scope stack underflow");
         for (name, decl) in scope {
             if decl.used {
@@ -171,12 +201,18 @@ impl<'a> SemanticAnalyzer<'a> {
             }
         }
         if !BUILTINS.contains(&name) {
-            self.diags.push(Diagnostic::error(
+            let mut d = Diagnostic::error(
                 "E0504",
                 format!("use of undefined variable '{name}'"),
                 span,
                 "not found in any scope",
-            ));
+            );
+            if self.is_property(name) {
+                d.help = Some(format!(
+                    "'{name}' is a property (`{name}:`), which is exported but does not create a name — bind the value with `{name} = ...` first and give the property that binding"
+                ));
+            }
+            self.diags.push(d);
         }
     }
 
@@ -290,6 +326,7 @@ impl<'a> SemanticAnalyzer<'a> {
     fn walk_block(&mut self, block: &BlockDeclaration<'a>) {
         self.walk_expr(&block.label);
         self.push_scope();
+        self.note_properties(&block.body);
         for stmt in &block.body {
             self.walk_stmt(stmt);
         }
@@ -298,6 +335,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
     /// A code body (D17): statements in the caller's freshly pushed scope.
     fn walk_stmt_body(&mut self, body: &[Stmt<'a>]) {
+        self.note_properties(body);
         for stmt in body {
             self.walk_stmt(stmt);
         }
@@ -537,6 +575,52 @@ end
             help.contains("String, Int"),
             "the list is still useful: {help}"
         );
+    }
+
+    /// Referring to a property by name is the mistake the `:`/`=` rule produces,
+    /// and "undefined variable" explains none of it. The hint fires whichever
+    /// order the two appear in, which is why the names are collected up front.
+    #[test]
+    fn referring_to_a_property_explains_the_rule() {
+        for src in [
+            "limits:
+  a: 1
+end
+
+assert limits.a == 1, \"x\"
+",
+            "assert limits.a == 1, \"x\"
+
+limits:
+  a: 1
+end
+",
+        ] {
+            let help = diags(src)
+                .iter()
+                .find(|d| d.code == "E0504")
+                .and_then(|d| d.help.clone())
+                .unwrap_or_default();
+            assert!(
+                help.contains("is a property") && help.contains("does not create a name"),
+                "expected the property hint for {src:?}, got: {help:?}"
+            );
+        }
+    }
+
+    /// And an ordinary undefined name gets no such hint, which would be a
+    /// confident wrong explanation.
+    #[test]
+    fn an_ordinary_undefined_name_gets_no_property_hint() {
+        let d = diags(
+            "x: nope + 1
+",
+        );
+        let hint = d
+            .iter()
+            .find(|d| d.code == "E0504")
+            .and_then(|d| d.help.clone());
+        assert!(hint.is_none(), "unexpected hint: {hint:?}");
     }
 
     #[test]
