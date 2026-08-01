@@ -38,8 +38,12 @@ Lists use `[]`.
 
 ## Values
 
-`Int`, `Float`, `Str`, `Bool`, `Null`, `List`, `Object`. `Int` and `Float` are
-distinct: passing `1` where `1.0` is required is a type error (E0512).
+The built-in type names a schema field may use are listed under **Keywords and
+types** below — take them from there rather than guessing, because the error for
+an invented one is `E0504: use of undefined variable`, which does not say "unknown
+type" and is easy to misread.
+
+`Int` and `Float` are distinct: passing `1` where `1.0` is required is `E0512`.
 
 Strings are single-line and double-quoted, with `#{...}` interpolation:
 
@@ -101,7 +105,7 @@ enum Tier
 end
 
 type Service
-  name: Str
+  name: String
   port: Int
   tier: Tier
   replicas: Int = 1 # optional: a default makes it so

@@ -105,6 +105,28 @@ pub enum TypeName<'a> {
     Custom(&'a str),
 }
 
+/// The built-in type names a schema field may use, in the order a reader meets
+/// them. This is the list the parser matches on, and the one `aura docs --agent`
+/// prints — the agent reference once said `Str`, which is the *Rust* variant
+/// name and produces a bewildering `E0504: use of undefined variable 'Str'`.
+/// Deriving the documentation from here means that cannot recur.
+pub const BUILTIN_TYPE_NAMES: &[&str] = &["String", "Int", "Float", "Bool", "List", "Object"];
+
+impl TypeName<'_> {
+    /// Parses a built-in name; anything else is a user-declared `type` or `enum`.
+    pub fn builtin(name: &str) -> Option<TypeName<'static>> {
+        Some(match name {
+            "String" => TypeName::String,
+            "Int" => TypeName::Int,
+            "Float" => TypeName::Float,
+            "Bool" => TypeName::Bool,
+            "List" => TypeName::List,
+            "Object" => TypeName::Object,
+            _ => return None,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockKind {
     Domain,

@@ -95,6 +95,25 @@ Generates host-language types from the `type` and `enum` declarations:
 aura types config.aura --lang ts
 ```
 
+The six built-in field types map like this:
+
+| Aura | Rust | TypeScript | Go |
+| --- | --- | --- | --- |
+| `String` | `String` | `string` | `string` |
+| `Int` | `i64` | `number` | `int64` |
+| `Float` | `f64` | `number` | `float64` |
+| `Bool` | `bool` | `boolean` | `bool` |
+| `List` | `Vec<serde_json::Value>` | `unknown[]` | `[]any` |
+| `Object` | `serde_json::Map<String, serde_json::Value>` | `Record<string, unknown>` | `map[string]any` |
+
+`String` is the only name the language accepts for a text field — there is no
+`Str`.
+
+Note the last two rows. A schema's `List` and `Object` carry no element type, so
+the generated code cannot either: you get a sequence or a map of untyped values.
+Where the shape matters, declare a `type` for the element and let the field hold
+that instead.
+
 One schema both validates the config and types the service that reads its JSON.
 An enum becomes a string-literal union (TypeScript), an enum with
 `#[serde(rename)]` (Rust), or a named string with typed constants (Go). Optional

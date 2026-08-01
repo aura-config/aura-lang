@@ -571,15 +571,7 @@ impl<'a> Parser<'a> {
             let (field, _) = self.expect_ident("field name")?;
             self.expect(&TokenKind::Colon, "`:` after field name")?;
             let (ty, _) = self.expect_ident("field type")?;
-            let ty = match ty {
-                "String" => TypeName::String,
-                "Int" => TypeName::Int,
-                "Float" => TypeName::Float,
-                "Bool" => TypeName::Bool,
-                "List" => TypeName::List,
-                "Object" => TypeName::Object,
-                other => TypeName::Custom(other),
-            };
+            let ty = TypeName::builtin(ty).unwrap_or(TypeName::Custom(ty));
             // `name: Type = default` makes the field optional (default in the instance scope).
             let default = if self.eat(&TokenKind::Assign) {
                 Some(self.parse_expr(0)?)

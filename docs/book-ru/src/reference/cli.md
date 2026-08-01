@@ -79,6 +79,25 @@ $ aura docs --agent -o AURA.md
 aura types config.aura --lang ts
 ```
 
+Шесть встроенных типов полей отображаются так:
+
+| Aura | Rust | TypeScript | Go |
+| --- | --- | --- | --- |
+| `String` | `String` | `string` | `string` |
+| `Int` | `i64` | `number` | `int64` |
+| `Float` | `f64` | `number` | `float64` |
+| `Bool` | `bool` | `boolean` | `bool` |
+| `List` | `Vec<serde_json::Value>` | `unknown[]` | `[]any` |
+| `Object` | `serde_json::Map<String, serde_json::Value>` | `Record<string, unknown>` | `map[string]any` |
+
+`String` — единственное имя, которое язык принимает для текстового поля; `Str` не
+существует.
+
+Обратите внимание на две последние строки. `List` и `Object` в схеме не несут типа
+элемента, поэтому и сгенерированный код не может: получается последовательность
+или отображение нетипизированных значений. Где форма важна, объявите `type` для
+элемента и держите в поле его.
+
 Одна схема и валидирует конфиг, и типизирует сервис, который читает JSON. Enum
 превращается в юнион строковых литералов (TS), enum с `#[serde(rename)]` (Rust)
 или тип-строку с типизированными константами (Go). Опциональные поля (D15) —

@@ -42,7 +42,13 @@ pub fn render() -> String {
     );
 
     out.push_str(PREAMBLE.trim_end());
-    out.push_str("\n\n## Keywords\n\nAll ");
+    out.push_str(
+        "\n\n## Keywords and types\n\nThe built-in type names — the complete set a \
+         schema field may use, besides a `type` or `enum` declared in the manifest \
+         itself:\n\n",
+    );
+    out.push_str(&crate::parser::ast::BUILTIN_TYPE_NAMES.join(", "));
+    out.push_str(".\n\nAll ");
     out.push_str(&crate::lexer::token::KEYWORDS.len().to_string());
     out.push_str(" reserved words:\n\n");
     out.push_str(&crate::lexer::token::KEYWORDS.join(", "));
@@ -156,7 +162,7 @@ mod tests {
     fn the_reference_carries_every_section_it_claims() {
         let doc = render();
         for needle in [
-            "## Keywords",
+            "## Keywords and types",
             "## Standard library",
             "## Diagnostics",
             "### Builtins",
@@ -182,6 +188,30 @@ mod tests {
                 "expected {needle} in the stdlib tables"
             );
         }
+    }
+
+    /// Every built-in type name is listed, from the same constant the parser
+    /// matches on. The reference once said `Str` — the Rust variant name, not a
+    /// type the language accepts — and an assistant following it got
+    /// `E0504: use of undefined variable 'Str'`, which does not mention types at
+    /// all. Deriving the list is what stops that recurring.
+    #[test]
+    fn every_builtin_type_name_is_listed_and_none_is_invented() {
+        let doc = render();
+        for ty in crate::parser::ast::BUILTIN_TYPE_NAMES {
+            assert!(
+                doc.contains(ty),
+                "type name absent from the reference: {ty}"
+            );
+        }
+        assert!(
+            !doc.contains("`Str`")
+                && !doc.contains(
+                    ": Str
+"
+                ),
+            "the reference mentions `Str`, which the parser does not accept"
+        );
     }
 
     /// Every keyword the lexer reserves is listed. An assistant that has never
