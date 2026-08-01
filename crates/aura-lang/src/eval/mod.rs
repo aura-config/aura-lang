@@ -132,7 +132,7 @@ pub struct Interpreter<'a> {
 }
 
 /// The closest member within a small edit distance, for a "did you mean" hint.
-fn nearest<'m>(members: &[&'m str], got: &str) -> Option<&'m str> {
+pub(crate) fn nearest<'m>(members: &[&'m str], got: &str) -> Option<&'m str> {
     let limit = 1 + got.len() / 4;
     members
         .iter()

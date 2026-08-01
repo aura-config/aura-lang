@@ -570,7 +570,7 @@ impl<'a> Parser<'a> {
             }
             let (field, _) = self.expect_ident("field name")?;
             self.expect(&TokenKind::Colon, "`:` after field name")?;
-            let (ty, _) = self.expect_ident("field type")?;
+            let (ty, ty_span) = self.expect_ident("field type")?;
             let ty = TypeName::builtin(ty).unwrap_or(TypeName::Custom(ty));
             // `name: Type = default` makes the field optional (default in the instance scope).
             let default = if self.eat(&TokenKind::Assign) {
@@ -582,6 +582,7 @@ impl<'a> Parser<'a> {
                 name: field,
                 ty,
                 default,
+                ty_span,
             });
         }
         Ok(Stmt::TypeDecl(SchemaDeclaration {

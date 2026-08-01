@@ -92,6 +92,9 @@ pub struct SchemaField<'a> {
     pub name: &'a str,
     pub ty: TypeName<'a>,
     pub default: Option<Expr<'a>>,
+    /// The type name's own position, so an unknown type points at the field
+    /// rather than at the whole `type` block.
+    pub ty_span: Span,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

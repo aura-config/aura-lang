@@ -180,6 +180,48 @@ impl<'a> SemanticAnalyzer<'a> {
         }
     }
 
+    /// A schema field's type: `mark_used`, but the diagnostic talks about types.
+    ///
+    /// Reported generically, an unknown one reads `use of undefined variable
+    /// 'Str'` — which never mentions types, and is what an assistant hit after
+    /// the reference wrongly listed `Str` as a built-in. The name is legitimately
+    /// unresolved either way; only the wording differs, and here the wording is
+    /// the whole difference between a two-second fix and a puzzle.
+    fn mark_used_as_type(&mut self, name: &str, span: Span) {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(decl) = scope.get_mut(name) {
+                decl.used = true;
+                return;
+            }
+        }
+        let mut d = Diagnostic::error(
+            "E0504",
+            format!("unknown type '{name}'"),
+            span,
+            "no such type is declared, and it is not built in",
+        );
+        let builtins = crate::parser::ast::BUILTIN_TYPE_NAMES;
+        // Edit distance alone misses this case: `Str` against `String` is three
+        // insertions, well past the typo threshold, yet it is exactly the
+        // mistake people make — an abbreviation of the real name. Try a prefix
+        // relation first, then fall back to the usual nearest-neighbour.
+        let suggestion = builtins
+            .iter()
+            .find(|b| b.starts_with(name) || name.starts_with(**b))
+            .copied()
+            .or_else(|| crate::eval::nearest(builtins, name));
+        let list = builtins.join(", ");
+        d.help = Some(match suggestion {
+            Some(closest) => format!(
+                "did you mean `{closest}`? The built-in types are {list}; anything else has to be declared with `type {name} … end` or `enum {name} … end`"
+            ),
+            None => format!(
+                "the built-in types are {list}; anything else has to be declared with `type {name} … end` or `enum {name} … end`"
+            ),
+        });
+        self.diags.push(d);
+    }
+
     fn walk_stmt(&mut self, stmt: &Stmt<'a>) {
         match stmt {
             Stmt::Assign {
@@ -208,7 +250,7 @@ impl<'a> SemanticAnalyzer<'a> {
             Stmt::TypeDecl(schema) => {
                 for f in &schema.fields {
                     if let TypeName::Custom(name) = f.ty {
-                        self.mark_used(name, schema.span);
+                        self.mark_used_as_type(name, f.ty_span);
                     }
                     // a default expression may reference variables (e.g. `= base_port`)
                     if let Some(default) = &f.default {
@@ -418,6 +460,83 @@ mod tests {
 
     fn codes(src: &str) -> Vec<&'static str> {
         diags(src).into_iter().map(|d| d.code).collect()
+    }
+
+    /// An unknown schema-field type used to be reported as an undefined
+    /// *variable*, which never mentioned types and sent people looking for a
+    /// missing `=` binding. It also pointed at the whole `type` block rather than
+    /// the field.
+    #[test]
+    fn an_unknown_field_type_says_so_and_points_at_the_field() {
+        let ds = diags(
+            "type T
+  a: Str
+  b: Int
+end
+
+x: new T
+  a: \"v\"
+  b: 1
+end
+",
+        );
+        let d = ds
+            .iter()
+            .find(|d| d.code == "E0504")
+            .expect("an unknown type is still E0504");
+        assert!(
+            d.message.contains("unknown type 'Str'"),
+            "expected a message about types, got: {}",
+            d.message
+        );
+        let help = d.help.as_deref().unwrap_or_default();
+        assert!(
+            help.contains("did you mean `String`"),
+            "an abbreviation of a built-in should be suggested; got: {help}"
+        );
+        // The arrow belongs on the field, not on `type T`.
+        assert!(
+            d.primary.0.start > 0,
+            "the diagnostic should point at the type name, not the block start"
+        );
+    }
+
+    /// Edit distance still applies for ordinary typos, and a name that resembles
+    /// nothing gets the list without a misleading guess.
+    #[test]
+    fn a_typo_is_suggested_and_an_unrelated_name_is_not() {
+        let typo = diags(
+            "type T
+  a: Intt
+end
+",
+        );
+        let help = typo
+            .iter()
+            .find(|d| d.code == "E0504")
+            .and_then(|d| d.help.clone())
+            .unwrap_or_default();
+        assert!(help.contains("did you mean `Int`"), "got: {help}");
+
+        let unrelated = diags(
+            "type T
+  a: Widget
+end
+",
+        );
+        let help = unrelated
+            .iter()
+            .find(|d| d.code == "E0504")
+            .and_then(|d| d.help.clone())
+            .unwrap_or_default();
+        assert!(
+            !help.contains("did you mean"),
+            "an unrelated name should not be guessed at; got: {help}"
+        );
+        assert!(
+            help.contains("String, Int"),
+            "the list is still useful: {help}"
+        );
     }
 
     #[test]
