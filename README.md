@@ -1,18 +1,128 @@
+<div align="center">
+
 # Aura
 
 **A configuration language that reads its own inputs — and never lets an import do the same.**
 
-Aura compiles readable manifests into JSON, YAML or TOML — with schemas, enums,
-assertions that fail the build instead of the deploy, and a capability model in
-which `env()` and `read_file()` are granted per run and the grant does not reach
-imported modules. One binary, no runtime to install, 16 keywords, a 1.7 MB download.
+Manifests compile to JSON, YAML or TOML, with schemas, enums, assertions that fail
+the build instead of the deploy, and a capability model in which `env()` and
+`read_file()` are granted per run — and the grant does not reach imported modules.
+
+One binary, no runtime to install, 16 keywords, a 1.7 MB download.
 
 [![CI](https://github.com/aura-config/aura-lang/actions/workflows/ci.yml/badge.svg)](https://github.com/aura-config/aura-lang/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/aura-lang.svg)](https://crates.io/crates/aura-lang)
+[![docs.rs](https://img.shields.io/docsrs/aura-lang)](https://docs.rs/aura-lang)
 ![Rust 1.85+](https://img.shields.io/badge/rust-1.85%2B-orange)
 ![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)
-![Status](https://img.shields.io/badge/status-v0.1%20preview-blue)
+
+**[Try it in your browser](https://aura-config.github.io/aura-lang/playground/)** ·
+[Documentation](https://aura-config.github.io/aura-lang/book/) ·
+[Русская версия](README.ru.md)
+
+</div>
+
+> [!NOTE]
+> Aura is a working preview (`0.1`). All six specification phases are implemented
+> and the syntax has no open design questions, but nothing has run in production
+> anywhere yet. While `0.x`, a minor release may still change the language — the
+> [changelog](CHANGELOG.md) says so plainly.
 
 ---
+
+## Install
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**Nothing at all**
+
+[Open the playground.](https://aura-config.github.io/aura-lang/playground/)
+The real compiler, compiled to WebAssembly. Nothing is installed and nothing
+leaves the page.
+
+</td>
+<td width="50%" valign="top">
+
+**A binary**
+
+```console
+cargo install aura-lang
+```
+
+Or take a build from [Releases](https://github.com/aura-config/aura-lang/releases):
+Linux (gnu and static musl), macOS (Intel and Apple silicon), Windows — each
+with a `.sha256`.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**In CI**
+
+```yaml
+- uses: aura-config/setup-aura@v1
+- run: aura check deploy.aura --strict
+```
+
+Resolves the version, verifies the checksum, puts `aura` on `PATH`.
+
+</td>
+<td valign="top">
+
+**In a Rust program**
+
+```toml
+[dependencies]
+aura-lang = { version = "0.1", default-features = false }
+```
+
+Without the default `cli` feature the library is 38 packages instead of 96,
+and no C dependencies at all.
+
+</td>
+</tr>
+</table>
+
+> [!TIP]
+> On x86_64 Linux prefer the **musl** build — it is what `setup-aura` installs.
+> The gnu build requires `GLIBC_2.34` and will not start on Ubuntu 20.04,
+> Debian 11, CentOS 8 or Amazon Linux 2. The static build has no such floor, and
+> starts measurably faster.
+
+## Sixty seconds
+
+```ruby
+# deploy.aura
+base_port = 8000                                  # `=` computes, stays private
+is_prod   = env("APP_ENV", "dev") == "production" # capability-gated
+
+# `:` exports — everything under here ends up in the output
+api:
+  port:     base_port + 1
+  replicas: cond
+    is_prod -> 6
+    else -> 1
+  end
+end
+
+assert base_port > 1024, "ports below 1024 need root"
+```
+
+```console
+$ aura eval deploy.aura --allow-env=APP_ENV
+{
+  "api": {
+    "port": 8001,
+    "replicas": 1
+  }
+}
+```
+
+Note what is *not* in the output: `base_port` and `is_prod`. That is the whole
+rule — `:` exports, `=` does not.
 
 ## Why Aura
 
@@ -20,105 +130,35 @@ imported modules. One binary, no runtime to install, 16 keywords, a 1.7 MB downl
 | --- | --- |
 | YAML breaks from one stray space | No significant indentation: structure comes from line breaks and an explicit `end` |
 | Configs "work on my machine" | Deterministic by construction: without explicit flags a manifest has **no** access to files or environment variables |
-| A module pulled from the internet reads `/etc/passwd` | Imported modules are isolated from I/O (Deno-style capabilities) |
+| A module pulled from the internet reads `/etc/passwd` | Imported modules are isolated from I/O, and cannot borrow the caller's rights |
 | "Why is prod on a different port?" | Values are immutable; shadowing requires the explicit `shadow` keyword |
-| Dependency version drift in CI | Versioned imports + `aura.lock` with a token-stream integrity hash and `--frozen` mode |
-| Dead config fragments live for years | Static analysis: unused variables and imports, `--strict` for CI |
+| Dependency version drift in CI | Versioned imports and `aura.lock` with a token-stream integrity hash, plus `--frozen` |
+| Dead config fragments live for years | Static analysis finds unused variables and imports; `--strict` makes them fail CI |
+| A generated `config.json` nobody can trace | The manifest *is* the source, and `--dry-run` reports what it read and would write |
 
-## Example
+## The language
 
-```ruby
-import "templates/k8s_defaults.aura" as defaults
+<details>
+<summary><b>Computation and output are different things</b></summary>
 
-base_port = 8000 # private computation
-is_prod   = env("APP_ENV", "production") == "production"
+<br>
 
-type ServiceMeta
-  name: String
-  port: Int
-end
-
-def build_labels(app_name, tier)
-  name:       app_name
-  tier:       tier
-  managed_by: "aura-engine"
-end
-
-domain "production-eu"
-  replicas: is_prod ? 3 : 1 # a property - ends up in JSON
-
-  cargo_data  = read_file("./Cargo.toml").parse_toml()
-  app_version = cargo_data.package.version
-
-  services = ["auth", "billing", "frontend", null]
-  active   = services.compact().uniq()
-
-  meta: new ServiceMeta
-    name: "auth".upper()
-    port: base_port + 1
-  end
-
-  apps: active.map (name, index) ->
-    name:   name
-    image:  "company/#{name}:#{app_version}"
-    labels: build_labels(name, "backend").merge(defaults.global_labels)
-  end
-
-  assert active.len() >= 1, "Domain must have at least 1 service"
-end
-```
-
-```console
-aura eval production_deploy.aura --allow-read=. --allow-env=APP_ENV
-```
-
-```json
-{
-  "production-eu": {
-    "replicas": 3,
-    "meta": { "name": "AUTH", "port": 8001 },
-    "apps": [
-      {
-        "name": "auth",
-        "image": "company/auth:1.2.3",
-        "labels": { "name": "auth", "tier": "backend", "managed_by": "aura-engine", "team": "core" }
-      }
-    ]
-  }
-}
-```
-
-## Quick start
-
-```console
-git clone https://github.com/aura-config/aura-lang && cd aura-lang
-cargo build --release
-cd examples
-../target/release/aura eval production_deploy.aura \
-    --allow-read=. --allow-env=APP_ENV --registry-dir=registry
-```
-
-Check without evaluating (lex + parse + static analysis):
-
-```console
-aura check production_deploy.aura --strict
-```
-
-## Tour of the language
-
-### Computation and output are different things
-
-Aura's central rule (the same idea as locals vs. outputs in Terraform):
+Aura's central rule — the same idea as locals versus outputs in Terraform:
 
 ```ruby
 tmp = base * 2 #  =  a private variable: does NOT end up in JSON
 port: tmp + 1  #  :  a property: ends up in JSON
 ```
 
-This is what makes dead-code analysis precise: an unused `=` variable is
-always genuine cruft (`W0501`), never "maybe someone needs this output."
+This is what makes dead-code analysis precise: an unused `=` variable is always
+genuine cruft (`W0501`), never "maybe someone needs this output".
 
-### Immutability and explicit shadowing
+</details>
+
+<details>
+<summary><b>Immutability and explicit shadowing</b></summary>
+
+<br>
 
 ```ruby
 path = "/etc/global.config"
@@ -131,43 +171,12 @@ end
 
 Reassigning a name within the same scope is always an error (`E0301`).
 
-### Schemas
+</details>
 
-```ruby
-type ServiceMeta
-  name: String
-  port: Int
-end
+<details>
+<summary><b>Schemas, optional fields, closed sets</b></summary>
 
-meta: new ServiceMeta
-  name: "auth"
-  port: "8001" # E0512: expected Int
-end
-```
-
-A missing field is `E0511`; an extra field is `E0513` under `--strict`.
-`Int` and `Float` are separate types: byte limits and 64-bit IDs never lose precision.
-
-A field with `= default` is optional — omit it and the default applies (it may
-reference module vars). No nullable fields: optionality never introduces a `null`.
-
-```ruby
-type Service
-  name: String
-  port: Int    = 8080 # optional: omitted -> 8080
-  tier: String = "backend"
-end
-
-api: new Service
-  name: "api" # port and tier take their defaults
-end
-```
-
-### Closed sets with `enum`
-
-A `String` field accepts any string, so `"backand"` used to reach production. An
-`enum` makes the set closed — and a member is still an ordinary string, so the
-JSON output does not change:
+<br>
 
 ```ruby
 enum Tier
@@ -179,40 +188,35 @@ end
 type Service
   name: String
   tier: Tier
+  port: Int = 8080 # optional: omit it and the default applies
 end
 
-svc: new Service
+api: new Service
   name: "api"
   tier: "backand" # E0514: did you mean "backend"? members: ...
 end
 ```
 
-`pub enum` crosses the module boundary (D12), and members are resolved where the
-schema is declared — an imported schema validates against its own module's enum.
+A missing field is `E0511`, a type mismatch `E0512`, an extra field `E0513` under
+`--strict`. `Int` and `Float` are separate types, so byte limits and 64-bit IDs
+never lose precision. An `enum` member stays an ordinary string — the JSON output
+does not change, only what is accepted.
 
-### Types for your service: `aura types`
+Optionality never introduces a `null`: a default is a value, not an absence.
 
-The same schema that validates the config can type the service that consumes its
-JSON — no hand-written structs to keep in sync:
+</details>
+
+<details>
+<summary><b>Types for the service that consumes the config</b></summary>
+
+<br>
+
+The schema that validates the manifest can also type the program reading its
+JSON, so there are no hand-written structs to keep in sync:
 
 ```console
 aura types config.aura --lang rust   # or ts | go
 ```
-
-```ruby
-enum Scheme
-  "https"
-  "http"
-end
-
-type Endpoint
-  host: String
-  port: Int      = 443
-  scheme: Scheme = "https"
-end
-```
-
-becomes, for TypeScript:
 
 ```ts
 export type Scheme = "https" | "http";
@@ -225,45 +229,43 @@ export interface Endpoint {
 ```
 
 Rust gets a `serde` struct plus an enum with `#[serde(rename)]`; Go gets a struct
-with `json:` tags plus a named string type and typed constants. Parsing only —
-the manifest is never evaluated, so no capabilities are involved.
+with `json:` tags and typed constants. Parsing only — the manifest is never
+evaluated, so no capabilities are involved, and the output is already canonical
+for `rustfmt`, `gofmt` and `prettier`.
 
-### Functions, lambdas, methods
+</details>
+
+<details>
+<summary><b>Functions, lambdas, methods</b></summary>
+
+<br>
 
 ```ruby
-def labels(app) # def returns an object
+def labels(app) # a def body is an object
   app: app
 end
 
-up = (s) -> s.upper() end # a lambda expression
+up = (s) -> s.upper() end # a lambda
 
 xs.compact().uniq().map (item, index) ->
   "#{index}: #{item}"
 end
 ```
 
-Built-in methods: `upper` `lower` `len` `trim` `split` `replace` `starts_with`
-`ends_with` `to_int` `to_float` `to_str` `compact` `uniq` `map` `filter` `sort`
-`reverse` `sum` `min` `max` `flatten` `slice` `first` `last` `get` `contains`
-`join` `merge` `keys` `values` `abs` `parse_toml` `parse_json` `parse_yaml`
-`to_json` `to_yaml` `to_toml` `parse_duration` `format_duration` `parse_datetime`
-`format_datetime` `sha256` `base64` `base64_decode`. The registry grows without
-touching the parser.
+Sixty methods across `String`, `Int`, `Float`, `Bool`, `List` and `Object` — the
+full list is in [the method reference](docs/book/src/reference/methods.md).
+`range(n)` produces `[0 … n-1]`, which is how you generate N shards or replicas
+without listing them by hand.
 
-The global `range(n)` generates `[0, 1, ..., n-1]` — handy for producing N items
-(shards, replicas) instead of listing them by hand:
+</details>
 
-```ruby
-shards: range(3).map (i, _) ->
-  name:       "shard-#{i}"
-  replica_of: "primary"
-end
-```
+<details>
+<summary><b>Multi-way choice, and multi-line text</b></summary>
 
-### Multi-way choice with `cond`
+<br>
 
-For 3+ branches where nested ternaries get unreadable, `cond` picks the first
-true arm; `else` is mandatory (a missing one is a parse error):
+`cond` takes the first true arm, and the `else` is mandatory — no branch yields
+nothing:
 
 ```ruby
 tier = cond
@@ -273,152 +275,170 @@ tier = cond
 end
 ```
 
-The left of each `->` must be `Bool`; the right is any expression. No pattern
-destructuring - deliberately simpler than a `match`.
-
-### Multi-line values with `text … end`
-
-A `text … end` block is an ordinary string, just multi-line - so any property
-takes either a `"one-liner"` or a block. Interpolation `#{}` and escapes work as
-usual; the common indentation is stripped and lines join with `\n`:
+A `text … end` block is an ordinary multi-line string. Interpolation works;
+braces inside do not, which is what makes generating nginx configs practical:
 
 ```ruby
-domain "worker"
-  entrypoint: text
-    #!/bin/sh
-    echo "starting #{app_name}"
-    exec ./server --port #{port}
-  end
+entrypoint: text
+  #!/bin/sh
+  echo "starting #{app_name}"
+  exec ./server --port #{port}
 end
 ```
 
-The closing `end` sits at the `entrypoint:` indentation; content is indented
-deeper, so an embedded `end` (a shell/Ruby block) is just text. For many or large
-scripts prefer `read_file(...)` over an inline block.
+</details>
 
-### Time - deterministic only
+<details>
+<summary><b>Deterministic time, and data access</b></summary>
 
-`now()` does not exist in Aura and never will (D13) - an unreproducible config
-cannot be written by construction. Durations and dates, on the other hand, are
-first-class:
+<br>
+
+`now()` does not exist and never will — an unreproducible config cannot be
+written. Durations and dates are first-class:
 
 ```ruby
-ttl = "1h30m".parse_duration()             # -> 5400 (seconds)
-refresh:    (ttl / 3).format_duration()    # -> "30m"
-window_end: ("2026-07-18T22:00:00Z".parse_datetime()
-+ "4h".parse_duration()).format_datetime() # -> "2026-07-19T02:00:00Z"
+ttl = "1h30m".parse_duration()       # -> 5400 seconds
+refresh: (ttl / 3).format_duration() # -> "30m"
 ```
 
-If a build timestamp is needed, the host supplies it: `env("BUILD_TIME", ...)` under `--allow-env`.
+If a build timestamp is needed the host supplies it as an input:
+`env("BUILD_TIME", …)`.
 
-### Data access
-
-Dot for fields, brackets only for list indices - one operator per operation:
+Dot for fields, brackets only for list indices — one operator per operation:
 
 ```ruby
 loaded = read_file("./data.json").parse_json()
 
 version:  loaded.package.version          # ordinary keys
-port:     loaded.servers."eu west".port   # a key with a space/dot - a string
-dynamic:  loaded.envs."#{region}".url     # a dynamic key
-first:    loaded.apps[0].name             # list index (out of bounds - E0317)
-optional: loaded.get("maybe", "fallback") # safe access, no error
+port:     loaded.servers."eu west".port   # a key with a space
+first:    loaded.apps[0].name             # list index (out of bounds is E0317)
+optional: loaded.get("maybe", "fallback") # safe access
 ```
 
-A typo in a key is an `E0308` error with a position, not a silent `null`.
+A typo in a key is `E0308` with a position, not a silent `null`.
 
-### Aura as a format converter
+</details>
 
-Since the language reads TOML/JSON/YAML and writes all three, conversion is a one-liner:
+<details>
+<summary><b>Modules and packages</b></summary>
 
-```ruby
-# convert.aura
-config: read_file("./legacy.toml").parse_toml()
-```
-
-```console
-aura eval convert.aura --allow-read=. --format yaml   # TOML -> YAML
-```
-
-Unlike `yq`/`jq`, you can validate against a schema, merge multiple sources,
-and add `assert` checks along the way - conversion with guarantees.
-
-### Modules
+<br>
 
 ```ruby
 import github/actions/rust-cache@v1.2 as rust # a version is mandatory
 import "templates/k8s_defaults.aura" as defaults
 ```
 
-- Cyclic imports are detected with the full chain: `E0401: cyclic import: a.aura -> b.aura -> a.aura`.
-- Every module is loaded, parsed, and evaluated exactly once.
-- Exact versions and integrity hashes are pinned in `aura.lock`; use `--frozen` in CI.
+Cyclic imports are reported with the full chain. Every module is loaded, parsed
+and evaluated exactly once. Exact versions and integrity hashes live in
+`aura.lock`, and `--frozen` makes CI refuse anything else.
 
-### Validation
+`aura add` is the **only** place Aura touches the network. `eval` always runs
+offline, so a result never depends on what a registry served today.
+
+</details>
+
+<details>
+<summary><b>Aura as a format converter</b></summary>
+
+<br>
+
+The language reads TOML, JSON and YAML and writes all three, so conversion is one
+line:
 
 ```ruby
-assert active.len() >= 1, "Domain must have at least 1 service"
-value: broken ? fail("unreachable config") : 42
+config: read_file("./legacy.toml").parse_toml()
 ```
+
+```console
+aura eval convert.aura --allow-read=. --format yaml
+```
+
+Unlike `yq` or `jq` you can validate against a schema, merge several sources and
+add `assert` checks along the way — conversion with guarantees.
+
+</details>
 
 ## Security model
 
-By default a manifest **can do nothing**: no reading files, no environment
-variables. Capabilities are granted via CLI flags and do not propagate to
-imported modules.
+By default a manifest **can do nothing**: no files, no environment variables.
+Rights are granted per run, and they do not propagate.
 
 | Flag | What it allows |
 | --- | --- |
-| `--allow-read=<dir>` | `read_file()` inside the directory (repeatable; paths are canonicalized, `..` cannot escape) |
-| `--allow-env[=A,B]` | `env()` for the listed variables (no list - all of them) |
-| `--allow-imports-io` | grant imported modules the root's capabilities |
-| `--hermetic` | the opposite: no I/O at all. `env()` and `read_file()` are `E0505` in every module, and the flag excludes the `--allow-*` ones |
+| `--allow-read=<dir>` | `read_file()` inside that directory (repeatable; paths are canonicalised, `..` cannot escape) |
+| `--allow-env[=A,B]` | `env()` for the listed variables — with no list, all of them |
+| `--allow-imports-io` | extends the root's rights to imported modules |
+| `--hermetic` | the opposite: no I/O at all, `E0505` everywhere; excludes the `--allow-*` flags |
 
-A call without a grant is an `E0310` error with a hint about which flag to
-add. An effectful call inside an imported module is additionally caught
-statically (`W0512`).
+> [!IMPORTANT]
+> Grants belong to the **root manifest**. A module you import cannot call `env()`
+> or `read_file()` even when the root holds those rights, and an exported function
+> runs with the capabilities of the module it came from — so isolation cannot be
+> borrowed by persuading you to call something innocent-looking.
 
-`--hermetic` inverts the question: rather than granting rights, it requires that
-none are needed. Because `E0505` is an analysis error, `aura check --hermetic
-deploy.aura` proves a manifest touches nothing at all - no evaluation, no
-branch-dependent answer - which makes it a CI gate.
+A call without a grant is `E0310`; a grant that does not cover the path is
+`E0311`. An effectful call inside an imported module is caught statically as
+`W0512`, before anything runs.
 
-## CLI
+`--hermetic` inverts the question. Rather than granting rights it requires that
+none are needed — and because `E0505` is an *analysis* error, this is settled
+without evaluating anything, including for branches a given run would not take:
+
+```console
+$ aura check --hermetic deploy.aura
+[E0505] Error: env() is not allowed in hermetic mode
+```
+
+## Command line
 
 ```text
-aura eval <file.aura>  [--strict] [--dry-run] [--frozen]
+aura eval <file.aura>  [--strict] [--dry-run] [--frozen] [--hermetic]
                        [--allow-read=<dir>] [--allow-env[=A,B]] [--allow-imports-io]
-                       [--hermetic]
                        [--format json|json-flat|yaml|toml] [-o out.json] [--registry-dir=<dir>]
 aura check <file.aura> [--strict] [--hermetic]
-aura fmt <files...> [--check]
+aura fmt <files...>    [--check]
+aura types <file.aura> --lang rust|ts|go [--out <file>]
+aura docs --agent      [-o <file>]
 aura add <path>@vX.Y.Z [--from <file>] [--registry-dir=<dir>]
 ```
 
-`aura add` is the only place Aura ever touches the network: a package is
-downloaded (by convention `github/<owner>/<repo>` -> `package.aura` at tag
-`vX.Y.Z`), validated, stored in the local cache, and pinned in `aura.lock`
-with an integrity hash. **`eval` always runs offline** - the result never depends
-on the network, by construction.
-
-| Mode | Behavior |
+| Mode | Behaviour |
 | --- | --- |
 | `--strict` | analysis warnings become errors; extra schema fields are forbidden |
-| `--dry-run` | full evaluation, but neither JSON nor `aura.lock` is written - only a `[dry-run] would write ...` report |
-| `--frozen` | dependencies resolve strictly via `aura.lock` (a mismatch is an error), the lock is never rewritten |
-| `--format json-flat` | flattened output: `production-eu.metrics.port = 9090` |
-| `--format yaml` / `toml` | the same result in YAML or TOML (TOML requires an object at the top level) |
+| `--dry-run` | a full evaluation, but nothing is written — you get a report of what it read and would write |
+| `--frozen` | dependencies resolve strictly via `aura.lock`; a mismatch is an error and the lock is never rewritten |
+| `--hermetic` | settles, statically, that the manifest performs no I/O |
 
-Exit codes: `0` - success, `1` - diagnostics, `2` - I/O or argument errors.
+Exit codes: `0` success, `1` diagnostics, `2` an I/O or argument error.
+
+### Working with an AI assistant
+
+`aura docs --agent` prints the complete language reference — syntax, standard
+library, every diagnostic code — assembled from the compiler's own definitions,
+at roughly four thousand tokens. Small enough to hand over whole, and it always
+describes the binary that produced it. One line in your repository's `AGENTS.md`
+is enough:
+
+```text
+Before writing or editing .aura files, run `aura docs --agent` for the complete
+language reference.
+```
+
+The same text is published at
+[/llms.txt](https://aura-config.github.io/aura-lang/llms.txt).
 
 ## Using Aura from other languages
 
-Aura follows the terraform/jq/pandoc pattern: a stable CLI contract is the
-API. JSON on stdout, diagnostics with stable codes (`E0xxx`) on stderr,
-exit codes `0`/`1`/`2`. From any language:
+The CLI contract *is* the API, in the tradition of `terraform`, `jq` and
+`pandoc`: JSON on stdout, stable `E0xxx` codes on stderr, exit codes `0`/`1`/`2`.
+
+<details>
+<summary><b>Python, Node, Go — the subprocess pattern</b></summary>
+
+<br>
 
 ```python
-# Python
 import json, subprocess
 r = subprocess.run(["aura", "eval", "app.aura", "--frozen"], capture_output=True, text=True)
 if r.returncode != 0:
@@ -427,29 +447,51 @@ config = json.loads(r.stdout)
 ```
 
 ```javascript
-// Node.js
 const { execFileSync } = require("node:child_process");
 const config = JSON.parse(execFileSync("aura", ["eval", "app.aura", "--frozen"]));
 ```
 
 ```go
-// Go
 out, err := exec.Command("aura", "eval", "app.aura", "--frozen").Output()
 if err != nil { log.Fatal(err) }
 var config map[string]any
 json.Unmarshal(out, &config)
 ```
 
-Recommendations for production: `--frozen` (a lock file is mandatory),
-capabilities only explicit, `--format yaml|toml` if the consumer prefers
-another format. Rust projects can embed Aura directly, without a subprocess,
-via `aura_lang::facade::eval_file()`. Mobile apps are consumers of the
-*result*: a server/CI evaluates the `.aura` file, the client reads the
-resulting JSON. Native bindings (WASM/npm, PyO3) are on the roadmap.
+For production: `--frozen` with a committed lock file, capabilities only
+explicit, and `--format yaml|toml` if the consumer prefers another shape.
+
+</details>
+
+<details>
+<summary><b>Rust — embed the library, no subprocess</b></summary>
+
+<br>
+
+```rust
+use aura_lang::facade::{eval_file, EvalOptions};
+
+let opts = EvalOptions { strict: true, ..Default::default() };
+let out = eval_file("config/app.aura".as_ref(), &opts)?;
+let cfg: MyConfig = serde_json::from_value(out.json)?;
+```
+
+There is no intermediate file: the application reads the manifest itself.
+
+A manifest's `pub def` is also a callable value, so rules can live in a `.aura`
+file and be executed by the application per request, changing behaviour without a
+rebuild. That is a **sketch, not a supported API** — see
+`cargo run --example scripting` and D19 in [SPEC.md](SPEC.md).
+
+</details>
+
+Mobile applications consume the *result*: a server or CI evaluates the manifest,
+the client reads the JSON. A WebAssembly build exists and is CI-tested — it is
+what the playground runs on — and npm, PyO3 and a C ABI are on demand.
 
 ## Diagnostics
 
-Errors point to the file, line, and column, highlight the code, and suggest a fix:
+Errors carry a file, line and column, highlight the code, and suggest a fix:
 
 ```text
 [E0302] Error: 'global_file_path' shadows an outer variable
@@ -462,148 +504,146 @@ Errors point to the file, line, and column, highlight the code, and suggest a fi
 ────╯
 ```
 
-Every error has a stable code (`E0xxx` / `W0xxx`) - convenient for grepping CI logs.
+Every code is stable and documented in
+[the catalogue](docs/book/src/reference/error-codes.md) — a test keeps that list
+and the compiler in step, in both directions.
 
 ## Architecture
 
-```text
-source ──▶ lexer ──▶ parser ──▶ static analysis ──▶ evaluation ──▶ JSON
- &'a str    Vec<Token>    AST        Vec<Diagnostic>        Value
-            (zero-copy: tokens and the AST borrow the source's memory)
+```mermaid
+flowchart LR
+    S["source<br/>&'a str"] --> L["lexer<br/>Vec&lt;Token&gt;"]
+    L --> P["parser<br/>AST"]
+    P --> A["analysis<br/>Vec&lt;Diagnostic&gt;"]
+    A --> E["evaluation<br/>Value"]
+    E --> O["JSON · YAML · TOML"]
 ```
+
+Tokens and the AST borrow the source's memory — nothing is copied along the way.
 
 ```text
 crates/
-├── aura-lang          # the library + the `aura` CLI (one publishable crate)
-│   ├── lexer/         # zero-copy DFA, newline normalization
-│   ├── parser/        # recursive descent + Pratt expressions
-│   ├── analysis/      # dead code, undefined vars, shadow rules
-│   ├── eval/          # tree-walking interpreter, Environment, method registry
-│   ├── vfs/           # FileResolver, cycle detection, aura.lock
-│   ├── serialize/     # Value -> serde_json (Int with no precision loss)
-│   └── main.rs        # the `aura` binary (clap + ariadne); the library stays
-│                      #   clap/ariadne-free and WASM/LSP-ready
-└── aura-lsp           # language server (ships in the VS Code extension)
+├── aura-lang        # the library and the `aura` CLI, one publishable crate
+│   ├── lexer/       # zero-copy DFA, newline normalisation
+│   ├── parser/      # recursive descent + Pratt expressions
+│   ├── analysis/    # dead code, undefined names, shadow rules
+│   ├── eval/        # tree-walking interpreter, environments, method registry
+│   ├── vfs/         # resolvers, cycle detection, aura.lock
+│   └── serialize/   # Value -> JSON/YAML/TOML, Int without precision loss
+└── aura-lsp         # the language server, built on aura-lang
 ```
 
-Key invariants:
-
-- **Zero-copy**: neither the lexer nor the parser copies strings - only `&'a str` slices.
-- **Determinism**: JSON key order = declaration order (`IndexMap`); two runs produce byte-identical output.
-- **Immutability**: containers live in `Arc`, cloning a value is O(1).
+**Invariants.** *Zero-copy*: neither lexer nor parser copies a string.
+*Determinism*: JSON key order is declaration order, and two runs are
+byte-identical. *Immutability*: containers live in `Arc`, so cloning a value is
+O(1).
 
 ## Performance
 
-Criterion benchmarks on the reference manifest (`cargo bench -p aura-lang`):
+`cargo bench -p aura-lang`, on the reference manifest:
 
 | Stage | Result |
 | --- | --- |
 | Lexer | 258 MiB/s |
 | Lexer + parser | 178 MiB/s |
 | Lexer + parser + resolver | 71 MiB/s |
-| Full pipeline (lex + parse + eval) | 33 µs per manifest |
+| Full pipeline (lex + parse + evaluate) | **33 µs** per manifest |
 
-Measured 2026-07-29 on x86_64 Linux. Numbers from a single machine are worth
-what they cost — treat them as an order of magnitude, and re-run
-`cargo bench -p aura-lang` on yours.
+Measured 2026-07-29 on x86_64 Linux. Numbers from one machine are worth what they
+cost — treat them as an order of magnitude, and re-run them on yours.
 
-## Development
+## How this is verified
+
+<details>
+<summary><b>What runs on every change</b></summary>
+
+<br>
+
+| | |
+| --- | --- |
+| Tests | 241, on Linux, macOS and Windows |
+| Conformance | every example in [examples/](examples/README.md) driven through the **real binary**, output diffed against a pinned expectation |
+| End to end | [packaging/e2e.sh](packaging/e2e.sh) asserts 26 documented claims — exit codes, capability refusals, hermetic mode, output formats, and byte-identical output across two runs |
+| Containers | on a tag, those artefacts run on debian:12, ubuntu:22.04, alpine, ubuntu:20.04, and aarch64 under emulation |
+| Miri | the source arena, under **both** Stacked Borrows and Tree Borrows |
+| Fuzzing | six `cargo-fuzz` targets: lexer, parser, pipeline, formatter, codegen, resolver |
+| Cross-platform | `cargo check` for freebsd, aarch64-linux, musl and wasm32 |
+| Documentation | snippets must be canonical `aura fmt`; the diagnostic catalogue must match the compiler exactly, in both languages |
+
+The recursive-descent parser is DoS-hardened: deeply nested input yields `E0208`
+rather than a stack overflow, and that is checked in release builds, where there
+is no thread with a large stack to hide behind.
+
+</details>
 
 ```console
-cargo test    # units, conformance suite, property tests, golden snapshots
-cargo bench   # lexer, parser, resolver, full-pipeline benchmarks
+cargo test --workspace     # units, conformance, property tests, snapshots
+cargo bench -p aura-lang   # lexer, parser, resolver, full pipeline
 ```
 
-Coverage-guided fuzzing (lexer, parser, full pipeline) lives in
-[fuzz/](fuzz/README.md) — nightly + `cargo-fuzz`, run in a non-blocking CI job.
-The recursive-descent parser is DoS-hardened: deeply-nested input yields `E0208`
-instead of a stack overflow.
+The formal specification, including the numbered design decisions the code refers
+to by name, is [SPEC.md](SPEC.md).
 
-The full language and architecture specification is [SPEC.md](SPEC.md). The
-reference manifest, which must pass the entire pipeline, is
-[examples/production_deploy.aura](examples/production_deploy.aura).
-Nine themed examples (k8s, a CI matrix, feature flags, a service catalog,
-i18n, a Telegram bot, a validators package, a capability-model demo) live in
-[examples/](examples/README.md).
+## Status
 
-## Status and roadmap
+All six specification phases are implemented, and the syntax has no open design
+questions.
 
-Aura is in working-preview status (v0.1): all six specification phases are implemented.
+<details>
+<summary><b>What is done, and what is not</b></summary>
+
+<br>
+
+**The language and its tooling**
 
 - [x] Zero-copy lexer and Pratt parser
-- [x] Runtime with a capability model and schemas
-- [x] Modules, cycle detection, `aura.lock`
-- [x] Static analysis and `--strict` / `--dry-run`
-- [x] JSON export and a CLI with ariadne diagnostics
-- [x] Reading and writing JSON/YAML/TOML (`parse_*` / `to_*`, `--format yaml|toml`)
-- [x] Indexing and access to arbitrary keys (`xs[0]`, `obj."eu west"`, `.get`)
-- [x] `aura fmt` - indentation canonicalization with a token-stream-preservation guarantee
-- [x] Deterministic time: `parse_duration`/`format_duration`,
-      `parse_datetime`/`format_datetime`; `now()` is forbidden by construction (D13)
-- [x] Extended standard-library methods (`sort`, `split`, `trim`, `join`,
-      `slice`, `flatten`, `reverse`, ...) - [the method reference](docs/book/src/reference/methods.md)
-- [x] LSP server: completion, hover, go-to-definition, references, document
-      symbols, rename (with `prepare`), signature help, and format-on-save -
-      [crates/aura-lsp/](crates/aura-lsp/)
+- [x] Runtime with a capability model, schemas and `enum`
+- [x] Modules, cycle detection, `aura.lock` with a token-stream hash
+- [x] Static analysis, `--strict`, `--dry-run`, `--hermetic`
+- [x] JSON, flattened JSON, YAML and TOML output
+- [x] `aura fmt` — canonical formatting with a token-stream guarantee
+- [x] `aura types` — Rust, TypeScript and Go from a manifest's schemas
+- [x] `aura docs --agent` — the whole language for a coding assistant
+- [x] Deterministic time; `now()` forbidden by construction
+- [x] Language server: completion, hover, go-to-definition, references, symbols,
+      rename, signature help, format-on-save
 
-**Ecosystem and distribution**:
+**Ecosystem and distribution**
 
-- [x] A release pipeline: a `v*` tag builds binaries for six targets (Linux
-      gnu/musl, aarch64, macOS Intel and Apple silicon, Windows), each with a
-      `.sha256`, after checking the tag against `Cargo.toml` -
-      [release.yml](.github/workflows/release.yml)
-- [x] A `setup-aura` GitHub Action: resolves the version, verifies the checksum
-      and puts `aura` on `PATH` -
-      [aura-config/setup-aura](https://github.com/aura-config/setup-aura). The
-      release workflow's `self-test` job installs from a real release through
-      that published action and runs the result on Linux, macOS and Windows
-- [ ] Publication: crates.io, and `setup-aura` extracted into its own repository
-      for the Marketplace - both are done when this repository becomes public
-- [x] Syntax highlighting: VS Code (TextMate + auto-indent), Vim/Neovim,
-      nano - [editors/](editors/README.md)
-- [ ] A tree-sitter grammar (Helix, Zed, Neovim, GitHub Linguist)
-- [x] A documentation book ([docs/book/](docs/book/), with a full Russian
-      translation at [docs/book-ru/](docs/book-ru/)): a tutorial (6 chapters),
-      guides (security, formats, embedding), a CLI/method reference,
-      and a full error-code catalog; built in CI, deployed to Pages - after
-      the repository is published
-- [x] A browser playground - [playground/](playground/): the real compiler as
-      WebAssembly, multi-file, with `aura fmt` and diagnostics; nothing is
-      installed and nothing leaves the page. Deployed to Pages together with the
-      book, after the repository is published
-- [x] Usage from other languages: the subprocess pattern (Python/Node/Go) -
-      see the section above. The WebAssembly module the playground runs on is
-      built and CI-tested ([crates/aura-wasm/](crates/aura-wasm/)); publishing it
-      to npm, then PyO3 and a C ABI, is on demand
-- [x] Cross-platform coverage: a `cargo check` matrix (freebsd, aarch64-linux,
-      musl, wasm32) in CI; macOS in the test matrix
+- [x] Published to crates.io, with binaries for six targets on every tag
+- [x] [`aura-config/setup-aura@v1`](https://github.com/aura-config/setup-aura)
+      for GitHub Actions
+- [x] A [browser playground](https://aura-config.github.io/aura-lang/playground/)
+      running the real compiler as WebAssembly
+- [x] A [documentation book](https://aura-config.github.io/aura-lang/book/), with
+      a [full Russian translation](https://aura-config.github.io/aura-lang/book/ru/)
+- [x] Syntax highlighting for VS Code, Vim/Neovim and nano — [editors/](editors/README.md)
+- [ ] A tree-sitter grammar (Helix, Zed, GitHub Linguist)
+- [ ] npm, PyO3 and a C ABI — on demand rather than ahead of it
 
-**v1.3 - the package ecosystem**:
+**Towards 1.0.** Two criteria remain, and neither of them is code: a promise of
+backward compatibility, and real users whose configs must not break.
 
-- [x] D12: `pub def` / `pub type` - exporting functions and schemas from
-      modules (`pkg.fn(...)`, `new pkg.Schema ... end`); exported functions
-      run with their own module's capabilities, not the caller's
-- [x] `aura add <pkg>@vX.Y.Z` - installing a package (the network is touched
-      only here; `eval` always runs offline), validation before install,
-      integrity pinned in `aura.lock`
+</details>
 
 ## Contributing
 
-Issues and PRs are welcome. Before opening a PR: `cargo test --workspace`,
-`cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
-and `aura fmt --check` on any changed `.aura` files - CI runs the same checks.
-Code comments are in English (see [SPEC.md](SPEC.md) for the formal language
-specification).
+Issues and pull requests are welcome. Before opening one:
+
+```console
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+CI runs exactly those, plus `aura fmt --check` on any changed `.aura` file. Code
+comments and commit messages are in English. [AGENTS.md](AGENTS.md) records where
+each fact has its single home — worth reading before adding a second copy of one.
 
 ## License
 
-Aura is distributed under your choice of [MIT](LICENSE-MIT) or
-[Apache License 2.0](LICENSE-APACHE).
+MIT ([LICENSE-MIT](LICENSE-MIT)) or Apache 2.0 ([LICENSE-APACHE](LICENSE-APACHE)),
+at your option.
 
-Unless you explicitly state otherwise, any contribution (issue/PR)
-intentionally submitted for inclusion in this project shall be licensed as
-above, without any additional terms or conditions.
-
----
-
-*[Русская версия / Russian version: README.ru.md](README.ru.md)*
+Unless you state otherwise, any contribution you intentionally submit for
+inclusion shall be licensed as above, with no additional terms.
