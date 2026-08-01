@@ -5,6 +5,69 @@ All notable changes to Aura are documented here. The format follows
 [Semantic Versioning](https://semver.org/) — while `0.x`, minor releases may
 still change the language.
 
+## [0.1.1] — 2026-07-31
+
+A documentation and diagnostics release. No behaviour of the language itself
+changed, and no manifest that worked on 0.1.0 needs touching.
+
+### Fixed
+
+- **The agent reference taught a type that does not exist.** `aura docs --agent`
+  and the published `llms.txt` listed `Str` among the built-in types and used it
+  in a schema example. `Str` is the Rust variant name; the language accepts only
+  `String`. An assistant following the reference wrote a field the parser rejects.
+
+  Fixed at the class rather than the instance: `BUILTIN_TYPE_NAMES` is now the
+  one list, the parser matches through it, the reference prints from it, and a
+  test fails if `Str` reappears.
+
+- **An unknown field type said "undefined variable".** `a: Str` reported
+  `use of undefined variable 'Str'` and pointed at the whole `type` block —
+  wording that never mentions types, sending the reader to look for a missing
+  binding. It now says `unknown type 'Str'`, points at the type name, lists the
+  six built-ins, and suggests the likely one.
+
+  The suggestion needed more than edit distance: `Str` against `String` is three
+  insertions, past the typo threshold, so the most probable mistake — an
+  abbreviation of the real name — got no hint at all. A prefix relation is tried
+  first now.
+
+- **Referring to a property by name explained nothing.** `assert limits.max <= 1`
+  where `limits:` is a property reported an undefined variable. True, and
+  useless: `:` exports without creating a name, and that is the language's
+  central rule, so the diagnostic now teaches it instead of restating the
+  symptom. It fires whichever order the reference and the property appear in.
+
+### Documentation
+
+- **How to install Aura was documented nowhere.** The quick start told the reader
+  to clone the repository and build from source — the instruction from before
+  crates.io, release binaries and `setup-aura` existed. Both READMEs and the book
+  now lead with the playground, which needs no install at all.
+- The README is rebuilt around what a reader needs first, in both languages:
+  installation up front, a sixty-second example, the language tour and the
+  verification table folded away, and badges for crates.io and docs.rs.
+- The type mapping used by `aura types` is documented for all three targets,
+  including the part that only showed up when generating: a schema's `List` and
+  `Object` carry no element type, so neither can the generated code.
+- Embedding now says to turn default features off — `cargo add aura-lang` locks
+  96 packages, and 38 without the `cli` feature the library never uses.
+- `SPEC` says `String` where it describes something a user sees, notably the
+  `E0512` wording. The lexer's `TokenKind::Str` keeps its name, which is correct.
+
+### Added
+
+- **D19, open and not adopted**: a host can already call a manifest's `pub def`,
+  so rules can live in a `.aura` file and be executed by an application per
+  request, with no intermediate JSON and no rebuild.
+  `cargo run --example scripting` demonstrates it and asserts its own results.
+  What is missing is ergonomics, and what is deliberately unresolved is the
+  other direction — a script cannot call back into the host, and opening that has
+  to be shaped like the capability model rather than bolted beside it.
+- The crate documentation now states which surface is supported: `facade` is
+  meant to stay stable; the layers beneath are public for tools and may change
+  while `0.x`.
+
 ## [0.1.0] — 2026-07-29
 
 The first release. Aura compiles readable manifests to JSON, YAML or TOML,
