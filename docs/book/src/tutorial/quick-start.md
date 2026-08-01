@@ -2,6 +2,30 @@
 
 ## Installing
 
+The fastest way to try the language is to install nothing: the
+[playground](https://aura-config.github.io/aura-lang/playground/) runs the real
+compiler in your browser.
+
+For a binary:
+
+```console
+cargo install aura-lang
+```
+
+Or download a build for your platform from
+[Releases](https://github.com/aura-config/aura-lang/releases) — Linux (gnu and
+static musl), macOS (Intel and Apple silicon) and Windows, each with a `.sha256`.
+On x86_64 Linux prefer the musl build: it is static, so it has no glibc floor.
+
+In GitHub Actions:
+
+```yaml
+- uses: aura-config/setup-aura@v1
+- run: aura check deploy.aura --strict
+```
+
+To build from source instead:
+
 ```console
 git clone https://github.com/aura-config/aura-lang && cd aura-lang
 cargo build --release

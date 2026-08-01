@@ -2,6 +2,30 @@
 
 ## Установка
 
+Быстрее всего попробовать язык, ничего не устанавливая:
+[playground](https://aura-config.github.io/aura-lang/playground/) запускает
+настоящий компилятор прямо в браузере.
+
+Бинарник:
+
+```console
+cargo install aura-lang
+```
+
+Либо готовая сборка со страницы
+[Releases](https://github.com/aura-config/aura-lang/releases) — Linux (gnu и
+статический musl), macOS (Intel и Apple silicon), Windows, к каждой `.sha256`.
+На x86_64 Linux предпочтительна musl-сборка: она статическая, порога glibc нет.
+
+В GitHub Actions:
+
+```yaml
+- uses: aura-config/setup-aura@v1
+- run: aura check deploy.aura --strict
+```
+
+Сборка из исходников:
+
 ```console
 git clone https://github.com/aura-config/aura-lang && cd aura-lang
 cargo build --release
