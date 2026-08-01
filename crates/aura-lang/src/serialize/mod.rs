@@ -232,7 +232,7 @@ pub fn to_toml_string(v: &Value<'_>) -> Result<String, Diagnostic> {
 /// `--format json-flat`: nested objects are flattened into `a.b.c`; lists and scalars are leaves.
 ///
 /// Two keys can only ever map to one flattened key if a literal key contains a
-/// dot, and that is `E0604` rather than a silent overwrite — see [`flatten`].
+/// dot, and that is `E0604` rather than a silent overwrite.
 pub fn to_json_flat(v: &Value<'_>) -> Result<serde_json::Value, Diagnostic> {
     let json = to_json(v)?;
     let serde_json::Value::Object(map) = json else {

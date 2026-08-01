@@ -1,3 +1,26 @@
+//! The Aura configuration language: a library, and the `aura` CLI behind the
+//! default `cli` feature.
+//!
+//! # Which surface is supported
+//!
+//! [`facade`] is the API for embedding. It takes a path or a set of in-memory
+//! buffers and returns `serde_json::Value` together with plain diagnostics, and
+//! it is the part meant to stay stable.
+//!
+//! The layers beneath — [`lexer`], [`parser`], [`eval`], [`source`], [`resolve`]
+//! — are public because tools need them: the language server, the browser
+//! playground, and `examples/scripting.rs`, which calls a manifest's `pub def`
+//! from Rust. They are useful and they are not frozen. While the project is
+//! `0.x` they may change in a minor release, so prefer [`facade`] unless you
+//! need something it does not expose.
+//!
+//! Embedding the library alone:
+//!
+//! ```toml
+//! [dependencies]
+//! aura-lang = { version = "0.1", default-features = false }
+//! ```
+
 // Diagnostic is deliberately passed by value: errors are the cold path, boxing
 // would complicate every signature for a micro-optimization.
 #![allow(clippy::result_large_err)]

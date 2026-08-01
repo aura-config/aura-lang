@@ -85,7 +85,7 @@ enum Cmd {
     /// Install a package into the local registry cache and pin it in aura.lock.
     /// The network is used ONLY here: eval always runs offline.
     Add {
-        /// Specifier: github/<owner>/<repo>@vX.Y.Z
+        /// Specifier: `github/<owner>/<repo>@vX.Y.Z`
         package: String,
         /// Install from a local file instead of the network (tests, private packages)
         #[arg(long, value_name = "FILE")]

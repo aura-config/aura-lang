@@ -40,6 +40,23 @@ name to text and resolves imports inside it.
 A note on threads: `Interpreter` is not `Send`, and every `eval_file` call is
 self-contained, so in an async context wrap the whole call in `spawn_blocking`.
 
+### Sketch: rules the application executes, not just data it reads
+
+`eval_file` returns JSON, and JSON cannot hold a function. But an Aura `pub def`
+*is* a value, and the interpreter can call one — so a script can define
+`route(path, method)` and the application can call it per request, changing
+behaviour by editing a file rather than rebuilding.
+
+`cargo run --example scripting` in this repository demonstrates it end to end.
+
+It is marked a sketch deliberately. The pieces are public API and work today,
+but reaching them means dropping below `facade` and keeping the `SourceCache`
+alive by hand, and a script still cannot call *back* into the application.
+Closing that second gap has to be shaped like the capability model rather than
+bolted beside it — arbitrary host functions would give away exactly the property
+that makes Aura worth embedding, that `aura check --hermetic` can prove a script
+touches nothing before you run it.
+
 ## Any language: a subprocess
 
 The CLI contract is stable and is an API: JSON on stdout, diagnostics with
