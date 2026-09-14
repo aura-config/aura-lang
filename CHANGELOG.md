@@ -9,6 +9,22 @@ still change the language.
 
 ### Added
 
+- **Folds and predicates on lists (D25).** `reduce`, `any`, `all`, `find` and
+  `index_of`. The one that changes how manifests read is `all`:
+  `assert ports.all (p, i) -> p > 1024 end` states what it checks, where the old
+  spelling `assert ports.filter(...).len() == 0` hid the intent behind a count.
+  A manifest's assertions are the part a reader most needs to follow.
+
+  `reduce` requires an explicit initial value, so an empty list has an answer
+  rather than an error. `any` and `all` short-circuit, read `false` and `true`
+  respectively on an empty list, and reject a predicate that returns anything
+  but `Bool`.
+
+  `find(default)` and `index_of(value, default)` both take an explicit fallback.
+  Neither returns `Null` nor `-1`: "not found" is an ordinary outcome and the
+  caller has to name what it means. A `-1` sentinel is worse than it looks,
+  because passing it on silently indexes from the end.
+
 - **`Object.entries()` and `List.to_object()` (D24).** An object was a dead end
   for traversal: `keys()` and `values()` split a map into two lists that nothing
   could rejoin. `entries()` yields `{ key, value }` objects in declaration order

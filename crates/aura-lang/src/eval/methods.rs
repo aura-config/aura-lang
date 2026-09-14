@@ -65,6 +65,11 @@ impl<'a> MethodRegistry<'a> {
         r.register(TypeTag::List, "first", m_list_first);
         r.register(TypeTag::List, "last", m_list_last);
         r.register(TypeTag::Object, "len", m_len);
+        r.register(TypeTag::List, "reduce", m_list_reduce);
+        r.register(TypeTag::List, "any", m_list_any);
+        r.register(TypeTag::List, "all", m_list_all);
+        r.register(TypeTag::List, "find", m_list_find);
+        r.register(TypeTag::List, "index_of", m_list_index_of);
         r.register(TypeTag::Object, "entries", m_obj_entries);
         r.register(TypeTag::List, "to_object", m_list_to_object);
         r.register(TypeTag::Object, "merge", m_obj_merge);
@@ -244,6 +249,205 @@ fn m_list_filter<'a>(
         }
     }
     Ok(Value::list(out))
+}
+
+/// Calls a predicate lambda and insists on a Bool, as `filter` does.
+fn predicate<'a>(
+    it: &mut Interpreter<'a>,
+    f: &Value<'a>,
+    v: &Value<'a>,
+    i: usize,
+    name: &str,
+    sp: Span,
+) -> Result<bool, Diagnostic> {
+    match it.call_value(f, &[v.clone(), Value::Int(i as i64)], sp)? {
+        Value::Bool(b) => Ok(b),
+        other => {
+            let mut d = rt(
+                "E0306",
+                format!("{name} lambda must return Bool, got {}", other.type_name()),
+                sp,
+            );
+            d.help = Some(format!(
+                "the body has to be a comparison: xs.{name} (x, i) -> x > 0 end"
+            ));
+            Err(d)
+        }
+    }
+}
+
+/// The argument a method needs before its trailing lambda (`reduce`'s initial
+/// value, `find`'s fallback). `args` ends with the lambda, so the value is
+/// everything before it.
+fn leading_arg<'a, 'b>(
+    args: &'b [Value<'a>],
+    name: &str,
+    what: &str,
+    example: &str,
+    sp: Span,
+) -> Result<&'b Value<'a>, Diagnostic> {
+    if args.len() < 2 {
+        let mut d = rt(
+            "E0306",
+            format!("`{name}` needs {what} before the lambda"),
+            sp,
+        );
+        d.help = Some(format!("write it as: {example}"));
+        return Err(d);
+    }
+    Ok(&args[0])
+}
+
+/// `.reduce(init) (acc, elem) -> ... end` — left fold.
+///
+/// The initial value is required rather than defaulting to the first element:
+/// an empty list would otherwise have no answer, and `first()` already shows
+/// that this language errors instead of inventing one.
+fn m_list_reduce<'a>(
+    it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    let f = expect_lambda(args, "reduce", sp)?.clone();
+    let mut acc = leading_arg(
+        args,
+        "reduce",
+        "an initial value",
+        "xs.reduce(0) (acc, x) -> acc + x end",
+        sp,
+    )?
+    .clone();
+    for (i, v) in xs.iter().enumerate() {
+        acc = it.call_value(&f, &[acc, v.clone(), Value::Int(i as i64)], sp)?;
+    }
+    Ok(acc)
+}
+
+/// `.any (elem, i) -> Bool end` — true if the predicate holds for some element.
+/// Empty list: false. Stops at the first match.
+fn m_list_any<'a>(
+    it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    let f = expect_lambda(args, "any", sp)?.clone();
+    for (i, v) in xs.iter().enumerate() {
+        if predicate(it, &f, v, i, "any", sp)? {
+            return Ok(Value::Bool(true));
+        }
+    }
+    Ok(Value::Bool(false))
+}
+
+/// `.all (elem, i) -> Bool end` — true if the predicate holds for every element.
+/// Empty list: true, the standard vacuous reading. Stops at the first failure.
+fn m_list_all<'a>(
+    it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    let f = expect_lambda(args, "all", sp)?.clone();
+    for (i, v) in xs.iter().enumerate() {
+        if !predicate(it, &f, v, i, "all", sp)? {
+            return Ok(Value::Bool(false));
+        }
+    }
+    Ok(Value::Bool(true))
+}
+
+/// `.find(default) (elem, i) -> Bool end` — the first match, or the default.
+///
+/// The fallback is explicit for the same reason `get(i, default)` takes one:
+/// "not found" is an ordinary outcome, and the alternative is either a silent
+/// `Null` or a sentinel, both of which this language removes elsewhere.
+fn m_list_find<'a>(
+    it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    let f = expect_lambda(args, "find", sp)?.clone();
+    let default = leading_arg(
+        args,
+        "find",
+        "a fallback value",
+        "xs.find(0) (x, i) -> x > 9000 end",
+        sp,
+    )?
+    .clone();
+    for (i, v) in xs.iter().enumerate() {
+        if predicate(it, &f, v, i, "find", sp)? {
+            return Ok(v.clone());
+        }
+    }
+    Ok(default)
+}
+
+/// `.index_of(value, default)` — the first index equal to `value`, or the default.
+///
+/// No `-1` sentinel: a magic number meaning "absent" is the implicit rule D4 and
+/// D7 remove, and passing it on silently indexes from the end.
+///
+/// The fallback must itself be an `Int`, so the method returns an `Int` on every
+/// path. Allowing any type would make one call site produce an index on one
+/// branch and something else on another — the caller could not read the result
+/// without knowing which branch ran.
+fn m_list_index_of<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    let [needle, default] = args else {
+        let mut d = rt(
+            "E0306",
+            format!(
+                "`index_of` takes a value and a fallback, got {} argument(s)",
+                args.len()
+            ),
+            sp,
+        );
+        d.help = Some("name what an absent element means: index_of(x, -1)".into());
+        return Err(d);
+    };
+    let Value::Int(_) = default else {
+        let mut d = rt(
+            "E0306",
+            format!(
+                "the fallback for `index_of` must be an Int, got {}",
+                default.type_name()
+            ),
+            sp,
+        );
+        d.help = Some(
+            "index_of returns an Int on every path, so the fallback is one too: \
+             index_of(x, -1)"
+                .into(),
+        );
+        return Err(d);
+    };
+    match xs.iter().position(|v| v == needle) {
+        Some(i) => Ok(Value::Int(i as i64)),
+        None => Ok(default.clone()),
+    }
 }
 
 /// `.merge(other)` — the right-hand operand overrides the left-hand keys.

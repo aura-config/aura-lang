@@ -163,6 +163,31 @@ List:
     returns: "Object"
     doc:     "Build an Object from { key, value } pairs; a duplicate key is E0323."
   end
+  reduce:
+    params:  ["init", "fn"]
+    returns: "Any"
+    doc:     "Left fold: reduce(init) (acc, elem) -> ... end. The init is required."
+  end
+  any:
+    params:  ["fn"]
+    returns: "Bool"
+    doc:     "True if the predicate holds for some element; false for an empty list."
+  end
+  all:
+    params:  ["fn"]
+    returns: "Bool"
+    doc:     "True if the predicate holds for every element; true for an empty list."
+  end
+  find:
+    params:  ["default", "fn"]
+    returns: "Any"
+    doc:     "First element matching the predicate, or the default."
+  end
+  index_of:
+    params:  ["value", "default"]
+    returns: "Int"
+    doc:     "Index of the first equal element, or the default (which must be an Int)."
+  end
   first:
     params:  []
     returns: "Any"
