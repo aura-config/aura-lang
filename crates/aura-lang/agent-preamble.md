@@ -63,6 +63,23 @@ config: text
 end
 ```
 
+An object is traversed by turning it into pairs and back. `entries()` yields
+`{ key, value }` objects in declaration order, and `to_object()` is the inverse:
+
+```aura
+def limits()
+  cpu: 2
+  mem: 8
+end
+doubled: limits().entries().map (e, i) ->
+  key:   e.key
+  value: e.value * 2
+end.to_object()
+```
+
+`to_object()` is also the only way to build an object whose keys are computed,
+because a property key is a literal. A repeated key is `E0323`, not an overwrite.
+
 `+` joins two strings or two lists, and never converts between types:
 
 ```aura

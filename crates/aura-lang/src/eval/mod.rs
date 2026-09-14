@@ -1226,6 +1226,89 @@ mod tests {
     }
 
     #[test]
+    fn entries_and_to_object_are_inverses() {
+        // The round trip is the property that matters: it is what lets someone
+        // filter or rewrite a map and put it back.
+        // An object literal is only reachable as a `def` body here: it cannot be
+        // bound with `=`, and a `key:` block is an output rather than a variable.
+        let v = eval(concat!(
+            "def src()\n  a: 1\n  b: 2\nend\n",
+            "kept: src().entries().filter (e, i) -> e.value > 1 end.to_object()\n",
+            "same: src().entries().to_object()\n",
+            "orig: src()\n",
+        ))
+        .unwrap();
+        let kept = get(&v, "kept");
+        assert_eq!(get(&kept, "b"), Value::Int(2));
+        let Value::Object(m) = &kept else {
+            panic!("object")
+        };
+        assert_eq!(m.len(), 1);
+        assert_eq!(get(&v, "same"), get(&v, "orig"));
+    }
+
+    #[test]
+    fn entries_pairs_are_key_value_objects_in_declaration_order() {
+        let v = eval("def src()\n  z: 1\n  a: 2\nend\nout: src().entries()").unwrap();
+        let Value::List(items) = get(&v, "out") else {
+            panic!("list")
+        };
+        assert_eq!(items.len(), 2);
+        // Declaration order, not sorted: JSON output stays deterministic.
+        assert_eq!(get(&items[0], "key"), Value::str("z"));
+        assert_eq!(get(&items[0], "value"), Value::Int(1));
+        assert_eq!(get(&items[1], "key"), Value::str("a"));
+    }
+
+    #[test]
+    fn to_object_builds_computed_keys() {
+        // The point of the method: a key that is a value, which the grammar
+        // cannot express in an object literal.
+        let v = eval(concat!(
+            "names = [\"auth\", \"billing\"]\n",
+            "byname: names.map (n, i) ->\n",
+            "  key:   n\n",
+            "  value: \"svc-\" + n\n",
+            "end.to_object()\n",
+        ))
+        .unwrap();
+        assert_eq!(get(&get(&v, "byname"), "auth"), Value::str("svc-auth"));
+        assert_eq!(
+            get(&get(&v, "byname"), "billing"),
+            Value::str("svc-billing")
+        );
+    }
+
+    #[test]
+    fn to_object_rejects_bad_shapes() {
+        for src in [
+            // not an object at all
+            "x = [1, 2].to_object()",
+            // missing 'value'
+            "x = range(1).map (i, _) -> key: \"a\" end.to_object()",
+            // missing 'key'
+            "x = range(1).map (i, _) -> value: 1 end.to_object()",
+            // 'key' is not a String
+            "x = range(1).map (i, _) ->\n  key:   1\n  value: 2\nend.to_object()",
+        ] {
+            assert_eq!(eval(src).unwrap_err().code, "E0306", "src: {src}");
+        }
+    }
+
+    #[test]
+    fn to_object_duplicate_key_is_e0323_not_a_silent_overwrite() {
+        // Overwriting would make the result depend on order in a way the source
+        // does not show — the class of bug this language keeps designing out.
+        let src = concat!(
+            "x = [\"a\", \"a\"].map (n, i) ->\n",
+            "  key:   n\n",
+            "  value: i\n",
+            "end.to_object()\n",
+        );
+        assert_eq!(eval(src).unwrap_err().code, "E0323");
+    }
+
+    #[test]
     fn concat_str_and_list() {
         let v = eval("s: \"a\" + \"b\" + \"c\"\nxs: [1, 2] + [3]\ne: [] + []").unwrap();
         assert_eq!(get(&v, "s"), Value::str("abc"));

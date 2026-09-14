@@ -9,6 +9,21 @@ still change the language.
 
 ### Added
 
+- **`Object.entries()` and `List.to_object()` (D24).** An object was a dead end
+  for traversal: `keys()` and `values()` split a map into two lists that nothing
+  could rejoin. `entries()` yields `{ key, value }` objects in declaration order
+  and `to_object()` is its exact inverse, so a map can be filtered or rewritten
+  and put back.
+
+  `to_object()` also closes a gap that had no workaround: a property key is a
+  literal in the grammar, so an object keyed by a computed value — services by
+  name, the commonest map shape in configuration — could not be built at all.
+
+  The pair is an object rather than a two-element list so a lambda reads `e.key`
+  instead of `e[0]`. A repeated key is the new `E0323` rather than an overwrite,
+  because a result that silently depends on element order is the class of
+  surprise D7 exists to remove.
+
 - **`+` joins strings and lists (D23).** `"svc-" + name` and `base + ["frontend"]`
   now evaluate. The second had no expression at all before this: there was no
   operator and no `concat` method, so a base list plus an environment-specific

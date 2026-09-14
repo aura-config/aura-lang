@@ -65,6 +65,8 @@ impl<'a> MethodRegistry<'a> {
         r.register(TypeTag::List, "first", m_list_first);
         r.register(TypeTag::List, "last", m_list_last);
         r.register(TypeTag::Object, "len", m_len);
+        r.register(TypeTag::Object, "entries", m_obj_entries);
+        r.register(TypeTag::List, "to_object", m_list_to_object);
         r.register(TypeTag::Object, "merge", m_obj_merge);
         r.register(TypeTag::Object, "get", m_get);
         for tag in [TypeTag::Object, TypeTag::List] {
@@ -474,6 +476,89 @@ fn m_obj_values<'a>(
         unreachable!()
     };
     Ok(Value::list(m.values().cloned().collect()))
+}
+
+/// `.entries()`: Object -> List of `{ key, value }` objects, declaration order.
+///
+/// The pair is an object rather than a two-element list so a lambda reads
+/// `e.key` instead of `e[0]`. It is also what `to_object()` consumes, so the
+/// two are inverses and a round trip is written without reshaping.
+fn m_obj_entries<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    _sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Object(m) = recv else {
+        unreachable!()
+    };
+    let pairs = m
+        .iter()
+        .map(|(k, v)| {
+            let mut pair = IndexMap::with_capacity(2);
+            pair.insert("key".to_string(), Value::str(k));
+            pair.insert("value".to_string(), v.clone());
+            Value::object(pair)
+        })
+        .collect();
+    Ok(Value::list(pairs))
+}
+
+/// `.to_object()`: List of `{ key, value }` objects -> Object.
+///
+/// The inverse of `entries()`, and the only way to build an object whose keys
+/// are computed: a property key is a literal in the grammar, so before this a
+/// list could be mapped but never indexed by a value it carried.
+fn m_list_to_object<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(items) = recv else {
+        unreachable!()
+    };
+    let mut out: IndexMap<String, Value<'a>> = IndexMap::with_capacity(items.len());
+    for (i, item) in items.iter().enumerate() {
+        let Value::Object(pair) = item else {
+            return Err(rt(
+                "E0306",
+                format!(
+                    "to_object() expects {{ key, value }} objects, but element {i} is {}",
+                    item.type_name()
+                ),
+                sp,
+            ));
+        };
+        let (Some(k), Some(v)) = (pair.get("key"), pair.get("value")) else {
+            return Err(rt(
+                "E0306",
+                format!("element {i} needs both a 'key' and a 'value' field"),
+                sp,
+            ));
+        };
+        let Value::Str(k) = k else {
+            return Err(rt(
+                "E0306",
+                format!(
+                    "the 'key' of element {i} must be a String, got {}",
+                    k.type_name()
+                ),
+                sp,
+            ));
+        };
+        // A silent overwrite would make the result depend on element order in a
+        // way nothing in the source shows, so a collision is an error instead.
+        if let Some(first) = out.get_index_of(k.as_ref()) {
+            return Err(rt(
+                "E0323",
+                format!("duplicate key \"{k}\": elements {first} and {i} both claim it",),
+                sp,
+            ));
+        }
+        out.insert(k.to_string(), v.clone());
+    }
+    Ok(Value::object(out))
 }
 
 /// `.contains(x)`: List — element; Object — key; Str — substring.
