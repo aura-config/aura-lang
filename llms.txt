@@ -47,6 +47,10 @@ types** below — take them from there rather than guessing, because the error f
 an invented one is `E0504: use of undefined variable`, which does not say "unknown
 type" and is easy to misread.
 
+A list field says what it holds: `tags: [String]`, `endpoints: [Endpoint]`,
+nesting as `[[Int]]`, and an `enum` works as the element type. A wrong element is
+`E0512` reported with its index. Bare `List` still accepts anything.
+
 `Int` and `Float` are distinct: passing `1` where `1.0` is required is `E0512`.
 
 Strings are single-line and double-quoted, with `#{...}` interpolation:

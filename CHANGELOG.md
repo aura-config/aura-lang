@@ -9,6 +9,33 @@ still change the language.
 
 ### Added
 
+- **A list field can say what it holds (D26, closing D21).** `endpoints: [Endpoint]`,
+  `tags: [String]`, nesting as `[[Int]]`, and an `enum` as the element type.
+
+  This was the worst-served shape in the language. On 0.1.1 a field declared
+  `List` accepted `["not an endpoint", 42, true]` under `--strict`, and the only
+  thing the compiler said was that `Endpoint` was **unused** — calling the schema
+  dead code while rubbish sailed into the field it described. Both halves are now
+  fixed: the element is checked, and a schema used as an element type counts as
+  used.
+
+  A wrong element is `E0512` carrying its index, because "one of these is wrong"
+  is no help in a list of forty:
+
+  ```
+  [E0512] Error: endpoints[0] of schema Service expects Endpoint, got String
+  ```
+
+  It reaches the host too: `aura types` emits `Vec<Endpoint>`, `Endpoint[]` and
+  `[]Endpoint` where it used to emit an untyped array.
+
+  **Bare `List` is unchanged**, so every manifest written before this evaluates
+  exactly as it did.
+
+  Syntax note: `[T]` mirrors the value, so no new keyword was added and the
+  parser needs no lookahead. `List<T>` was rejected on evidence — `>` suppresses
+  the following newline, so a field ending in `>` swallows its own separator.
+
 - **Folds and predicates on lists (D25).** `reduce`, `any`, `all`, `find` and
   `index_of`. The one that changes how manifests read is `all`:
   `assert ports.all (p, i) -> p > 1024 end` states what it checks, where the old

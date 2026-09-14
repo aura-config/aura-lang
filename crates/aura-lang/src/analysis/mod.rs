@@ -285,7 +285,7 @@ impl<'a> SemanticAnalyzer<'a> {
             }
             Stmt::TypeDecl(schema) => {
                 for f in &schema.fields {
-                    if let TypeName::Custom(name) = f.ty {
+                    if let Some(name) = f.ty.custom_name() {
                         self.mark_used_as_type(name, f.ty_span);
                     }
                     // a default expression may reference variables (e.g. `= base_port`)
@@ -488,6 +488,32 @@ mod tests {
 
     fn diags(src: &str) -> Vec<Diagnostic> {
         diags_as(src, true)
+    }
+
+    #[test]
+    fn a_schema_used_as_an_element_type_is_not_dead_code() {
+        // The sharpest symptom of the old gap: under --strict the compiler
+        // called Endpoint dead while letting rubbish into the field it was
+        // meant to describe. Both halves were wrong; this is the first.
+        let d = diags(concat!(
+            "type Endpoint
+  path: String
+end
+",
+            "type Service
+  endpoints: [Endpoint]
+end
+",
+            "pub def use_it()
+  n: 1
+end
+",
+        ));
+        assert!(
+            !d.iter().any(|x| x.message.contains("Endpoint")),
+            "Endpoint reported as unused: {:?}",
+            d.iter().map(|x| &x.message).collect::<Vec<_>>()
+        );
     }
 
     fn diags_as(src: &str, is_root: bool) -> Vec<Diagnostic> {

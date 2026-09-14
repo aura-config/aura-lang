@@ -30,6 +30,33 @@ Field types are `String`, `Int`, `Float`, `Bool`, `List` and `Object`. `Int` and
 `Float` are separate types, so memory limits in bytes and 64-bit identifiers keep
 their precision — overflow is `E0304`, not a silent wrap.
 
+## Lists with an element type
+
+`List` on its own accepts any elements. Write `[T]` to say what is in it:
+
+```aura
+type Service
+  name:      String
+  tags:      [String]
+  endpoints: [Endpoint]
+end
+```
+
+The type mirrors the value: `[1, 2]` is a list, so `[Int]` is its type. Nesting
+follows with no new rule, `[[Int]]`, and an `enum` works as the element type.
+
+A wrong element is reported with its index, because "one of these is wrong" is
+no help in a list of forty:
+
+```
+[E0512] Error: endpoints[0] of schema Service expects Endpoint, got String
+```
+
+This also reaches the host. `aura types` emits `Vec<Endpoint>`, `Endpoint[]` or
+`[]Endpoint` instead of an untyped array.
+
+Bare `List` keeps its old meaning, so nothing written before this needs changing.
+
 ## assert
 
 Arbitrary invariants are the `assert` statement:
