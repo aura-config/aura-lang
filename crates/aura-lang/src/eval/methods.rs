@@ -1278,7 +1278,7 @@ fn m_list_sort<'a>(
     if let Some(first) = xs.first() {
         for v in xs.iter() {
             if scalar_cmp(first, v).is_none() {
-                return Err(rt(
+                let mut d = rt(
                     "E0306",
                     format!(
                         "sort() cannot compare {} and {}",
@@ -1286,7 +1286,12 @@ fn m_list_sort<'a>(
                         v.type_name()
                     ),
                     sp,
+                );
+                d.help = Some(mixed_list_help(
+                    "sort",
+                    matches!(first, Value::Null) || matches!(v, Value::Null),
                 ));
+                return Err(d);
             }
         }
     }
@@ -1305,6 +1310,25 @@ fn m_list_reverse<'a>(
         unreachable!()
     };
     Ok(Value::list(xs.iter().rev().cloned().collect()))
+}
+
+/// Advice for a list whose elements are not uniformly usable.
+///
+/// The two causes need different cures, and offering the wrong one wastes the
+/// reader's next attempt. A `Null` almost always arrived from parsed YAML or
+/// JSON, where an empty value is a real and common shape, and `.compact()`
+/// removes exactly those. A genuine mix of scalar types is a different mistake
+/// with no one-call fix, so it is not offered one.
+fn mixed_list_help(method: &str, saw_null: bool) -> String {
+    if saw_null {
+        format!(
+            "a null in a list usually came from parsed YAML or JSON; drop them first: xs.compact().{method}()"
+        )
+    } else {
+        format!(
+            "{method}() needs every element to be the same kind of scalar; map or filter the odd ones out first"
+        )
+    }
 }
 
 /// `.sum()` — Int if all Int, Float if any Float; E0304 on Int overflow.
@@ -1326,11 +1350,13 @@ fn m_list_sum<'a>(
                 Value::Int(n) => acc += *n as f64,
                 Value::Float(f) => acc += *f,
                 other => {
-                    return Err(rt(
+                    let mut d = rt(
                         "E0306",
                         format!("sum() expects numbers, got {}", other.type_name()),
                         sp,
-                    ))
+                    );
+                    d.help = Some(mixed_list_help("sum", matches!(other, Value::Null)));
+                    return Err(d);
                 }
             }
         }
@@ -1345,11 +1371,13 @@ fn m_list_sum<'a>(
                         .ok_or_else(|| rt("E0304", "sum() overflows i64", sp))?
                 }
                 other => {
-                    return Err(rt(
+                    let mut d = rt(
                         "E0306",
                         format!("sum() expects numbers, got {}", other.type_name()),
                         sp,
-                    ))
+                    );
+                    d.help = Some(mixed_list_help("sum", matches!(other, Value::Null)));
+                    return Err(d);
                 }
             }
         }
@@ -1372,7 +1400,7 @@ fn list_extreme<'a>(
     })?;
     for v in &xs[1..] {
         let ord = scalar_cmp(v, best).ok_or_else(|| {
-            rt(
+            let mut d = rt(
                 "E0306",
                 format!(
                     "{method}() cannot compare {} and {}",
@@ -1380,7 +1408,12 @@ fn list_extreme<'a>(
                     best.type_name()
                 ),
                 sp,
-            )
+            );
+            d.help = Some(mixed_list_help(
+                method,
+                matches!(v, Value::Null) || matches!(best, Value::Null),
+            ));
+            d
         })?;
         if (want_max && ord == std::cmp::Ordering::Greater)
             || (!want_max && ord == std::cmp::Ordering::Less)

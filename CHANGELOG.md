@@ -72,6 +72,18 @@ still change the language.
 
 - **`index 5 out of bounds (list has 1 elements)`** now agrees in number.
 
+- **A `null` in a list reported a symptom and hid the cause.** `sum()` said
+  `expects numbers, got Null`, and `sort()`/`min()`/`max()` said they could not
+  compare two types. All true, and all pointing the reader at their types when
+  the real problem is almost always a `null` that arrived from parsed YAML or
+  JSON, where an empty value is an ordinary shape.
+
+  These now name the cure, `xs.compact().sum()`, but **only when a `null` is
+  actually involved**. A genuine mix of scalar types gets different advice,
+  because `compact()` removes nulls and nothing else, and recommending it for a
+  `String` among `Int`s would send the reader down a path that cannot work. Both
+  branches are tested, and so is the suggested call.
+
 ## [0.1.1] — 2026-07-31
 
 A documentation and diagnostics release. No behaviour of the language itself

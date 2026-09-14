@@ -1516,6 +1516,67 @@ mod tests {
     }
 
     #[test]
+    fn a_null_in_a_list_is_named_as_the_cause() {
+        // The message reports a symptom ("expects numbers, got Null") while the
+        // cause is nearly always a null from parsed YAML, and the cure is one
+        // call the reader will not guess.
+        for src in [
+            "x = [1, null, 3].sum()",
+            "x = [1, null].sort()",
+            "x = [1, null].min()",
+            "x = [1, null].max()",
+        ] {
+            let d = eval(src).unwrap_err();
+            assert_eq!(d.code, "E0306", "src: {src}");
+            let help = d.help.unwrap_or_default();
+            assert!(
+                help.contains("compact()"),
+                "no cure named for: {src} ({help})"
+            );
+        }
+    }
+
+    #[test]
+    fn a_type_mix_is_not_told_to_compact() {
+        // compact() removes nulls and nothing else, so recommending it for a
+        // String among Ints would send the reader down a path that cannot work.
+        for src in [
+            "x = [1, \"x\"].sum()",
+            "x = [1, \"x\"].sort()",
+            "x = [1, \"x\"].min()",
+        ] {
+            let help = eval(src).unwrap_err().help.unwrap_or_default();
+            assert!(!help.is_empty(), "no help for: {src}");
+            assert!(
+                !help.contains("compact()"),
+                "compact() cannot fix a type mix: {src} ({help})"
+            );
+        }
+    }
+
+    #[test]
+    fn compacting_actually_resolves_the_error() {
+        // The suggested call, executed — the same guard the E0317 hints carry.
+        let v = eval(concat!(
+            "xs = [1, null, 3]
+",
+            "total: xs.compact().sum()
+",
+            "sorted: xs.compact().sort()
+",
+            "lowest: xs.compact().min()
+",
+        ))
+        .unwrap();
+        assert_eq!(get(&v, "total"), Value::Int(4));
+        assert_eq!(get(&v, "lowest"), Value::Int(1));
+        assert_eq!(
+            get(&v, "sorted"),
+            Value::list(vec![Value::Int(1), Value::Int(3)])
+        );
+    }
+
+    #[test]
     fn every_empty_collection_error_carries_its_remedy() {
         // E0317's cure was written in the diagnostic catalogue from the start
         // and never reached the person who hit it: the runtime said only that
