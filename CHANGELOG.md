@@ -5,6 +5,26 @@ All notable changes to Aura are documented here. The format follows
 [Semantic Versioning](https://semver.org/) — while `0.x`, minor releases may
 still change the language.
 
+## [Unreleased]
+
+### Added
+
+- **`+` joins strings and lists (D23).** `"svc-" + name` and `base + ["frontend"]`
+  now evaluate. The second had no expression at all before this: there was no
+  operator and no `concat` method, so a base list plus an environment-specific
+  tail — the commonest shape in real configuration — could not be written.
+
+  `+` does not convert. `"port " + 8080` stays `E0306`, and the diagnostic now
+  names which side to call `.to_str()` on. Coercion is refused for the reason D4
+  and D7 refuse implicitness: a configuration language that guesses is the
+  failure being designed away.
+
+  Joining is bounded at 1,000,000 list elements and 16 MiB of string, reported as
+  the new `E0322`. `+` is the first operator whose result can outgrow its
+  operands, so `x = y + y` repeated once per line doubles, and sixty lines that
+  fit on a screen reach 2^60 elements. Evaluation runs over third-party packages,
+  so that has to be a diagnostic rather than an exhausted heap.
+
 ## [0.1.1] — 2026-07-31
 
 A documentation and diagnostics release. No behaviour of the language itself
