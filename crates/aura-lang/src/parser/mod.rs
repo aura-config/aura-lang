@@ -557,6 +557,26 @@ impl<'a> Parser<'a> {
         }))
     }
 
+    /// A schema field's type: `Int`, `Service`, or `[Service]` (D26).
+    ///
+    /// This position never reaches `parse_expr`, so `[` here cannot be a list
+    /// literal and needs no lookahead to disambiguate — which is the reason the
+    /// bracket form was chosen over `List<T>`, whose closing `>` is in the
+    /// lexer's newline-suppression set and would swallow the field separator.
+    fn parse_field_type(&mut self) -> Result<(TypeName<'a>, Span), Diagnostic> {
+        let start = self.span();
+        if self.eat(&TokenKind::LBracket) {
+            let (inner, _) = self.parse_field_type()?;
+            self.expect(&TokenKind::RBracket, "`]` after the element type")?;
+            return Ok((TypeName::List(Some(Box::new(inner))), self.join(start)));
+        }
+        let (name, span) = self.expect_ident("field type")?;
+        Ok((
+            TypeName::builtin(name).unwrap_or(TypeName::Custom(name)),
+            span,
+        ))
+    }
+
     fn parse_type_decl(&mut self, public: bool) -> Result<Stmt<'a>, Diagnostic> {
         let start = self.span();
         self.bump(); // type
@@ -570,8 +590,7 @@ impl<'a> Parser<'a> {
             }
             let (field, _) = self.expect_ident("field name")?;
             self.expect(&TokenKind::Colon, "`:` after field name")?;
-            let (ty, ty_span) = self.expect_ident("field type")?;
-            let ty = TypeName::builtin(ty).unwrap_or(TypeName::Custom(ty));
+            let (ty, ty_span) = self.parse_field_type()?;
             // `name: Type = default` makes the field optional (default in the instance scope).
             let default = if self.eat(&TokenKind::Assign) {
                 Some(self.parse_expr(0)?)

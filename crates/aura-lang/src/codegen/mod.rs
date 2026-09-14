@@ -107,7 +107,10 @@ fn rust_ty(ty: &TypeName) -> String {
         TypeName::Int => "i64".into(),
         TypeName::Float => "f64".into(),
         TypeName::Bool => "bool".into(),
-        TypeName::List => "Vec<serde_json::Value>".into(),
+        // D26: an element type turns the commonest configuration shape from
+        // an untyped bag into the schema the host actually wants.
+        TypeName::List(None) => "Vec<serde_json::Value>".into(),
+        TypeName::List(Some(el)) => format!("Vec<{}>", rust_ty(el)),
         TypeName::Object => "serde_json::Map<String, serde_json::Value>".into(),
         TypeName::Custom(name) => (*name).to_string(),
     }
@@ -152,7 +155,8 @@ fn ts_ty(ty: &TypeName) -> String {
         TypeName::String => "string".into(),
         TypeName::Int | TypeName::Float => "number".into(),
         TypeName::Bool => "boolean".into(),
-        TypeName::List => "unknown[]".into(),
+        TypeName::List(None) => "unknown[]".into(),
+        TypeName::List(Some(el)) => format!("{}[]", ts_ty(el)),
         TypeName::Object => "Record<string, unknown>".into(),
         TypeName::Custom(name) => (*name).to_string(),
     }
@@ -192,7 +196,8 @@ fn go_ty(ty: &TypeName) -> String {
         TypeName::Int => "int64".into(),
         TypeName::Float => "float64".into(),
         TypeName::Bool => "bool".into(),
-        TypeName::List => "[]any".into(),
+        TypeName::List(None) => "[]any".into(),
+        TypeName::List(Some(el)) => format!("[]{}", go_ty(el)),
         TypeName::Object => "map[string]any".into(),
         TypeName::Custom(name) => (*name).to_string(),
     }
@@ -287,6 +292,50 @@ mod tests {
         "  labels:   Object\n",
         "end\n",
     );
+
+    /// D26: the shape that used to reach the host untyped.
+    const TYPED: &str = concat!(
+        "enum Tier
+  \"frontend\"
+  \"backend\"
+end
+",
+        "type Endpoint
+  host: String
+end
+",
+        "type Service
+",
+        "  endpoints: [Endpoint]
+",
+        "  tags:      [String]
+",
+        "  grid:      [[Int]]
+",
+        "  tiers:     [Tier]
+",
+        "end
+",
+    );
+
+    #[test]
+    fn an_element_type_reaches_the_host() {
+        // Before D26 every one of these was Vec<serde_json::Value> / unknown[] /
+        // []any — the commonest configuration shape, arriving untyped.
+        let rs = generate(TYPED, Lang::Rust).unwrap();
+        assert!(rs.contains("pub endpoints: Vec<Endpoint>,"), "{rs}");
+        assert!(rs.contains("pub tags: Vec<String>,"), "{rs}");
+        assert!(rs.contains("pub grid: Vec<Vec<i64>>,"), "{rs}");
+        assert!(rs.contains("pub tiers: Vec<Tier>,"), "{rs}");
+
+        let ts = generate(TYPED, Lang::TypeScript).unwrap();
+        assert!(ts.contains("  endpoints: Endpoint[];"), "{ts}");
+        assert!(ts.contains("  grid: number[][];"), "{ts}");
+
+        let go = generate(TYPED, Lang::Go).unwrap();
+        assert!(go.contains("[]Endpoint"), "{go}");
+        assert!(go.contains("[][]int64"), "{go}");
+    }
 
     #[test]
     fn rust_output() {

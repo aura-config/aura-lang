@@ -302,7 +302,7 @@ impl<'a> Resolver<'a> {
             Stmt::TypeDecl(schema) => {
                 for f in &schema.fields {
                     // A custom field type is a use of that schema/enum name.
-                    if let TypeName::Custom(name) = f.ty {
+                    if let Some(name) = f.ty.custom_name() {
                         if let Some(s) = self.field_type_span(schema, f.name, name) {
                             self.use_of(name, s);
                         }

@@ -169,6 +169,38 @@ fn edit_distance(a: &str, b: &str) -> usize {
     prev[b.len()]
 }
 
+/// Does a value have the shape a declared type calls for?
+///
+/// Shape only. A `Custom` name is satisfied by any `Object`, because a value
+/// carries no schema tag at runtime — `new Endpoint` produces a plain object,
+/// indistinguishable from one written by hand. Element checking inherits
+/// exactly that depth rather than pretending to more.
+fn shape_ok(ty: &TypeName, v: &Value) -> bool {
+    match ty {
+        TypeName::String => matches!(v, Value::Str(_)),
+        TypeName::Int => matches!(v, Value::Int(_)),
+        TypeName::Float => matches!(v, Value::Float(_)),
+        TypeName::Bool => matches!(v, Value::Bool(_)),
+        TypeName::List(_) => matches!(v, Value::List(_)),
+        TypeName::Object | TypeName::Custom(_) => matches!(v, Value::Object(_)),
+    }
+}
+
+/// A declared type as the author wrote it. The previous `{:?}` printed
+/// `Custom("Tls")`, which is a Rust variant name leaking into a user's error.
+fn type_label(ty: &TypeName) -> String {
+    match ty {
+        TypeName::String => "String".into(),
+        TypeName::Int => "Int".into(),
+        TypeName::Float => "Float".into(),
+        TypeName::Bool => "Bool".into(),
+        TypeName::Object => "Object".into(),
+        TypeName::Custom(n) => (*n).to_string(),
+        TypeName::List(None) => "List".into(),
+        TypeName::List(Some(el)) => format!("[{}]", type_label(el)),
+    }
+}
+
 fn rt(code: &'static str, msg: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic::error(code, msg, span, "evaluated here")
 }
@@ -259,7 +291,18 @@ impl<'a> Interpreter<'a> {
                 // D18: bind each enum-typed field to the enum visible here.
                 let mut field_enums = HashMap::new();
                 for f in &schema.fields {
-                    if let TypeName::Custom(tname) = f.ty {
+                    // The name to look up is the field's own type, or the
+                    // element type when the field is `[Tier]` (D26). A field is
+                    // one or the other, never both, so one map still suffices.
+                    let tname = match &f.ty {
+                        TypeName::Custom(n) => Some(*n),
+                        TypeName::List(Some(el)) => match el.as_ref() {
+                            TypeName::Custom(n) => Some(*n),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    if let Some(tname) = tname {
                         if let Some(Value::Enum(en)) = env.get(tname) {
                             field_enums.insert(f.name, en);
                         }
@@ -1055,7 +1098,10 @@ impl<'a> Interpreter<'a> {
             // D18: a `Custom` name may be an enum — then the field is a plain
             // String constrained to the declared members.
             {
-                if let Some(en) = def.field_enums.get(f.name) {
+                if let (Some(en), false) = (
+                    def.field_enums.get(f.name),
+                    matches!(f.ty, TypeName::List(_)),
+                ) {
                     let Value::Str(got) = v else {
                         return Err(rt(
                             "E0512",
@@ -1093,26 +1139,74 @@ impl<'a> Interpreter<'a> {
                     continue;
                 }
             }
-            let ok = match f.ty {
-                TypeName::String => matches!(v, Value::Str(_)),
-                TypeName::Int => matches!(v, Value::Int(_)),
-                TypeName::Float => matches!(v, Value::Float(_)),
-                TypeName::Bool => matches!(v, Value::Bool(_)),
-                TypeName::List => matches!(v, Value::List(_)),
-                TypeName::Object | TypeName::Custom(_) => matches!(v, Value::Object(_)),
-            };
+            let ok = shape_ok(&f.ty, v);
             if !ok {
                 return Err(rt(
                     "E0512",
                     format!(
-                        "field '{}' of schema {} expects {:?}, got {}",
+                        "field '{}' of schema {} expects {}, got {}",
                         f.name,
                         def.name,
-                        f.ty,
+                        type_label(&f.ty),
                         v.type_name()
                     ),
                     span,
                 ));
+            }
+            // D26: the elements of `[T]`. Reported with the index, because
+            // "one of these is wrong" is not an answer in a list of forty.
+            if let (TypeName::List(Some(el)), Value::List(items)) = (&f.ty, v) {
+                for (i, item) in items.iter().enumerate() {
+                    if let Some(en) = def.field_enums.get(f.name) {
+                        let Value::Str(got) = item else {
+                            return Err(rt(
+                                "E0512",
+                                format!(
+                                    "{}[{i}] expects enum {}, got {}",
+                                    f.name,
+                                    en.name,
+                                    item.type_name()
+                                ),
+                                span,
+                            ));
+                        };
+                        if !en.members.iter().any(|m| *m == got.as_ref()) {
+                            let listed = en
+                                .members
+                                .iter()
+                                .map(|m| format!("\"{m}\""))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            let mut d = rt(
+                                "E0514",
+                                format!(
+                                    "'{got}' is not a member of enum {} ({}[{i}])",
+                                    en.name, f.name
+                                ),
+                                span,
+                            );
+                            d.help = Some(match nearest(&en.members, got.as_ref()) {
+                                Some(sug) => format!("did you mean \"{sug}\"? members: {listed}"),
+                                None => format!("members: {listed}"),
+                            });
+                            return Err(d);
+                        }
+                        continue;
+                    }
+                    if !shape_ok(el, item) {
+                        return Err(rt(
+                            "E0512",
+                            format!(
+                                "{}[{i}] of schema {} expects {}, got {}",
+                                f.name,
+                                def.name,
+                                type_label(el),
+                                item.type_name()
+                            ),
+                            span,
+                        ));
+                    }
+                }
             }
         }
         if self.options.strict {
@@ -1799,6 +1893,160 @@ x: 1
             "E0310"
         );
         assert_eq!(eval("x = env(\"HOME\", \"\")").unwrap_err().code, "E0310");
+    }
+
+    #[test]
+    fn a_typed_list_rejects_a_wrong_element_with_its_index() {
+        // The shape D21 was written for: under --strict this used to pass, and
+        // the only complaint was that Endpoint was unused.
+        let src = concat!(
+            "type Endpoint
+  path: String
+end
+",
+            "type Service
+  endpoints: [Endpoint]
+end
+",
+            "svc: new Service
+  endpoints: [\"not an endpoint\", 42, true]
+end
+",
+        );
+        let d = eval(src).unwrap_err();
+        assert_eq!(d.code, "E0512");
+        // The index is the point: "one of these is wrong" is not an answer in a
+        // list of forty.
+        assert!(d.message.contains("endpoints[0]"), "{}", d.message);
+        assert!(d.message.contains("expects Endpoint"), "{}", d.message);
+    }
+
+    #[test]
+    fn a_bare_list_still_accepts_anything() {
+        // Backward compatibility is the whole reason `List` kept its name and
+        // gained an *optional* element: every manifest written before D26 must
+        // evaluate unchanged.
+        let src = concat!(
+            "type Service
+  endpoints: List
+end
+",
+            "svc: new Service
+  endpoints: [\"anything\", 42, true]
+end
+",
+        );
+        let v = eval_with(
+            src,
+            Options {
+                strict: true,
+                ..Options::default()
+            },
+        )
+        .unwrap();
+        let Value::List(items) = get(&get(&v, "svc"), "endpoints") else {
+            panic!("list")
+        };
+        assert_eq!(items.len(), 3);
+    }
+
+    #[test]
+    fn typed_lists_nest_and_carry_scalars() {
+        let v = eval(concat!(
+            "type Grid
+  tags: [String]
+  cells: [[Int]]
+end
+",
+            "g: new Grid
+  tags: [\"a\"]
+  cells: [[1, 2], [3]]
+end
+",
+        ))
+        .unwrap();
+        let g = get(&v, "g");
+        assert_eq!(get(&g, "tags"), Value::list(vec![Value::str("a")]));
+        // A wrong element one level down is still caught.
+        let d = eval(concat!(
+            "type Grid
+  cells: [[Int]]
+end
+",
+            "g: new Grid
+  cells: [\"nope\"]
+end
+",
+        ))
+        .unwrap_err();
+        assert_eq!(d.code, "E0512");
+        assert!(d.message.contains("cells[0]"), "{}", d.message);
+    }
+
+    #[test]
+    fn an_enum_works_as_an_element_type() {
+        // D18 resolved enums for scalar fields only; an element type has to
+        // reach the same enum, and a member check has to keep its suggestion.
+        let src = concat!(
+            "enum Tier
+  \"frontend\"
+  \"backend\"
+end
+",
+            "type Service
+  tiers: [Tier]
+end
+",
+        );
+        // The evaluated Value borrows its source, so each program is bound
+        // before it is evaluated rather than passed as a temporary.
+        let good_src = format!(
+            "{src}s: new Service
+  tiers: [\"backend\"]
+end
+"
+        );
+        let good = eval(&good_src).unwrap();
+        assert_eq!(
+            get(&get(&good, "s"), "tiers"),
+            Value::list(vec![Value::str("backend")])
+        );
+
+        let bad_src = format!(
+            "{src}s: new Service
+  tiers: [\"backand\"]
+end
+"
+        );
+        let d = eval(&bad_src).unwrap_err();
+        assert_eq!(d.code, "E0514");
+        assert!(d.message.contains("tiers[0]"), "{}", d.message);
+        assert!(
+            d.help.unwrap_or_default().contains("backend"),
+            "the did-you-mean suggestion must survive"
+        );
+    }
+
+    #[test]
+    fn a_type_error_names_the_type_as_written() {
+        // The message used to print the Rust variant: `expects Custom("Tls")`.
+        let d = eval(concat!(
+            "type Tls
+  cert: String
+end
+",
+            "type Service
+  tls: Tls
+end
+",
+            "s: new Service
+  tls: 42
+end
+",
+        ))
+        .unwrap_err();
+        assert!(d.message.contains("expects Tls"), "{}", d.message);
+        assert!(!d.message.contains("Custom("), "{}", d.message);
     }
 
     #[test]

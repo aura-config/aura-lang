@@ -97,13 +97,19 @@ pub struct SchemaField<'a> {
     pub ty_span: Span,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Not `Copy`: `List` carries an optional element type, and that box is what
+/// lets `[[Int]]` nest without a special case for depth.
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypeName<'a> {
     String,
     Int,
     Float,
     Bool,
-    List,
+    /// `List` is the bare, unconstrained form; `List(Some(t))` is `[t]` (D26).
+    /// Keeping one variant rather than adding a second means every site that
+    /// asks "is this a list" keeps working, and only sites that care about the
+    /// element have to look inside.
+    List(Option<Box<TypeName<'a>>>),
     Object,
     Custom(&'a str),
 }
@@ -115,6 +121,20 @@ pub enum TypeName<'a> {
 /// Deriving the documentation from here means that cannot recur.
 pub const BUILTIN_TYPE_NAMES: &[&str] = &["String", "Int", "Float", "Bool", "List", "Object"];
 
+impl<'a> TypeName<'a> {
+    /// The user-declared name this type ultimately refers to, looking through
+    /// `[T]` (D26). Tooling asks this to decide whether a `type` or `enum` is
+    /// used: without the element case, `services: [Service]` left `Service`
+    /// reported as dead code while it was doing the validating.
+    pub fn custom_name(&self) -> Option<&'a str> {
+        match self {
+            TypeName::Custom(n) => Some(n),
+            TypeName::List(Some(el)) => el.custom_name(),
+            _ => None,
+        }
+    }
+}
+
 impl TypeName<'_> {
     /// Parses a built-in name; anything else is a user-declared `type` or `enum`.
     pub fn builtin(name: &str) -> Option<TypeName<'static>> {
@@ -123,7 +143,7 @@ impl TypeName<'_> {
             "Int" => TypeName::Int,
             "Float" => TypeName::Float,
             "Bool" => TypeName::Bool,
-            "List" => TypeName::List,
+            "List" => TypeName::List(None),
             "Object" => TypeName::Object,
             _ => return None,
         })
