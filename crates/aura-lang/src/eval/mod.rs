@@ -630,8 +630,8 @@ impl<'a> Interpreter<'a> {
                 let Value::Object(pmap) = &provided else {
                     unreachable!()
                 };
-                // Apply defaults for optional fields omitted here (in schema order,
-                // after the provided fields). Evaluated in the instantiation scope.
+                // Apply defaults for optional fields omitted here. Evaluated in
+                // the instantiation scope.
                 let mut map: IndexMap<String, Value<'a>> = (**pmap).clone();
                 for f in &def.fields {
                     if !map.contains_key(f.name) {
@@ -643,7 +643,38 @@ impl<'a> Interpreter<'a> {
                 }
                 let obj = Value::object(map);
                 self.validate_schema(&def, &obj, *span)?;
-                Ok(obj)
+
+                // Key order comes from the schema, not from the construction
+                // site. Two instances of one schema previously differed whenever
+                // one supplied an optional field and the other let it default,
+                // because defaults were appended after whatever was written:
+                //
+                //   a: { "id", "fallback", "quota" }   // quota defaulted
+                //   b: { "id", "quota", "fallback" }   // quota written
+                //
+                // Same schema, same meaning, different bytes. For a language
+                // whose point is that two environments produce comparable
+                // output, a diff showing reordered lines teaches the reader to
+                // ignore diffs. Ordering here also makes the field order at the
+                // construction site stop mattering at all.
+                let Value::Object(m) = &obj else {
+                    unreachable!()
+                };
+                let mut ordered: IndexMap<String, Value<'a>> = IndexMap::with_capacity(m.len());
+                for f in &def.fields {
+                    if let Some(v) = m.get(f.name) {
+                        ordered.insert(f.name.to_string(), v.clone());
+                    }
+                }
+                // Undeclared fields are an error under --strict and a warning
+                // otherwise, in which case they are kept — after the declared
+                // ones, in the order they were written.
+                for (k, v) in m.iter() {
+                    if !ordered.contains_key(k) {
+                        ordered.insert(k.clone(), v.clone());
+                    }
+                }
+                Ok(Value::object(ordered))
             }
         }
     }
@@ -2199,6 +2230,69 @@ end
         assert_eq!(get(&v, "neg"), Value::Int(7));
         assert_eq!(get(&v, "s"), Value::str("123"));
         assert_eq!(eval("x: \"nope\".to_int()").unwrap_err().code, "E0314");
+    }
+
+    #[test]
+    fn key_order_comes_from_the_schema_not_the_construction_site() {
+        // Two instances of one schema must serialise identically ordered,
+        // whether a field was written or left to its default. They did not:
+        // defaults were appended after whatever the author happened to write,
+        // so a diff between two environments showed reordered lines with no
+        // change of meaning.
+        let v = eval(concat!(
+            "type P
+  a: Int
+  b: Int
+  c: Int = 3
+end
+",
+            // written out of order, and with the optional field supplied
+            "x: new P
+  c: 30
+  a: 10
+  b: 20
+end
+",
+            // optional field defaulted
+            "y: new P
+  a: 10
+  b: 20
+end
+",
+        ))
+        .unwrap();
+        let keys = |name: &str| {
+            let Value::Object(m) = get(&v, name) else {
+                panic!("object")
+            };
+            m.keys().cloned().collect::<Vec<_>>()
+        };
+        assert_eq!(keys("x"), vec!["a", "b", "c"]);
+        assert_eq!(keys("y"), keys("x"));
+    }
+
+    #[test]
+    fn undeclared_fields_keep_their_place_after_the_declared_ones() {
+        // Outside --strict an extra field is a warning and the value is kept.
+        // It has no declared position, so it follows the schema's fields in the
+        // order it was written - still deterministic, just not schema-ordered.
+        let v = eval(concat!(
+            "type P
+  a: Int
+end
+",
+            "x: new P
+  z: 1
+  a: 2
+  y: 3
+end
+",
+        ))
+        .unwrap();
+        let Value::Object(m) = get(&v, "x") else {
+            panic!("object")
+        };
+        assert_eq!(m.keys().cloned().collect::<Vec<_>>(), vec!["a", "z", "y"]);
     }
 
     #[test]

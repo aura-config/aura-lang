@@ -85,6 +85,28 @@ still change the language.
 
 ### Fixed
 
+- **Two instances of one schema could serialise with different key orders.**
+  Defaults were appended after whatever the author happened to write, so the
+  same schema produced different bytes depending on whether an optional field
+  was supplied:
+
+  ```json
+  "a": { "id": "free", "fallback": 0, "quota": 100 }
+  "b": { "id": "pro",  "quota": 500, "fallback": 0 }
+  ```
+
+  Key order now comes from the schema's declaration. Two instances always
+  serialise with the same keys in the same places, and the order fields are
+  written at the construction site stops mattering entirely.
+
+  This matters more than it looks for a configuration language: a diff between
+  two environments that shows reordered lines with no change of meaning teaches
+  the reader to stop reading diffs, which is the opposite of the point.
+
+  Undeclared fields — an error under `--strict`, kept with a warning otherwise —
+  follow the declared ones in the order they were written. No example's expected
+  output changed.
+
 - **A manifest with a block string did not compile on a CRLF checkout.** Not
   "produced different output" — failed outright:
 
