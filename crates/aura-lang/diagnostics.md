@@ -66,6 +66,7 @@ position, because nothing was parsed yet.
 | E0319 | a malformed duration | the format is `"1h30m"`, units `d/h/m/s` |
 | E0320 | a malformed date | RFC 3339: `"2026-07-18T12:00:00Z"` |
 | E0321 | malformed base64 | `base64_decode()` on input that is not base64 |
+| E0322 | a concatenated list or string exceeds its size limit | `+` doubles: 1M elements / 16 MiB is the ceiling |
 | E0398 | internal: a closure's environment was dropped | a bug in Aura — please report it with the manifest |
 | E0399 | call depth exceeded (256) | recursion in a function? |
 | E0533 | `now()` and `timestamp()` do not exist | the host passes time in: `env("BUILD_TIME", ...)` (D13) |

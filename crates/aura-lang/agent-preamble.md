@@ -63,6 +63,17 @@ config: text
 end
 ```
 
+`+` joins two strings or two lists, and never converts between types:
+
+```aura
+base = ["auth", "billing"]
+all: base + ["frontend"]
+tag: "svc-" + name
+```
+
+`"port " + 8080` is `E0306` — call `.to_str()` on the number, or interpolate.
+There is no `concat` method; `+` is the only way to join lists.
+
 Braces inside a block string are literal — only `#{` starts interpolation. This is
 what makes Aura usable for generating nginx configs, Dockerfiles and the like.
 

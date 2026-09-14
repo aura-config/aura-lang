@@ -22,6 +22,17 @@ use value::{EnumDef, FuncBody, FunctionDef, SchemaDef, Value};
 
 const MAX_CALL_DEPTH: u32 = 256;
 
+/// Ceiling on a container built by concatenation, and the same ceiling `range()`
+/// uses. `+` is the only operator whose result can be larger than its operands,
+/// so `x1 = x0 + x0` repeated per line doubles: sixty lines reach 2^60 elements
+/// on a source file that fits on a screen. Evaluation runs over third-party
+/// packages (`aura add`), so this has to be an error rather than an OOM.
+const MAX_LIST_LEN: usize = 1_000_000;
+
+/// The same bound for strings, in bytes. Generous for an embedded template (D16)
+/// and far below the point where doubling becomes a denial of service.
+const MAX_STR_BYTES: usize = 16 * 1024 * 1024;
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Options {
     pub strict: bool,
@@ -741,6 +752,38 @@ impl<'a> Interpreter<'a> {
                     Ok(Int(a % b))
                 }
             }
+            // Concatenation. Deliberately same-type only: no operand is coerced,
+            // so `"port " + 8080` stays an error with a hint to `.to_str()`.
+            // Mixed-type `+` is what makes a config language guess, and guessing
+            // is what D4/D7 removed everywhere else.
+            (Add, Str(a), Str(b)) => {
+                let len = a.len() + b.len();
+                if len > MAX_STR_BYTES {
+                    return Err(rt(
+                        "E0322",
+                        format!("string would be {len} bytes, over the limit of {MAX_STR_BYTES}"),
+                        span,
+                    ));
+                }
+                let mut s = String::with_capacity(len);
+                s.push_str(a);
+                s.push_str(b);
+                Ok(Value::str(s))
+            }
+            (Add, List(a), List(b)) => {
+                let len = a.len() + b.len();
+                if len > MAX_LIST_LEN {
+                    return Err(rt(
+                        "E0322",
+                        format!("list would have {len} elements, over the limit of {MAX_LIST_LEN}"),
+                        span,
+                    ));
+                }
+                let mut items = Vec::with_capacity(len);
+                items.extend(a.iter().cloned());
+                items.extend(b.iter().cloned());
+                Ok(Value::list(items))
+            }
             (Add | Sub | Mul | Div | Rem, _, _)
                 if l.tag() == value::TypeTag::Float || r.tag() == value::TypeTag::Float =>
             {
@@ -764,16 +807,39 @@ impl<'a> Interpreter<'a> {
                     .ok_or_else(|| rt("E0306", "NaN comparison", span))?;
                 Ok(Bool(cmp_ord(op, ord)))
             }
-            _ => Err(rt(
-                "E0306",
-                format!(
-                    "invalid operand types: {} {} {}",
-                    l.type_name(),
-                    op_name(op),
-                    r.type_name()
-                ),
-                span,
-            )),
+            _ => {
+                let mut d = rt(
+                    "E0306",
+                    format!(
+                        "invalid operand types: {} {} {}",
+                        l.type_name(),
+                        op_name(op),
+                        r.type_name()
+                    ),
+                    span,
+                );
+                // `+` never coerces, so a mixed pair is a common first mistake:
+                // say which side to convert rather than only that it is wrong.
+                if op == Add {
+                    d.help = match (l.tag(), r.tag()) {
+                        (value::TypeTag::Str, _) => Some(
+                            "`+` does not convert: call .to_str() on the right operand, \
+                             or use interpolation \"#{a}#{b}\""
+                                .into(),
+                        ),
+                        (_, value::TypeTag::Str) => Some(
+                            "`+` does not convert: call .to_str() on the left operand, \
+                             or use interpolation \"#{a}#{b}\""
+                                .into(),
+                        ),
+                        (value::TypeTag::List, _) | (_, value::TypeTag::List) => {
+                            Some("`+` joins two lists; wrap a single element as [x]".into())
+                        }
+                        _ => None,
+                    };
+                }
+                Err(d)
+            }
         }
     }
 
@@ -944,7 +1010,7 @@ impl<'a> Interpreter<'a> {
                     ));
                 }
                 // Guard against accidental OOM; configs never need a huge range.
-                const RANGE_LIMIT: i64 = 1_000_000;
+                const RANGE_LIMIT: i64 = MAX_LIST_LEN as i64;
                 if *n > RANGE_LIMIT {
                     return Err(rt(
                         "E0306",
@@ -1157,6 +1223,83 @@ mod tests {
         assert_eq!(get(&v, "a"), Value::Int(3)); // integer division
         assert_eq!(get(&v, "b"), Value::Float(3.5));
         assert_eq!(get(&v, "c"), Value::Int(14));
+    }
+
+    #[test]
+    fn concat_str_and_list() {
+        let v = eval("s: \"a\" + \"b\" + \"c\"\nxs: [1, 2] + [3]\ne: [] + []").unwrap();
+        assert_eq!(get(&v, "s"), Value::str("abc"));
+        assert_eq!(
+            get(&v, "xs"),
+            Value::list(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+        );
+        assert_eq!(get(&v, "e"), Value::list(vec![]));
+    }
+
+    #[test]
+    fn concat_operands_are_not_coerced() {
+        // `+` stays same-type: a mixed pair is E0306, and the help says which
+        // side to convert. Coercion here would be the one implicit rule in a
+        // language that removed them (D4/D7).
+        for src in [
+            "x = \"port \" + 8080",
+            "x = 8080 + \"port\"",
+            "x = [1] + 1",
+            "x = \"a\" + [1]",
+            "x = \"a\" + null",
+        ] {
+            let d = eval(src).unwrap_err();
+            assert_eq!(d.code, "E0306", "src: {src}");
+            assert!(d.help.is_some(), "expected a help hint for: {src}");
+        }
+    }
+
+    #[test]
+    fn concat_does_not_disturb_numeric_addition() {
+        // Guard against the new arms shadowing the Int/Float paths.
+        let v = eval("a: 1 + 2\nb: 1.5 + 2\nc: 1 + 2.5").unwrap();
+        assert_eq!(get(&v, "a"), Value::Int(3));
+        assert_eq!(get(&v, "b"), Value::Float(3.5));
+        assert_eq!(get(&v, "c"), Value::Float(3.5));
+        assert_eq!(
+            eval("x = 9223372036854775807 + 1").unwrap_err().code,
+            "E0304"
+        );
+    }
+
+    #[test]
+    fn repeated_doubling_is_e0322_not_an_oom() {
+        // `+` is the only operator whose result outgrows its operands. Each line
+        // doubles, so this reaches the cap in ~20 lines instead of exhausting
+        // memory. Without the cap the same shape, extended, is a DoS against
+        // `aura eval` over a third-party package.
+        let mut src = String::from("x0 = range(1000)\n");
+        for i in 1..24 {
+            src.push_str(&format!("x{i} = x{} + x{}\n", i - 1, i - 1));
+        }
+        src.push_str("out: x23.len()\n");
+        let d = eval(&src).unwrap_err();
+        assert_eq!(d.code, "E0322");
+
+        // Strings double the same way.
+        let mut s = String::from("s0 = \"a\"\n");
+        for i in 1..26 {
+            s.push_str(&format!("s{i} = s{} + s{}\n", i - 1, i - 1));
+        }
+        s.push_str("out: s25\n");
+        assert_eq!(eval(&s).unwrap_err().code, "E0322");
+    }
+
+    #[test]
+    fn concat_is_a_new_value_not_an_alias() {
+        // Values are immutable and Arc-shared; concatenation must copy, so the
+        // operands stay observable as themselves.
+        let v = eval("base = [1, 2]\nall: base + [3]\norig: base").unwrap();
+        assert_eq!(
+            get(&v, "orig"),
+            Value::list(vec![Value::Int(1), Value::Int(2)])
+        );
+        assert_eq!(get(&v, "all").tag(), value::TypeTag::List);
     }
 
     #[test]

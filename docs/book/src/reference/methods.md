@@ -76,6 +76,20 @@ against the implementation rather than transcribed.
 | `merge(other)` | Object | the right side's keys win |
 | `to_json()` / `to_yaml()` / `to_toml()` | String | |
 
+## Operators that build values
+
+Most operators are numeric. Two are not, and they are the only ones whose result
+can be larger than what went in.
+
+| Expression | Result | Notes |
+| --- | --- | --- |
+| `"a" + "b"` | String | joins two strings; interpolation `"#{a}#{b}"` does the same |
+| `[1] + [2, 3]` | List | joins two lists; the operands are unchanged |
+
+`+` never converts. `"port " + 8080` is `E0306`, and the diagnostic names the
+side to call `.to_str()` on. Joining is bounded at 1,000,000 list elements and
+16 MiB of string, reported as `E0322`.
+
 ## Global functions
 
 | Function | Right required | Behaviour |
