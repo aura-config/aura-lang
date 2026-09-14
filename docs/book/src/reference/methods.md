@@ -63,6 +63,11 @@ against the implementation rather than transcribed.
 | `min()` / `max()` | element | |
 | `flatten()` | List | one level: `[[1], [2, 3]]` → `[1, 2, 3]` |
 | `to_object()` | Object | builds an object from `{ key, value }` pairs; a repeated key is `E0323` |
+| `reduce(init) (acc, e) -> … end` | Any | left fold; the initial value is required |
+| `any (e, i) -> Bool end` | Bool | some element matches; `false` for an empty list |
+| `all (e, i) -> Bool end` | Bool | every element matches; `true` for an empty list |
+| `find(default) (e, i) -> Bool end` | Any | first match, or the default |
+| `index_of(value, default)` | Int | index of the first equal element, or the default; the default must be an `Int` |
 | `slice(start, end)` | List | `end` exclusive: `[1, 2, 3].slice(1, 3)` → `[2, 3]` |
 | `to_json()` / `to_yaml()` / `to_toml()` | String | `to_toml` on a list is `E0603` |
 

@@ -63,6 +63,18 @@ config: text
 end
 ```
 
+Lists fold and answer questions. `any` and `all` are what an `assert` over a
+collection should say; `reduce` needs an explicit initial value:
+
+```aura
+ports = [8080, 8081, 9090]
+assert ports.all (p, i) -> p > 1024 end, "ports must be unprivileged"
+total: ports.reduce(0) (acc, p) -> acc + p end
+```
+
+`find(default)` and `index_of(value, default)` both require a fallback. There is
+no `-1` and no `Null`: absent is an ordinary outcome, and it has to be named.
+
 An object is traversed by turning it into pairs and back. `entries()` yields
 `{ key, value }` objects in declaration order, and `to_object()` is the inverse:
 

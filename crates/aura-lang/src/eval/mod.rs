@@ -1226,6 +1226,128 @@ mod tests {
     }
 
     #[test]
+    fn reduce_folds_left_with_an_explicit_init() {
+        let v = eval(concat!(
+            "ports = [8080, 8081, 9090]\n",
+            "total: ports.reduce(0) (acc, p) -> acc + p end\n",
+            // The fold is not limited to numbers, and `+` (D23) makes the
+            // string case worth having.
+            "csv:   ports.reduce(\"\") (acc, p) -> acc + p.to_str() + \";\" end\n",
+            // An empty list returns the initial value untouched, which is why
+            // the init is required rather than taken from the first element.
+            "none:  [].reduce(42) (acc, p) -> acc + p end\n",
+        ))
+        .unwrap();
+        assert_eq!(get(&v, "total"), Value::Int(25251));
+        assert_eq!(get(&v, "csv"), Value::str("8080;8081;9090;"));
+        assert_eq!(get(&v, "none"), Value::Int(42));
+    }
+
+    #[test]
+    fn any_and_all_including_the_empty_list() {
+        let v = eval(concat!(
+            "ports = [8080, 8081, 9090]\n",
+            "some:  ports.any (p, i) -> p > 9000 end\n",
+            "every: ports.all (p, i) -> p > 9000 end\n",
+            "each:  ports.all (p, i) -> p > 1024 end\n",
+            // Vacuous readings, stated so they cannot drift: nothing satisfies
+            // a predicate in an empty list, and everything does.
+            "e_any: [].any (x, i) -> true end\n",
+            "e_all: [].all (x, i) -> false end\n",
+        ))
+        .unwrap();
+        assert_eq!(get(&v, "some"), Value::Bool(true));
+        assert_eq!(get(&v, "every"), Value::Bool(false));
+        assert_eq!(get(&v, "each"), Value::Bool(true));
+        assert_eq!(get(&v, "e_any"), Value::Bool(false));
+        assert_eq!(get(&v, "e_all"), Value::Bool(true));
+    }
+
+    #[test]
+    fn find_and_index_of_fall_back_explicitly() {
+        let v = eval(concat!(
+            "ports = [8080, 8081, 9090]\n",
+            "hit:   ports.find(0) (p, i) -> p > 9000 end\n",
+            "miss:  ports.find(0) (p, i) -> p > 99999 end\n",
+            "at:    ports.index_of(8081, -1)\n",
+            "absent: ports.index_of(1, -1)\n",
+            // find returns the first match, not the last.
+            "first: ports.find(0) (p, i) -> p > 8000 end\n",
+        ))
+        .unwrap();
+        assert_eq!(get(&v, "hit"), Value::Int(9090));
+        assert_eq!(get(&v, "miss"), Value::Int(0));
+        assert_eq!(get(&v, "at"), Value::Int(1));
+        assert_eq!(get(&v, "absent"), Value::Int(-1));
+        assert_eq!(get(&v, "first"), Value::Int(8080));
+    }
+
+    #[test]
+    fn predicates_reject_a_non_bool_lambda() {
+        for src in [
+            "x = [1].any (v, i) -> 1 end",
+            "x = [1].all (v, i) -> \"yes\" end",
+            "x = [1].find(0) (v, i) -> 1 end",
+        ] {
+            assert_eq!(eval(src).unwrap_err().code, "E0306", "src: {src}");
+        }
+    }
+
+    #[test]
+    fn reduce_and_find_require_their_leading_argument() {
+        // Without it `reduce` would have no answer for an empty list and `find`
+        // would have to invent a Null.
+        assert_eq!(
+            eval("x = [1].reduce (acc, v) -> acc end").unwrap_err().code,
+            "E0306"
+        );
+        assert_eq!(
+            eval("x = [1].find (v, i) -> true end").unwrap_err().code,
+            "E0306"
+        );
+        assert_eq!(eval("x = [1].index_of(1)").unwrap_err().code, "E0306");
+        // And a predicate without any lambda is still E0315.
+        assert_eq!(eval("x = [1].any()").unwrap_err().code, "E0315");
+    }
+
+    #[test]
+    fn index_of_returns_an_int_on_every_path() {
+        // A fallback of another type would let one call site yield an index on
+        // one branch and something else on the other, so the caller could not
+        // read the result without knowing which branch ran.
+        let d = eval("x = [1].index_of(9, \"none\")").unwrap_err();
+        assert_eq!(d.code, "E0306");
+        assert!(d.message.contains("must be an Int"), "{}", d.message);
+
+        let v = eval("hit: [7, 8].index_of(8, -1)\nmiss: [7].index_of(9, -1)").unwrap();
+        assert_eq!(get(&v, "hit"), Value::Int(1));
+        assert_eq!(get(&v, "miss"), Value::Int(-1));
+    }
+
+    #[test]
+    fn every_error_from_these_methods_names_the_fix() {
+        // The fallback is a requirement, so the cost of forgetting it has to be
+        // one line of reading, not a trip to the reference.
+        for src in [
+            "x = [1].reduce (acc, v) -> acc end",
+            "x = [1].find (v, i) -> true end",
+            "x = [1].index_of(1)",
+            "x = [1].index_of(1, \"none\")",
+            "x = [1].all (v, i) -> 1 end",
+            "x = [1].any (v, i) -> \"yes\" end",
+        ] {
+            let d = eval(src).unwrap_err();
+            let help = d.help.unwrap_or_default();
+            assert!(!help.is_empty(), "no help for: {src}");
+            // A help line that does not show code is not a fix, it is a remark.
+            assert!(
+                help.contains("index_of(") || help.contains("xs."),
+                "help does not show what to type: {help}"
+            );
+        }
+    }
+
+    #[test]
     fn entries_and_to_object_are_inverses() {
         // The round trip is the property that matters: it is what lets someone
         // filter or rewrite a map and put it back.
