@@ -56,6 +56,22 @@ still change the language.
   fit on a screen reach 2^60 elements. Evaluation runs over third-party packages,
   so that has to be a diagnostic rather than an exhausted heap.
 
+### Fixed
+
+- **`E0317` knew the cure and never told anyone.** The diagnostic catalogue has
+  said "use `.get(i, default)`" since the code existed, but the runtime message
+  read only `first() on an empty list`. Advice that lives in the reference is
+  advice nobody reads at the moment they need it.
+
+  All four `E0317` sites — `first()`, `last()`, `min()`/`max()` and an
+  out-of-range index — now print a remedy containing the code to type. `last()`
+  and `min()`/`max()` suggest a length guard rather than `.get`, because `.get`
+  takes no negative index and a hint that does not run is worse than none: it
+  costs the reader a second failure to learn the advice was wrong. A test
+  evaluates every suggested form.
+
+- **`index 5 out of bounds (list has 1 elements)`** now agrees in number.
+
 ## [0.1.1] — 2026-07-31
 
 A documentation and diagnostics release. No behaviour of the language itself

@@ -516,11 +516,19 @@ impl<'a> Interpreter<'a> {
                     (Value::List(xs), Value::Int(i)) => {
                         let i = *i;
                         if i < 0 || i as usize >= xs.len() {
-                            return Err(rt(
+                            let mut d = rt(
                                 "E0317",
-                                format!("index {i} out of bounds (list has {} elements)", xs.len()),
+                                format!(
+                                    "index {i} out of bounds (list has {} element{})",
+                                    xs.len(),
+                                    if xs.len() == 1 { "" } else { "s" }
+                                ),
                                 *span,
+                            );
+                            d.help = Some(format!(
+                                "when the index may be out of range: xs.get({i}, \"none\")"
                             ));
+                            return Err(d);
                         }
                         Ok(xs[i as usize].clone())
                     }
@@ -1505,6 +1513,57 @@ mod tests {
             Value::list(vec![Value::Int(1), Value::Int(2)])
         );
         assert_eq!(get(&v, "all").tag(), value::TypeTag::List);
+    }
+
+    #[test]
+    fn every_empty_collection_error_carries_its_remedy() {
+        // E0317's cure was written in the diagnostic catalogue from the start
+        // and never reached the person who hit it: the runtime said only that
+        // the list was empty. Advice in the reference is advice nobody reads at
+        // the moment it is needed.
+        for src in [
+            "x = [].first()",
+            "x = [].last()",
+            "x = [].min()",
+            "x = [].max()",
+            "x: [1][5]",
+        ] {
+            let d = eval(src).unwrap_err();
+            assert_eq!(d.code, "E0317", "src: {src}");
+            let help = d.help.unwrap_or_default();
+            assert!(!help.is_empty(), "no remedy offered for: {src}");
+            assert!(
+                help.contains("xs.") || help.contains("get("),
+                "the remedy does not show code: {help}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_suggested_remedies_actually_evaluate() {
+        // A hint that does not run is worse than no hint: it costs the reader a
+        // second failure to discover the advice was wrong. These mirror, one
+        // for one, the forms the E0317 help lines print.
+        let v = eval(concat!(
+            "xs = []\n",
+            "first_safe: xs.get(0, \"none\")\n",
+            "last_safe:  xs.len() > 0 ? xs.last() : \"none\"\n",
+            "min_safe:   xs.len() > 0 ? xs.min() : 0\n",
+            "index_safe: [1].get(5, \"none\")\n",
+        ))
+        .unwrap();
+        assert_eq!(get(&v, "first_safe"), Value::str("none"));
+        assert_eq!(get(&v, "last_safe"), Value::str("none"));
+        assert_eq!(get(&v, "min_safe"), Value::Int(0));
+        assert_eq!(get(&v, "index_safe"), Value::str("none"));
+    }
+
+    #[test]
+    fn out_of_bounds_message_agrees_in_number() {
+        let one = eval("x: [1][5]").unwrap_err().message;
+        assert!(one.contains("1 element)"), "{one}");
+        let many = eval("x: [1, 2][5]").unwrap_err().message;
+        assert!(many.contains("2 elements)"), "{many}");
     }
 
     #[test]
