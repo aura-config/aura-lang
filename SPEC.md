@@ -248,6 +248,10 @@ Zero-copy invariant: `TokenKind` contains no `String`; every text field is a sli
 - Opens with `"`. Escapes: `\" \\ \n \t \#`. A string without escapes is a plain slice; with escapes it's a raw slice, unescaped lazily during eval (`Cow<'a, str>`).
 - `#{` switches into interpolation (balanced on `{}`), the result is `InterpStr`.
 - An unclosed string before `\n`/EOF is `E0102`.
+- **Line endings are not part of a manifest's meaning.** `
+` and `
+` must produce byte-identical output, so a Windows checkout and a Linux runner agree. This binds every construct, block strings included: the opener lookahead steps over a carriage return, and each captured content line has its own stripped, so a block string is always joined with `
+` whatever the source used. `tests/line_endings.rs` writes both variants at run time and compares the rendered JSON, because the repository's own `.gitattributes` pins `eol=lf` and would otherwise hide the case entirely.
 - **Block strings (D16):** a bare `text` in value position (previous token `:` or `=`) followed by a newline opens a multi-line string captured verbatim until a lone `end` whose indentation is `≤` the opener line's. Common leading indentation is stripped; content lines are joined by `\n` (no trailing newline); `#{…}` interpolation and `\` escapes apply exactly as above, so the token is `Str`/`InterpStr` like any string (newline separators are real `\n` slices, keeping the zero-copy invariant). A deeper `end` is content (heredoc collision resolved by indent); a missing terminator is `E0107`. `text` remains an ordinary identifier outside this contextual opener.
 
 ### 2.4. Keywords, identifiers, import paths
