@@ -62,6 +62,7 @@ against the implementation rather than transcribed.
 | `sum()` | Int | |
 | `min()` / `max()` | element | |
 | `flatten()` | List | one level: `[[1], [2, 3]]` → `[1, 2, 3]` |
+| `to_object()` | Object | builds an object from `{ key, value }` pairs; a repeated key is `E0323` |
 | `slice(start, end)` | List | `end` exclusive: `[1, 2, 3].slice(1, 3)` → `[2, 3]` |
 | `to_json()` / `to_yaml()` / `to_toml()` | String | `to_toml` on a list is `E0603` |
 
@@ -73,6 +74,7 @@ against the implementation rather than transcribed.
 | `keys()` / `values()` | List | declaration order |
 | `contains(key)` | Bool | |
 | `get(key, default)` | value | a miss gives the default |
+| `entries()` | List | `{ key, value }` objects in declaration order; the inverse of `to_object()` |
 | `merge(other)` | Object | the right side's keys win |
 | `to_json()` / `to_yaml()` / `to_toml()` | String | |
 

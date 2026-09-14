@@ -158,6 +158,11 @@ List:
     returns: "Int"
     doc:     "Number of elements."
   end
+  to_object:
+    params:  []
+    returns: "Object"
+    doc:     "Build an Object from { key, value } pairs; a duplicate key is E0323."
+  end
   first:
     params:  []
     returns: "Any"
@@ -280,6 +285,11 @@ Object:
     params:  ["key", "default"]
     returns: "Any"
     doc:     "Value for a key, or a default if absent."
+  end
+  entries:
+    params:  []
+    returns: "List"
+    doc:     "Key/value pairs as { key, value } objects, in declaration order."
   end
   merge:
     params:  ["other"]
