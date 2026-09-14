@@ -85,6 +85,33 @@ still change the language.
 
 ### Fixed
 
+- **A manifest with a block string did not compile on a CRLF checkout.** Not
+  "produced different output" — failed outright:
+
+  ```
+  [E0105] Error: unexpected character
+   2 │   listen 80;
+     │            ┬── not a valid Aura token
+  ```
+
+  The block-string opener lookahead skipped spaces and tabs before the newline
+  but not a carriage return, so `text` was never recognised as an opener and the
+  block's contents were lexed as code. Ordinary code was unaffected, which is why
+  this went unnoticed: the lexer collapses `
+` everywhere else, and the
+  scanner already stripped the carriage return from each captured line. Only the
+  opener check and the newline skip were missing it.
+
+  On Windows, `core.autocrlf=true` is the default, so this was the first thing a
+  Windows user hit on any manifest using the construct Aura advertises for
+  generating nginx configs and Dockerfiles.
+
+  **The repository could not see it.** Its own `.gitattributes` pins `eol=lf`, so
+  every file CI reads is LF on all three platforms. That pin is correct here —
+  the conformance fixtures depend on it — but it made the defect invisible to the
+  whole suite. `tests/line_endings.rs` therefore writes both variants at run
+  time and requires byte-identical output; verified to fail without the fix.
+
 - **`E0317` knew the cure and never told anyone.** The diagnostic catalogue has
   said "use `.get(i, default)`" since the code existed, but the runtime message
   read only `first() on an empty list`. Advice that lives in the reference is

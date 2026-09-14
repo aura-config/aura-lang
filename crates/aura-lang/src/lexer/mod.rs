@@ -238,11 +238,20 @@ impl<'a> Lexer<'a> {
     /// Lookahead for a D16 block-string opener: after `text`, only spaces/tabs
     /// then a newline may follow. Does not consume.
     fn block_string_follows(&self) -> bool {
+        let bytes = self.src.as_bytes();
         let mut i = self.pos;
-        while matches!(self.src.as_bytes().get(i), Some(b' ' | b'\t')) {
+        while matches!(bytes.get(i), Some(b' ' | b'\t')) {
             i += 1;
         }
-        matches!(self.src.as_bytes().get(i), Some(b'\n'))
+        // A CRLF checkout puts a carriage return here. Missing it meant `text`
+        // was not recognised as an opener at all, so the block's contents were
+        // lexed as code and the file failed outright: the language did not work
+        // on a Windows clone without `eol=lf`. The scanner below already strips
+        // the carriage return from each content line; only this check did not.
+        if matches!(bytes.get(i), Some(b'\r')) {
+            i += 1;
+        }
+        matches!(bytes.get(i), Some(b'\n'))
     }
 
     /// D16: capture a `text … end` block. `text_start` is the offset of `text`.
@@ -259,6 +268,10 @@ impl<'a> Lexer<'a> {
             .count();
         // Consume the rest of the opener line up to and including the newline.
         while matches!(self.peek(), Some(b' ' | b'\t')) {
+            self.pos += 1;
+        }
+        // CRLF: step over the carriage return before the newline itself.
+        if matches!(self.peek(), Some(b'\r')) {
             self.pos += 1;
         }
         self.pos += 1; // the '\n' guaranteed by block_string_follows
@@ -766,6 +779,25 @@ mod tests {
     #[test]
     fn block_string_unterminated_is_e0107() {
         assert_eq!(err("s: text\n  oops\n"), "E0107");
+    }
+
+    #[test]
+    fn block_string_opens_after_crlf() {
+        // The opener check skipped spaces and tabs before the newline but not a
+        // carriage return, so on a CRLF checkout `text` was an ordinary
+        // identifier and the block's contents were lexed as code. A manifest
+        // with a block string simply did not compile on Windows.
+        let lf = "a: text\n  hi\nend\n";
+        let crlf = lf.replace('\n', "\r\n");
+        let one = Lexer::new(lf, 0).tokenize().expect("LF lexes");
+        let two = Lexer::new(&crlf, 0).tokenize().expect("CRLF must lex too");
+        // Spans differ by the extra bytes; the token kinds must not.
+        let kinds = |ts: &[Token]| {
+            ts.iter()
+                .map(|t| format!("{:?}", t.kind))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(kinds(&one), kinds(&two));
     }
 
     #[test]
