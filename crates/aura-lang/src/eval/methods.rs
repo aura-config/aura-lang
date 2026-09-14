@@ -514,9 +514,13 @@ fn m_list_first<'a>(
     let Value::List(xs) = recv else {
         unreachable!()
     };
-    xs.first()
-        .cloned()
-        .ok_or_else(|| rt("E0317", "first() on an empty list", sp))
+    xs.first().cloned().ok_or_else(|| {
+        let mut d = rt("E0317", "first() on an empty list", sp);
+        // The catalogue has carried this remedy since E0317 existed; it just
+        // never reached the person who hit the error.
+        d.help = Some("when the list may be empty: xs.get(0, \"none\")".into());
+        d
+    })
 }
 
 fn m_list_last<'a>(
@@ -528,9 +532,12 @@ fn m_list_last<'a>(
     let Value::List(xs) = recv else {
         unreachable!()
     };
-    xs.last()
-        .cloned()
-        .ok_or_else(|| rt("E0317", "last() on an empty list", sp))
+    xs.last().cloned().ok_or_else(|| {
+        let mut d = rt("E0317", "last() on an empty list", sp);
+        // `get` takes no negative index, so the guard is the honest advice here.
+        d.help = Some("when the list may be empty: xs.len() > 0 ? xs.last() : \"none\"".into());
+        d
+    })
 }
 
 fn m_parse_json<'a>(
@@ -1356,9 +1363,13 @@ fn list_extreme<'a>(
     method: &str,
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
-    let mut best = xs
-        .first()
-        .ok_or_else(|| rt("E0317", format!("{method}() on an empty list"), sp))?;
+    let mut best = xs.first().ok_or_else(|| {
+        let mut d = rt("E0317", format!("{method}() on an empty list"), sp);
+        d.help = Some(format!(
+            "when the list may be empty: xs.len() > 0 ? xs.{method}() : 0"
+        ));
+        d
+    })?;
     for v in &xs[1..] {
         let ord = scalar_cmp(v, best).ok_or_else(|| {
             rt(
