@@ -1,0 +1,23 @@
+# =============================================================================
+# Shared vocabulary: how an instrument is named and keyed.
+#
+# Imported by risk.aura, which is in turn imported by portfolio.aura — a chain,
+# where showcase 1 has a single flat import.
+# =============================================================================
+
+# A routing key is derived, never typed by hand: two places spelling it
+# differently is the bug this exists to prevent.
+pub def route(venue, symbol)
+  key:    venue + ":" + symbol
+  digest: (venue + symbol).sha256()
+end
+
+# "BTC-USDT" -> "BTCUSDT" for venues that dislike the separator.
+pub def compact_symbol(symbol)
+  value: symbol.replace("-", "")
+end
+
+# A lot size arrives from the venue's own table as text.
+pub def lot_size(raw)
+  value: raw.to_float()
+end

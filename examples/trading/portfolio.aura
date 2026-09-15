@@ -1,0 +1,86 @@
+# =============================================================================
+# Aura showcase 2 of several: a trading system's run profile.
+#
+# A different trade from showcase 1 and a different shape of file: three
+# modules in a chain (portfolio -> risk -> instruments) instead of one flat
+# import, and numbers that have to be exact rather than roughly right.
+#
+# Run: aura eval portfolio.aura
+# =============================================================================
+
+import "./risk.aura" as risk
+import "./instruments.aura" as inst
+
+account_equity = 250000.0
+session_open   = "2026-09-15T07:00:00Z".parse_datetime()
+session_len    = "6h30m".parse_duration()
+
+# --- Strategies. Each is validated by the package's own rules (D28), and a
+# wrong venue name is caught by the enum rather than at 3am (D18).
+conservative = new risk.Strategy
+  name:    "carry"
+  venues:  ["binance"]
+  symbols: ["BTC-USDT", "ETH-USDT"]
+  limits:  new risk.RiskLimits
+    max_position_pct:   0.05
+    max_daily_loss_pct: 0.02
+    stop_after_losses:  3
+  end
+end
+
+aggressive = new risk.Strategy
+  name:     "momentum"
+  venues:   ["binance", "bybit", "okx"]
+  symbols:  ["BTC-USDT"]
+  warmup_s: 60
+  limits:   new risk.RiskLimits
+    max_position_pct:   0.20
+    max_daily_loss_pct: 0.10
+    stop_after_losses:  null # runs until the daily cap stops it
+  end
+end
+
+book = [conservative, aggressive]
+
+# --- Money. Percentages are Float; the cash figures they produce stay Float,
+# and nothing silently becomes an Int on the way.
+exposure_of = (s) ->
+  value: account_equity * s.limits.max_position_pct
+end
+
+exposure:
+  carry:    exposure_of(conservative).value
+  momentum: exposure_of(aggressive).value
+  total:    book.reduce(0.0) (acc, s) -> acc + exposure_of(s).value end
+end
+
+# --- A drawdown is reported as a distance, so its sign must not matter.
+pnl_today = -3125.50
+drawdown:     pnl_today.abs()
+within_limit: pnl_today.abs() <= account_equity * 0.10
+
+# --- The session window, rendered back from epoch seconds (D13). No clock is
+# ever read: the open is an input, not "now".
+session:
+  opens:   session_open.format_datetime()
+  closes:  (session_open + session_len).format_datetime()
+  minutes: session_len / 60
+end
+
+# --- Routing, derived rather than typed. A venue/symbol pair appearing twice
+# would be two orders, so the list is checked for duplicates.
+routes = risk.routes_for(aggressive.venues, aggressive.symbols).pairs
+route_count: routes.len()
+routes_uniq: routes.uniq().len() == routes.len()
+
+assert routes.uniq().len() == routes.len(), "a route may not be listed twice"
+
+# --- Venue-specific spellings and a lot size that arrives as text.
+compact:  inst.compact_symbol("BTC-USDT").value
+lot:      inst.lot_size("0.001").value
+max_lots: (exposure_of(aggressive).value / 65000.0).to_str()
+
+# --- Instrument count read from a venue table that reports it as a string.
+declared_instruments: "2".to_int()
+
+assert book.all (s, i) -> s.limits.max_daily_loss_pct <= 0.10 end, "no strategy may risk a tenth of the book in a day"
