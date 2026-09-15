@@ -37,6 +37,25 @@
     "fallback": 60,
     "first_w": 3
   },
+  "listener": {
+    "port": 8443,
+    "routes": [
+      {
+        "path": "/",
+        "public": true
+      },
+      {
+        "path": "/health",
+        "public": false
+      },
+      {
+        "path": "/metrics",
+        "public": false
+      }
+    ],
+    "max_conn": null
+  },
+  "release_tag": "svc-checkout-eu-central",
   "home_region": "frankfurt",
   "unset": null,
   "shard_ids": [
