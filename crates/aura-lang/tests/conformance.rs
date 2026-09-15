@@ -287,6 +287,21 @@ fn nginx_generates_conf() {
     check_ok("nginx", "nginx.aura", &[], &[], "expected.json");
 }
 
+/// Showcase 3: a data and model pipeline, in one self-contained manifest.
+///
+/// Its subject is collections — ordered stages, merged settings, sources with
+/// holes — so it carries most of the traversal surface.
+#[test]
+fn showcase_pipeline_stages() {
+    check_ok(
+        "pipeline",
+        "pipeline.aura",
+        &["--strict"],
+        &[],
+        "expected.json",
+    );
+}
+
 /// Showcase 2: a trading run profile across a chain of three modules.
 ///
 /// Different subject and a different file shape on purpose — the language has

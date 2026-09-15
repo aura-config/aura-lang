@@ -1,0 +1,59 @@
+{
+  "train_at": 3,
+  "first_run": "extract",
+  "last_run": "evaluate",
+  "prepare": [
+    "extract",
+    "transform",
+    "features"
+  ],
+  "rollback": [
+    "evaluate",
+    "train",
+    "features",
+    "transform",
+    "extract"
+  ],
+  "has_gpu_step": true,
+  "all_bounded": true,
+  "longest": 9600,
+  "trains_models": true,
+  "slow_step": "train",
+  "sources": [
+    "events",
+    "profiles",
+    "orders"
+  ],
+  "source_count": 3,
+  "timeouts_doubled": {
+    "extract": 1200,
+    "transform": 1200,
+    "train": 14400
+  },
+  "stage_names": [
+    "extract",
+    "transform",
+    "train"
+  ],
+  "stage_values": [
+    600,
+    600,
+    7200
+  ],
+  "staging": {
+    "resources": {
+      "cpu": 4,
+      "memory_g": 16,
+      "spot": true
+    },
+    "replicas": 1
+  },
+  "production": {
+    "resources": {
+      "cpu": 16,
+      "memory_g": 64,
+      "spot": false
+    },
+    "replicas": 4
+  }
+}
