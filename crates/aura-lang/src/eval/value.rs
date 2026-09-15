@@ -39,6 +39,10 @@ pub struct SchemaDef<'a> {
     /// time** — so an imported schema validates against the enum that was in
     /// scope in its own module, not one that happens to exist at the call site.
     pub field_enums: std::collections::HashMap<&'a str, Arc<EnumDef<'a>>>,
+    /// D28: rules the schema states about its own values, carried with it so an
+    /// imported schema validates by the same rules in every manifest that uses
+    /// it — which is the point of moving them off the construction site.
+    pub invariants: Vec<crate::parser::ast::SchemaInvariant<'a>>,
 }
 
 pub struct FunctionDef<'a> {

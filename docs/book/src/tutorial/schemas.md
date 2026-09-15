@@ -117,6 +117,67 @@ This also reaches the host. `aura types` emits `Vec<Endpoint>`, `Endpoint[]` or
 
 Bare `List` keeps its old meaning, so nothing written before this needs changing.
 
+## Rules the schema states about itself
+
+A type says what shape the values have. It can also say what they must be:
+
+```aura
+type Plan
+  price_monthly: Int
+  price_yearly:  Int
+  max_channels:  Int
+
+  assert price_monthly >= 0, "price must not be negative"
+  assert max_channels > 0, "a plan needs at least one channel"
+  assert price_yearly <= price_monthly * 12, "yearly must not exceed twelve months"
+end
+```
+
+These run on every `new Plan`, and a failure is `E0515` carrying the message the
+schema wrote:
+
+```
+[E0515] Error: Plan: yearly must not exceed twelve months
+```
+
+The third one is the reason this is worth having: it relates two fields, which
+no per-field constraint can express. It needs no ordering rule either, because
+every field is filled and type-checked before any invariant runs.
+
+### Why not just write the assert next to the `new`
+
+Because then it is not part of the type. It does not travel with the schema, so
+an importer gets the fields without the rules; tooling cannot see it; and the
+next person to instantiate the schema simply will not write it.
+
+Put it in the schema and it holds everywhere, including in a manifest whose
+author never read your package:
+
+```aura
+import "./lib.aura" as lib
+
+p: new lib.Port
+  number: 80 # E0515: Port: ports below 1025 are privileged
+end
+```
+
+### What an invariant can see
+
+Its own fields, and nothing else. Not the module the schema was declared in, not
+the one the `new` was written in:
+
+```
+[E0504] Error: use of undefined variable 'limit'
+          Help: an invariant sees only this schema's fields (q), so it means the
+                same in every manifest that uses the schema; pass anything else
+                in as a field
+```
+
+That is deliberate. A rule that could read a module variable would mean
+something different in each manifest that imported the schema — which is the
+problem invariants exist to solve. It also means nothing effectful is reachable
+from one, so an instance is valid or invalid identically for everyone.
+
 ## assert
 
 Arbitrary invariants are the `assert` statement:

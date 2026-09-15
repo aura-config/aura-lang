@@ -43,6 +43,20 @@ types** below — take them from there rather than guessing, because the error f
 an invented one is `E0504: use of undefined variable`, which does not say "unknown
 type" and is easy to misread.
 
+A schema can state rules about its own values, checked on every `new` and
+carried with the schema into any manifest that imports it:
+
+```aura
+type Plan
+  price_monthly: Int
+  price_yearly:  Int
+  assert price_yearly <= price_monthly * 12, "yearly exceeds twelve months"
+end
+```
+
+An invariant sees only that schema's fields — not the surrounding module — so it
+means the same thing everywhere. A failure is `E0515`.
+
 A field takes `null` only if declared `Int?`. Use it for a genuinely absent
 value instead of a sentinel like `-1`:
 

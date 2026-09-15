@@ -312,6 +312,7 @@ impl<'a> Interpreter<'a> {
                     name: schema.name,
                     fields: schema.fields.clone(),
                     field_enums,
+                    invariants: schema.invariants.clone(),
                 }));
                 self.define(env, schema.name, v.clone(), false, schema.span)?;
                 // D12: pub type is visible to importers via the module object
@@ -643,6 +644,12 @@ impl<'a> Interpreter<'a> {
                 }
                 let obj = Value::object(map);
                 self.validate_schema(&def, &obj, *span)?;
+                // D28: after the types are known good, so an invariant can say
+                // what the values must be to each other without re-checking
+                // what they are.
+                if let Value::Object(m) = &obj {
+                    self.check_invariants(&def, m, *span)?;
+                }
 
                 // Key order comes from the schema, not from the construction
                 // site. Two instances of one schema previously differed whenever
@@ -1107,6 +1114,85 @@ impl<'a> Interpreter<'a> {
     }
 
     /// Schema validation (SPEC §6.2): E0511 missing, E0512 type, E0513 extra (strict only).
+    /// D28: check the schema's own rules, after the fields are filled and typed.
+    ///
+    /// The scope holds the fields and **nothing else** — not the module the
+    /// `new` was written in, not the module the schema came from. That is the
+    /// decision, not an implementation limit: an invariant that could read a
+    /// module variable would mean something different in each manifest that
+    /// imported the schema, which is the opposite of moving it off the
+    /// construction site. Self-contained, it travels with the type.
+    ///
+    /// A consequence worth stating: nothing effectful is reachable either, so
+    /// the same instance is valid or invalid identically for everyone.
+    fn check_invariants(
+        &mut self,
+        def: &SchemaDef<'a>,
+        map: &IndexMap<String, Value<'a>>,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        if def.invariants.is_empty() {
+            return Ok(());
+        }
+        let env = self.track(Environment::root());
+        for (k, v) in map.iter() {
+            env.insert(k, v.clone());
+        }
+        for inv in &def.invariants {
+            let evaluated = self.eval_expr(&env, &inv.cond).map_err(|mut d| {
+                // The scope is deliberately narrow, so "undefined variable" is
+                // the expected first surprise. Explain it where it happens.
+                if d.code == "E0504" && d.help.is_none() {
+                    let names = def
+                        .fields
+                        .iter()
+                        .map(|f| f.name)
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    d.help = Some(format!(
+                        "an invariant sees only this schema's fields ({names}), so it means \
+                         the same in every manifest that uses the schema; pass anything else \
+                         in as a field"
+                    ));
+                }
+                d
+            })?;
+            match evaluated {
+                Value::Bool(true) => {}
+                Value::Bool(false) => {
+                    let text = match &inv.message {
+                        Some(m) => {
+                            let v = self.eval_expr(&env, m)?;
+                            // Rendered exactly as a plain `assert` renders its
+                            // message, so the two read the same way.
+                            self.display(&v, inv.span)?
+                        }
+                        None => "invariant does not hold".to_string(),
+                    };
+                    return Err(rt(
+                        "E0515",
+                        format!("{}: {text}", def.name),
+                        // Point at the `new`, not at the schema: the schema is
+                        // right, this instance is not.
+                        span,
+                    ));
+                }
+                other => {
+                    return Err(rt(
+                        "E0306",
+                        format!(
+                            "invariant of schema {} must be Bool, got {}",
+                            def.name,
+                            other.type_name()
+                        ),
+                        span,
+                    ))
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn validate_schema(
         &self,
         def: &SchemaDef<'a>,
@@ -2401,6 +2487,90 @@ end
         assert_eq!(d.code, "E0512");
         let help = d.help.unwrap_or_default();
         assert!(help.contains("q: Int?"), "the fix must be shown: {help}");
+    }
+
+    #[test]
+    fn a_schema_checks_its_own_rules() {
+        // D28. The cross-field case is the one that could not be written as a
+        // field-level constraint, and it needs no ordering or cycle analysis:
+        // every field is filled before any invariant runs.
+        let schema = concat!(
+            "type Plan\n",
+            "  price_monthly: Int\n",
+            "  price_yearly:  Int\n",
+            "  assert price_monthly >= 0, \"price must not be negative\"\n",
+            "  assert price_yearly <= price_monthly * 12, \"yearly exceeds twelve months\"\n",
+            "end\n",
+        );
+        let ok_src =
+            format!("{schema}p: new Plan\n  price_monthly: 900\n  price_yearly: 9000\nend\n");
+        let v = eval(&ok_src).unwrap();
+        assert_eq!(get(&get(&v, "p"), "price_yearly"), Value::Int(9000));
+
+        let bad_src =
+            format!("{schema}p: new Plan\n  price_monthly: 900\n  price_yearly: 99000\nend\n");
+        let d = eval(&bad_src).unwrap_err();
+        assert_eq!(d.code, "E0515");
+        // The schema is named, because the reader has to know whose rule broke.
+        assert!(d.message.contains("Plan"), "{}", d.message);
+        assert!(d.message.contains("twelve months"), "{}", d.message);
+    }
+
+    #[test]
+    fn an_invariant_sees_only_its_own_fields() {
+        // The decision that makes an invariant portable: it cannot read the
+        // module it was declared in, so it means the same thing wherever the
+        // schema is used. The error has to explain that, not just refuse.
+        let d = eval(concat!(
+            "limit = 5\n",
+            "type P\n  q: Int\n  assert q < limit, \"too big\"\nend\n",
+            "p: new P\n  q: 1\nend\n",
+        ))
+        .unwrap_err();
+        assert_eq!(d.code, "E0504");
+        let help = d.help.unwrap_or_default();
+        assert!(help.contains("only this schema's fields"), "{help}");
+        assert!(
+            help.contains("(q)"),
+            "the available names must be listed: {help}"
+        );
+    }
+
+    #[test]
+    fn an_invariant_runs_after_the_types_are_known_good() {
+        // Order matters: a type error must be reported as a type error, not as
+        // a confusing failure inside a comparison.
+        let d = eval(concat!(
+            "type P\n  q: Int\n  assert q > 0, \"positive\"\nend\n",
+            "p: new P\n  q: \"no\"\nend\n",
+        ))
+        .unwrap_err();
+        assert_eq!(d.code, "E0512", "the type check comes first: {}", d.message);
+    }
+
+    #[test]
+    fn an_invariant_must_be_a_bool() {
+        let d = eval(concat!(
+            "type P\n  q: Int\n  assert q\nend\n",
+            "p: new P\n  q: 1\nend\n",
+        ))
+        .unwrap_err();
+        assert_eq!(d.code, "E0306");
+    }
+
+    #[test]
+    fn an_invariant_without_a_message_still_reports() {
+        let d = eval(concat!(
+            "type P\n  q: Int\n  assert q > 10\nend\n",
+            "p: new P\n  q: 1\nend\n",
+        ))
+        .unwrap_err();
+        assert_eq!(d.code, "E0515");
+        assert!(
+            d.message.contains("invariant does not hold"),
+            "{}",
+            d.message
+        );
     }
 
     #[test]
