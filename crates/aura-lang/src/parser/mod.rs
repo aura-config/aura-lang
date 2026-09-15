@@ -583,10 +583,31 @@ impl<'a> Parser<'a> {
         let (name, _) = self.expect_ident("schema name")?;
         self.expect(&TokenKind::Newline, "newline after schema name")?;
         let mut fields = Vec::new();
+        let mut invariants = Vec::new();
         loop {
             self.skip_newlines();
             if self.eat(&TokenKind::End) {
                 break;
+            }
+            // D28: an invariant, written like any other `assert`. It sits among
+            // the fields rather than in a section of its own, because it is a
+            // statement about them and reads best next to them.
+            if matches!(self.peek(), TokenKind::Assert) {
+                let a_start = self.span();
+                self.bump();
+                let cond = self.parse_expr(0)?;
+                let message = if self.eat(&TokenKind::Comma) {
+                    Some(self.parse_expr(0)?)
+                } else {
+                    None
+                };
+                invariants.push(SchemaInvariant {
+                    cond,
+                    message,
+                    span: self.join(a_start),
+                });
+                self.eat_separator()?;
+                continue;
             }
             let (field, _) = self.expect_ident("field name")?;
             self.expect(&TokenKind::Colon, "`:` after field name")?;
@@ -612,6 +633,7 @@ impl<'a> Parser<'a> {
         Ok(Stmt::TypeDecl(SchemaDeclaration {
             name,
             fields,
+            invariants,
             public,
             span: self.join(start),
         }))

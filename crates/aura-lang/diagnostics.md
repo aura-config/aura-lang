@@ -95,6 +95,7 @@ position, because nothing was parsed yet.
 | E0512 | a field's type does not match the schema | `Int` and `Float` are different types |
 | E0513 | an extra field (`--strict` only) | remove the field, or add it to the schema |
 | E0514 | a value outside the `enum` | the hint suggests the nearest member and lists the set (D18) |
+| E0515 | a schema invariant does not hold for this instance | the schema's own `assert`; the message shown is the one it carries |
 | W0512 | an effectful call in an imported module | imports have no I/O rights; reconsider the package's design |
 | W0513 | a nullable field is filled from `get(key)` or `env(name)` with no fallback | absence becomes `null` silently; name the fallback, or drop the `?` |
 | E0530 | an `assert` failed | the message is your own |

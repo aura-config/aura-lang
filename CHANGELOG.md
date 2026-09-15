@@ -9,6 +9,37 @@ still change the language.
 
 ### Added
 
+- **A schema can state rules about its own values (D28).** `assert` inside a
+  `type` body, checked on every `new`:
+
+  ```aura
+  type Plan
+    price_monthly: Int
+    price_yearly:  Int
+    assert price_yearly <= price_monthly * 12, "yearly must not exceed twelve months"
+  end
+  ```
+
+  Cross-field rules are the reason this is worth having — no per-field constraint
+  can relate two values. They need no ordering or cycle analysis either, because
+  every field is filled and type-checked before any invariant runs. That is what
+  makes this feasible where the dependent defaults of D15 were not.
+
+  **It travels with the schema.** An importer instantiating `new pkg.Port` gets
+  the package's rules, in a manifest whose author never read them. Written beside
+  the `new` instead, the rule is not part of the type: it does not move, tooling
+  cannot see it, and the next person does not write it. That is the argument D18
+  made for `enum`, applied to conditions.
+
+  An invariant sees **its own fields and nothing else** — not the declaring
+  module, not the instantiation site. A rule that could read a module variable
+  would mean something different in each manifest that imported the schema, which
+  is the problem being solved; it also puts everything effectful out of reach, so
+  an instance is valid or invalid identically for everyone. An undefined name
+  there says so and lists the fields available.
+
+  A failure is the new `E0515`, naming the schema and carrying its message.
+
 - **A field can say that it may have no value (D27).** `quota: Int?` admits
   `null`; every other field still rejects it.
 

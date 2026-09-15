@@ -79,8 +79,22 @@ pub struct EnumDeclaration<'a> {
 pub struct SchemaDeclaration<'a> {
     pub name: &'a str,
     pub fields: Vec<SchemaField<'a>>,
+    /// D28: `assert` statements in the schema body, checked on every `new`.
+    pub invariants: Vec<SchemaInvariant<'a>>,
     /// `pub type` - the schema is visible to the module's importers (D12)
     pub public: bool,
+    pub span: Span,
+}
+
+/// D28: a rule the schema states about its own values.
+///
+/// Written the same way as any other `assert`, and checked after the fields are
+/// filled and type-checked — so it can assume the types are right and only has
+/// to say what the values must be to each other.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SchemaInvariant<'a> {
+    pub cond: Expr<'a>,
+    pub message: Option<Expr<'a>>,
     pub span: Span,
 }
 

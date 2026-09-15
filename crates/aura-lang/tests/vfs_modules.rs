@@ -195,6 +195,45 @@ fn d12_pub_functions_and_schemas_cross_module() {
 }
 
 #[test]
+fn d28_an_invariant_travels_with_an_imported_schema() {
+    // The whole point of moving a rule off the construction site: it has to hold
+    // in a manifest whose author never saw it. Written as an `assert` beside the
+    // schema's fields, checked wherever the schema is instantiated.
+    let pkg = "pub type Port\n  number: Int\n  assert number > 1024, \"ports below 1025 are privileged\"\nend";
+
+    let ok = mem(&[
+        (
+            "root.aura",
+            "import \"pkg.aura\" as pkg\np: new pkg.Port\n  number: 8080\nend",
+        ),
+        ("pkg.aura", pkg),
+    ]);
+    let cache = SourceCache::new();
+    let mut loader = Loader::new(&cache, &ok);
+    let mut it = Interpreter::new(Options::default());
+    let v = loader
+        .eval_entry(&mut it, &ImportSpec::File("root.aura"))
+        .unwrap();
+    assert_eq!(get(&get(&v, "p"), "number"), Value::Int(8080));
+
+    let bad = mem(&[
+        (
+            "root.aura",
+            "import \"pkg.aura\" as pkg\np: new pkg.Port\n  number: 80\nend",
+        ),
+        ("pkg.aura", pkg),
+    ]);
+    let cache2 = SourceCache::new();
+    let mut loader2 = Loader::new(&cache2, &bad);
+    let mut it2 = Interpreter::new(Options::default());
+    let err = loader2
+        .eval_entry(&mut it2, &ImportSpec::File("root.aura"))
+        .unwrap_err();
+    assert_eq!(err.code, "E0515");
+    assert!(err.message.contains("privileged"), "{}", err.message);
+}
+
+#[test]
 fn d12_exported_functions_keep_module_capabilities() {
     // An exported package function does NOT inherit the root's I/O capabilities (D1×D12)
     let resolver = mem(&[
