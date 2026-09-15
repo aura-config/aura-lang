@@ -287,6 +287,21 @@ fn nginx_generates_conf() {
     check_ok("nginx", "nginx.aura", &[], &[], "expected.json");
 }
 
+/// Showcase 4: a device profile whose inputs are other people's formats.
+///
+/// Needs `--allow-read`, which is the point: reading is a capability, and the
+/// example is the place to show it being granted narrowly.
+#[test]
+fn showcase_device_provisioning() {
+    check_ok(
+        "device",
+        "device.aura",
+        &["--allow-read=.", "--strict"],
+        &[],
+        "expected.json",
+    );
+}
+
 /// Showcase 3: a data and model pipeline, in one self-contained manifest.
 ///
 /// Its subject is collections — ordered stages, merged settings, sources with

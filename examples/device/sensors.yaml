@@ -1,0 +1,10 @@
+# The sensor table, maintained by whoever wires the board.
+sensors:
+  - id: "  BME280  "
+    bus: "I2C"
+    poll_ms: 2000
+    topic: "telemetry/climate/"
+  - id: "SHT41"
+    bus: "i2c"
+    poll_ms: 5000
+    topic: "telemetry/humidity"

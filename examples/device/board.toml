@@ -1,0 +1,9 @@
+# Hardware description, as the vendor ships it.
+[board]
+model = "esp32-c6"
+flash_mb = 8
+psram_mb = 2
+
+[power]
+battery_mah = 2000
+sleep_ma = 0.05

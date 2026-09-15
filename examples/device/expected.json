@@ -1,0 +1,32 @@
+{
+  "board_info": {
+    "model": "esp32-c6",
+    "flash_mb": 8,
+    "sleep_ma": 0.05
+  },
+  "sensor_list": [
+    {
+      "id": "BME280",
+      "bus": "i2c",
+      "poll_ms": 2000,
+      "topic": "telemetry/climate"
+    },
+    {
+      "id": "SHT41",
+      "bus": "i2c",
+      "poll_ms": 5000,
+      "topic": "telemetry/humidity"
+    }
+  ],
+  "topics": [
+    "telemetry/climate",
+    "telemetry/humidity"
+  ],
+  "battery_days": "50.5050505050505",
+  "provisioning": {
+    "as_json": "[{\"id\":\"BME280\",\"bus\":\"i2c\",\"poll_ms\":2000,\"topic\":\"telemetry/climate\"},{\"id\":\"SHT41\",\"bus\":\"i2c\",\"poll_ms\":5000,\"topic\":\"telemetry/humidity\"}]",
+    "as_yaml": "- id: BME280\n  bus: i2c\n  poll_ms: 2000\n  topic: telemetry/climate\n- id: SHT41\n  bus: i2c\n  poll_ms: 5000\n  topic: telemetry/humidity\n"
+  },
+  "flash_manifest": "flash_mb = 8\nmodel = \"esp32-c6\"\npsram_mb = 2\n",
+  "init_script": "#!/bin/sh\nset -e\necho \"flashing esp32-c6 (8 MB)\"\nfor topic in telemetry/climate telemetry/humidity; do\n  echo \"subscribing $topic\"\ndone\nexec ./agent --sleep-ma 0.05"
+}
