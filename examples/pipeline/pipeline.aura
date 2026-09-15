@@ -1,0 +1,121 @@
+# =============================================================================
+# Aura showcase 3 of several: a data and model pipeline.
+#
+# A third subject and a third shape of file: one self-contained manifest with a
+# domain per environment, where showcase 1 imports a helper beside it and
+# showcase 2 is a chain of three modules. No imports here at all.
+#
+# What the subject brings that the others do not: everything is a collection.
+# Stages are ordered, settings are merged, sources arrive with holes in them.
+#
+# Run: aura eval pipeline.aura
+# =============================================================================
+
+enum Stage
+  "extract"
+  "transform"
+  "features"
+  "train"
+  "evaluate"
+end
+
+type Step
+  stage:     Stage
+  timeout_s: Int
+  retries: Int = 2
+  gpu: Bool    = false
+
+  assert timeout_s > 0, "a step needs a timeout"
+  assert retries >= 0, "retries cannot be negative"
+end
+
+type Pipeline
+  name:  String
+  steps: [Step]
+
+  assert steps.len() > 0, "a pipeline needs at least one step"
+end
+
+# --- The order is the pipeline. Written once, and everything else is derived
+# from it, so a stage cannot exist in one place and be forgotten in another.
+order = ["extract", "transform", "features", "train", "evaluate"]
+
+step_of = (stage) ->
+  new Step
+    stage:     stage
+    timeout_s: stage == "train" ? 7200 : 600
+    gpu:       stage == "train"
+  end
+end
+
+nightly = new Pipeline
+  name:  "nightly"
+  steps: order.map (s, i) -> step_of(s) end
+end
+
+# --- Positions in the order. `index_of` needs a fallback, so "absent" is named
+# rather than encoded as -1 by convention (D25).
+train_at:  order.index_of("train", -1)
+first_run: order.first()
+last_run:  order.last()
+prepare:   order.slice(0, 3)
+rollback:  order.reverse()
+
+# --- Questions about the whole run, stated as questions rather than counted.
+has_gpu_step:  nightly.steps.any (st, i) -> st.gpu end
+all_bounded:   nightly.steps.all (st, i) -> st.timeout_s > 0 end
+longest:       nightly.steps.reduce(0) (acc, st) -> acc + st.timeout_s end
+trains_models: order.contains("train")
+
+# --- The first step that costs real time, or a named stand-in when none does.
+slow_step: nightly.steps.find("none") (st, i) -> st.timeout_s > 3600 end.stage
+
+# --- Sources arrive with holes: a catalogue lists what it has, and null means
+# the entry was withdrawn. `compact` is the cure the diagnostics point at.
+raw_sources = ["events", null, "profiles", null, "orders"]
+sources:      raw_sources.compact()
+source_count: raw_sources.compact().len()
+
+# --- Settings as a map, rewritten through pairs and put back (D24). Doubling a
+# timeout for a rerun is a map in and a map out, which had no expression before.
+def base_timeouts()
+  extract:   600
+  transform: 600
+  train:     7200
+end
+
+timeouts_doubled: base_timeouts().entries().map (e, i) ->
+  key:   e.key
+  value: e.value * 2
+end.to_object()
+
+stage_names:  base_timeouts().keys()
+stage_values: base_timeouts().values()
+
+# --- Per-environment overrides on top of a shared base.
+def base_resources()
+  cpu:      4
+  memory_g: 16
+  spot:     true
+end
+
+# Only what production differs in. Declared before use: execution is top-down,
+# so a `def` below its caller is an undefined name, not a forward reference.
+def production_overrides()
+  cpu:      16
+  memory_g: 64
+  spot:     false
+end
+
+domain "staging"
+  resources: base_resources()
+  replicas:  1
+end
+
+domain "production"
+  # merge: the right side wins, so an override is written once and only once.
+  resources: base_resources().merge(production_overrides())
+  replicas:  4
+end
+
+assert order.contains("evaluate"), "a pipeline that never evaluates is not finished"
