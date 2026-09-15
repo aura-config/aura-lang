@@ -4,7 +4,8 @@
 //! Errors (always): E0504 undefined variable, static E0301/E0302.
 //! Warnings (promoted to errors by the caller under --strict):
 //! W0501 unused variable, W0502 unused import, W0503 unused function/type,
-//! W0303 useless shadow, W0512 effectful call in imported module.
+//! W0303 useless shadow, W0512 effectful call in imported module,
+//! W0513 a nullable field fed by a fallback-less `get`/`env` (D27).
 //! Under `hermetic`: E0505 for any effectful call at all.
 
 use indexmap::IndexMap;
@@ -49,6 +50,12 @@ pub struct SemanticAnalyzer<'a> {
     is_root: bool,
     /// Deny `env()` and `read_file()` outright, as an analysis error.
     hermetic: bool,
+    /// Nullable field names per locally declared schema (D27), collected up
+    /// front so a `new` before the `type` still sees them.
+    ///
+    /// Only local schemas: `new pkg.Schema` lives in another module and this
+    /// pass cannot see its fields. Saying nothing there is the honest outcome.
+    nullable_fields: IndexMap<&'a str, Vec<&'a str>>,
 }
 
 /// `is_root = false` — analysis of an imported module (includes W0512).
@@ -69,7 +76,9 @@ pub fn analyze_with<'a>(module: &Module<'a>, is_root: bool, hermetic: bool) -> V
         diags: Vec::new(),
         is_root,
         hermetic,
+        nullable_fields: IndexMap::new(),
     };
+    a.note_schemas(&module.stmts);
     a.push_scope();
     for imp in &module.imports {
         a.declare(imp.alias, imp.span, DeclKind::Import, false);
@@ -106,6 +115,89 @@ impl<'a> SemanticAnalyzer<'a> {
             .collect();
         if let Some(top) = self.properties.last_mut() {
             top.extend(names);
+        }
+    }
+
+    /// Collect the nullable fields of every schema declared anywhere in the
+    /// module, including inside `domain` blocks, before walking anything.
+    fn note_schemas(&mut self, stmts: &[Stmt<'a>]) {
+        for st in stmts {
+            match st {
+                Stmt::TypeDecl(s) => {
+                    let nullable: Vec<&'a str> = s
+                        .fields
+                        .iter()
+                        .filter(|f| f.nullable)
+                        .map(|f| f.name)
+                        .collect();
+                    if !nullable.is_empty() {
+                        self.nullable_fields.insert(s.name, nullable);
+                    }
+                }
+                Stmt::Block(b) => self.note_schemas(&b.body),
+                _ => {}
+            }
+        }
+    }
+
+    /// W0513: a nullable field fed by something that turns "absent" into `null`
+    /// without saying so.
+    ///
+    /// The combination matters because of what it costs: with the field not
+    /// nullable, a missing key is `E0512` and the run stops, so two people with
+    /// different input files find out. Make the field nullable and the same
+    /// difference passes silently, and they ship different configurations. The
+    /// warning does not forbid it — an explicit fallback says which value stands
+    /// for absence, and that is all it asks for.
+    fn check_silent_nulls(&mut self, schema: &'a str, body: &ObjectBody<'a>) {
+        let Some(nullable) = self.nullable_fields.get(schema).cloned() else {
+            return;
+        };
+        for (key, value, span) in &body.props {
+            if !nullable.contains(key) {
+                continue;
+            }
+            let Some(kind) = Self::silent_null_source(value) else {
+                continue;
+            };
+            let (shown, fix) = match kind {
+                "get" => ("get(key)", "get(key, fallback)"),
+                _ => ("env(name)", "env(name, fallback)"),
+            };
+            let mut d = Diagnostic::warning(
+                "W0513",
+                format!(
+                    "'{key}' is nullable and is filled from `{shown}`, so a missing \
+                     value becomes null instead of an error"
+                ),
+                *span,
+                "absence would pass unnoticed here",
+            );
+            d.help = Some(format!(
+                "name the value that stands for absence: `{fix}` — or drop the `?` \
+                 so a missing one is reported"
+            ));
+            self.diags.push(d);
+        }
+    }
+
+    /// An expression that yields `null` when something is simply absent, without
+    /// the author having written `null` anywhere.
+    ///
+    /// `xs.get(k)` and `env(name)` both do this when given no fallback. Feeding
+    /// one into a nullable field is the single way a manifest can quietly
+    /// produce a different configuration for two people: before D27 the missing
+    /// value was `E0512` and the run stopped.
+    fn silent_null_source(e: &Expr<'a>) -> Option<&'static str> {
+        match e {
+            Expr::MethodCall { method, args, .. } if *method == "get" && args.len() == 1 => {
+                Some("get")
+            }
+            Expr::Call { callee, args, .. } if args.len() == 1 => match callee.as_ref() {
+                Expr::Variable(name, _) if *name == "env" => Some("env"),
+                _ => None,
+            },
+            _ => None,
         }
     }
 
@@ -459,6 +551,9 @@ impl<'a> SemanticAnalyzer<'a> {
                     Some(alias) => self.mark_used(alias, *span),
                     None => self.mark_used(schema, *span),
                 }
+                if schema_alias.is_none() {
+                    self.check_silent_nulls(schema, body);
+                }
                 self.walk_object_body(body);
             }
         }
@@ -488,6 +583,60 @@ mod tests {
 
     fn diags(src: &str) -> Vec<Diagnostic> {
         diags_as(src, true)
+    }
+
+    #[test]
+    fn a_nullable_field_fed_without_a_fallback_is_w0513() {
+        // The one way D27 lets a manifest quietly differ between two people:
+        // with the field not nullable, a missing key stops the run; make it
+        // nullable and the same difference passes as null.
+        let src = concat!(
+            "type Plan\n  quota: Int?\n  region: String?\n  fixed: Int?\nend\n",
+            "data = read_file(\"d.json\").parse_json()\n",
+            "p: new Plan\n",
+            "  quota:  data.get(\"quota\")\n",
+            "  region: env(\"REGION\")\n",
+            "  fixed:  data.get(\"fixed\", 0)\n",
+            "end\n",
+        );
+        let d = diags(src);
+        let warned: Vec<&str> = d
+            .iter()
+            .filter(|x| x.code == "W0513")
+            .map(|x| x.message.as_str())
+            .collect();
+        assert_eq!(
+            warned.len(),
+            2,
+            "expected quota and region only: {warned:?}"
+        );
+        assert!(warned.iter().any(|m| m.contains("quota")), "{warned:?}");
+        assert!(warned.iter().any(|m| m.contains("region")), "{warned:?}");
+        // An explicit fallback is the whole point and must not be nagged at.
+        assert!(
+            !warned.iter().any(|m| m.contains("fixed")),
+            "a named fallback is the fix, not the problem: {warned:?}"
+        );
+        // And the warning has to show what to type.
+        let first = d.iter().find(|x| x.code == "W0513").unwrap();
+        let help = first.help.clone().unwrap_or_default();
+        assert!(help.contains("fallback"), "{help}");
+    }
+
+    #[test]
+    fn a_field_without_the_marker_is_not_warned_about() {
+        // Without `?` a missing key is already E0512 at runtime - loud, and
+        // nothing to warn about. Warning here would be noise on correct code.
+        let d = diags(concat!(
+            "type P\n  q: Int\nend\n",
+            "data = read_file(\"d.json\").parse_json()\n",
+            "p: new P\n  q: data.get(\"q\")\nend\n",
+        ));
+        assert!(
+            !d.iter().any(|x| x.code == "W0513"),
+            "{:?}",
+            d.iter().map(|x| &x.message).collect::<Vec<_>>()
+        );
     }
 
     #[test]

@@ -529,7 +529,18 @@ fn normalize(raw: Vec<Token<'_>>) -> Vec<Token<'_>> {
                         None | Some(
                             TokenKind::Assign
                                 | TokenKind::Arrow
-                                | TokenKind::Question
+                                // `?` is deliberately NOT here. It used to be,
+                                // for a ternary split after the `?`. But D27
+                                // gave `?` a second job — the nullable marker —
+                                // and a field ending in `?` would then swallow
+                                // its own line separator, which is exactly the
+                                // defect that ruled out `List<T>` in D26.
+                                //
+                                // A multi-line ternary therefore needs
+                                // parentheses, which is already the rule for
+                                // breaking after its `:` (§2.5 rule 2), so this
+                                // makes the two halves of `? :` behave alike
+                                // rather than adding an exception.
                                 | TokenKind::Comma
                                 | TokenKind::Dot
                                 | TokenKind::Plus
@@ -779,6 +790,24 @@ mod tests {
     #[test]
     fn block_string_unterminated_is_e0107() {
         assert_eq!(err("s: text\n  oops\n"), "E0107");
+    }
+
+    #[test]
+    fn a_question_mark_no_longer_swallows_the_line_separator() {
+        // D27 gave `?` a second job: the nullable marker. While `?` still
+        // suppressed the following newline, a field ending in one ate its own
+        // separator - the very defect that ruled out `List<T>` in D26, arriving
+        // through the back door.
+        let toks = Lexer::new("type P\n  q: Int?\n  r: Int\nend\n", 0)
+            .tokenize()
+            .expect("lexes");
+        let newlines = toks
+            .iter()
+            .filter(|t| matches!(t.kind, TokenKind::Newline))
+            .count();
+        // one after `type P`, one after each of the two fields, one after `end`
+        // is suppressed at EOF - so three.
+        assert_eq!(newlines, 3, "the separator after `Int?` must survive");
     }
 
     #[test]

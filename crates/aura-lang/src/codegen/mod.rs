@@ -7,6 +7,11 @@
 //!
 //! Optional fields (D15) are emitted as **required**: evaluation always inserts
 //! the default, so the JSON a consumer receives always carries the field.
+//!
+//! Nullable fields (D27) are the opposite case and are emitted as optional —
+//! `Option<T>`, `T | null`, `*T`. The field is always present in the JSON, but
+//! its value may be `null`, and a host type that cannot hold one would fail to
+//! deserialise a value the schema explicitly permits.
 
 use crate::error::Diagnostic;
 use crate::lexer::Lexer;
@@ -139,7 +144,16 @@ fn rust(decls: &[Decl]) -> String {
                     s.name
                 ));
                 for f in &s.fields {
-                    out.push_str(&format!("    pub {}: {},\n", f.name, rust_ty(&f.ty)));
+                    // D27: a nullable field really can arrive as JSON null, so
+                    // the host type has to admit it or deserialisation fails on
+                    // a value the schema explicitly permits.
+                    let ty = rust_ty(&f.ty);
+                    let ty = if f.nullable {
+                        format!("Option<{ty}>")
+                    } else {
+                        ty
+                    };
+                    out.push_str(&format!("    pub {}: {},\n", f.name, ty));
                 }
                 out.push_str("}\n");
             }
@@ -179,7 +193,13 @@ fn typescript(decls: &[Decl]) -> String {
             Decl::Schema(s) => {
                 out.push_str(&format!("\nexport interface {} {{\n", s.name));
                 for f in &s.fields {
-                    out.push_str(&format!("  {}: {};\n", f.name, ts_ty(&f.ty)));
+                    let ty = ts_ty(&f.ty);
+                    let ty = if f.nullable {
+                        format!("{ty} | null")
+                    } else {
+                        ty
+                    };
+                    out.push_str(&format!("  {}: {};\n", f.name, ty));
                 }
                 out.push_str("}\n");
             }
@@ -262,7 +282,13 @@ fn go(decls: &[Decl]) -> String {
                     .map(|f| {
                         vec![
                             exported(f.name),
-                            go_ty(&f.ty),
+                            // A pointer is Go's only way to tell an absent value
+                            // from a zero one, which is the whole distinction.
+                            if f.nullable {
+                                format!("*{}", go_ty(&f.ty))
+                            } else {
+                                go_ty(&f.ty)
+                            },
                             format!("`json:\"{}\"`", f.name),
                         ]
                     })
@@ -317,6 +343,26 @@ end
         "end
 ",
     );
+
+    #[test]
+    fn a_nullable_field_reaches_the_host_as_an_optional() {
+        // D27: the host must admit null or deserialisation fails on a value the
+        // schema explicitly allows. Go needs a pointer, its only way to tell an
+        // absent value from a zero one.
+        let src = "type Plan\n  id: String\n  quota: Int?\n  channels: Int\nend\n";
+        let rs = generate(src, Lang::Rust).unwrap();
+        assert!(rs.contains("pub quota: Option<i64>,"), "{rs}");
+        assert!(
+            rs.contains("pub channels: i64,"),
+            "a plain field is untouched"
+        );
+
+        let ts = generate(src, Lang::TypeScript).unwrap();
+        assert!(ts.contains("quota: number | null;"), "{ts}");
+
+        let go = generate(src, Lang::Go).unwrap();
+        assert!(go.contains("*int64"), "{go}");
+    }
 
     #[test]
     fn an_element_type_reaches_the_host() {

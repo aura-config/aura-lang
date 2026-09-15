@@ -47,6 +47,18 @@ types** below — take them from there rather than guessing, because the error f
 an invented one is `E0504: use of undefined variable`, which does not say "unknown
 type" and is easy to misread.
 
+A field takes `null` only if declared `Int?`. Use it for a genuinely absent
+value instead of a sentinel like `-1`:
+
+```aura
+type Plan
+  quota: Int?
+end
+```
+
+`?` does not make the field optional — omitting it is still an error. That is
+what `= default` is for, and the two combine: `quota: Int? = null`.
+
 A list field says what it holds: `tags: [String]`, `endpoints: [Endpoint]`,
 nesting as `[[Int]]`, and an `enum` works as the element type. A wrong element is
 `E0512` reported with its index. Bare `List` still accepts anything.
@@ -459,6 +471,7 @@ position, because nothing was parsed yet.
 | E0513 | an extra field (`--strict` only) | remove the field, or add it to the schema |
 | E0514 | a value outside the `enum` | the hint suggests the nearest member and lists the set (D18) |
 | W0512 | an effectful call in an imported module | imports have no I/O rights; reconsider the package's design |
+| W0513 | a nullable field is filled from `get(key)` or `env(name)` with no fallback | absence becomes `null` silently; name the fallback, or drop the `?` |
 | E0530 | an `assert` failed | the message is your own |
 | E0531 | `fail(...)` was called | |
 
