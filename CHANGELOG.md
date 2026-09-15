@@ -85,22 +85,6 @@ still change the language.
 
 ### Fixed
 
-- **SPEC described an integrity hash the compiler stopped using.** §5.2 still
-  said `integrity = "sha256-..."` and "content hash", while the code has hashed
-  the **token stream** under an `aura1-` prefix for some time — and the decision
-  table in the same document already said so. One document, two answers.
-
-  §5.2 now states what actually happens, in both languages: SHA-256 over the
-  token stream, a byte fallback under the same prefix for input that does not
-  lex, and legacy `sha256-` entries still verified their own way so an existing
-  lock keeps working. Every one of those claims is pinned by a named test.
-
-  The `.gitattributes` comment carried the same stale reason for its `eol=lf`
-  pin. The pin stays — conformance fixtures compare bytes, legacy entries still
-  hash bytes, and `tests/line_endings.rs` builds its CRLF variant from an LF
-  source — but it is not the language that needs it. The language is required to
-  behave identically under either line ending, and that is proved separately.
-
 - **Two instances of one schema could serialise with different key orders.**
   Defaults were appended after whatever the author happened to write, so the
   same schema produced different bytes depending on whether an optional field
