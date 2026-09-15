@@ -23,21 +23,16 @@ use aura_lang::lexer::{Lexer, TokenKind};
 /// Every showcase, by directory. Each has its own subject on purpose — one
 /// person's several projects, all configured in Aura — so the language is shown
 /// working outside the domain it was first written for.
-const SHOWCASES: &[&str] = &["showcase", "trading", "pipeline"];
+const SHOWCASES: &[&str] = &["showcase", "trading", "pipeline", "device"];
 
-/// Not demonstrated anywhere yet. Each entry is a promise to a later showcase,
-/// not an exemption: the test fails if one of these turns out to be covered, so
-/// the list cannot quietly outlive its reason.
+/// The one name no showcase demonstrates, and the reason is permanent rather
+/// than a promise: `fail` aborts the evaluation, so a manifest that called it
+/// could not also produce the output a showcase is pinned against. It is
+/// covered by `examples/validators` instead, which is checked by error code.
+///
+/// The list is still self-cleaning in both directions: an entry that turns out
+/// to be covered fails as loudly as one that is missing.
 const PENDING: &[&str] = &[
-    // device showcase: text handling and emitting other formats
-    "ends_with",
-    "lower",
-    "trim",
-    "parse_toml",
-    "parse_yaml",
-    "to_json",
-    "to_toml",
-    "to_yaml",
     // deliberate: `fail` aborts, so a showcase that used it could not also
     // produce output. It is demonstrated in examples/validators instead.
     "fail",
