@@ -1,5 +1,11 @@
 # =============================================================================
-# Aura full-language showcase — exercises every core construct in one manifest.
+# Aura showcase 1 of several: a web service and its deployment.
+#
+# Each showcase has its own subject, the way one person's projects do. Together
+# they must exercise every construct and every stdlib method, and that is not a
+# promise in a comment — tests/showcase_coverage.rs fails the build when one of
+# them goes undemonstrated.
+#
 # Run: aura eval showcase.aura --allow-read=. --allow-env=APP_ENV
 # =============================================================================
 
@@ -59,6 +65,50 @@ numbers:
   fallback:  cfg.get("ttl", 60) # .get with default
   first_w:   weights[0]         # list indexing
 end
+
+# --- A list field that says what it holds (D26), an absent value declared
+# rather than encoded as a sentinel (D27), and rules the schema states about
+# its own values, checked on every `new` (D28).
+type Route
+  path: String
+  public: Bool = false
+end
+
+type Listener
+  port:     Int
+  routes:   [Route]
+  max_conn: Int? # null means no cap, not -1
+
+  assert port > 1024, "a listener must not take a privileged port"
+  assert routes.len() > 0, "a listener needs at least one route"
+end
+
+# --- `+` joins lists and strings (D23): a base set plus an environment tail is
+# the commonest shape in a deployment, and had no expression before.
+base_routes  = ["/", "/health"]
+extra_routes = is_prod ? ["/metrics"] : []
+all_routes   = base_routes + extra_routes
+
+# A lambda body is a scope (D17), so the `new` gets a line of its own rather
+# than trailing the `->`.
+route_of = (path) ->
+  new Route
+    path:   path
+    public: path == "/"
+  end
+end
+
+listener: new Listener
+  port:     base_port + 443
+  routes:   all_routes.map (path, i) -> route_of(path) end
+  max_conn: null
+end
+
+release_tag: "svc-" + app_name + "-" + region
+
+# --- A claim about a whole collection says what it means (D25), where the old
+# spelling `.filter(...).len() == 0` said it with a counter.
+assert all_routes.all (path, i) -> path.starts_with("/") end, "routes must be absolute"
 
 # --- cond multi-way expression (D14).
 home_region: cond
