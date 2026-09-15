@@ -43,6 +43,18 @@ types** below — take them from there rather than guessing, because the error f
 an invented one is `E0504: use of undefined variable`, which does not say "unknown
 type" and is easy to misread.
 
+A field takes `null` only if declared `Int?`. Use it for a genuinely absent
+value instead of a sentinel like `-1`:
+
+```aura
+type Plan
+  quota: Int?
+end
+```
+
+`?` does not make the field optional — omitting it is still an error. That is
+what `= default` is for, and the two combine: `quota: Int? = null`.
+
 A list field says what it holds: `tags: [String]`, `endpoints: [Endpoint]`,
 nesting as `[[Int]]`, and an `enum` works as the element type. A wrong element is
 `E0512` reported with its index. Bare `List` still accepts anything.

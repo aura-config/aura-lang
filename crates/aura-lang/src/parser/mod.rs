@@ -591,6 +591,10 @@ impl<'a> Parser<'a> {
             let (field, _) = self.expect_ident("field name")?;
             self.expect(&TokenKind::Colon, "`:` after field name")?;
             let (ty, ty_span) = self.parse_field_type()?;
+            // D27: a trailing `?` widens the field to admit `null`. Unambiguous
+            // here for the same reason `[` is: a field type never reaches
+            // `parse_expr`, so this `?` cannot be a ternary.
+            let nullable = self.eat(&TokenKind::Question);
             // `name: Type = default` makes the field optional (default in the instance scope).
             let default = if self.eat(&TokenKind::Assign) {
                 Some(self.parse_expr(0)?)
@@ -601,6 +605,7 @@ impl<'a> Parser<'a> {
                 name: field,
                 ty,
                 default,
+                nullable,
                 ty_span,
             });
         }

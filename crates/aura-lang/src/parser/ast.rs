@@ -86,12 +86,20 @@ pub struct SchemaDeclaration<'a> {
 
 /// A schema field. `default = Some(expr)` makes the field optional: if omitted at
 /// `new`, the default expression is evaluated in the instantiation scope. A field
-/// with no default is required (E0511 if missing). No nullable (`?`) fields yet.
+/// with no default is required (E0511 if missing).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SchemaField<'a> {
     pub name: &'a str,
     pub ty: TypeName<'a>,
     pub default: Option<Expr<'a>>,
+    /// D27: `name: Int?` widens the field to admit `null`.
+    ///
+    /// Nullability belongs to the **field**, not to `TypeName`, and that is a
+    /// decision rather than an implementation detail: it makes `[Int?]`
+    /// unrepresentable, so there is never a question of whether the list or its
+    /// elements may be empty. `[Int]?` — a field that is either a list or null —
+    /// is still expressible, and means only one thing.
+    pub nullable: bool,
     /// The type name's own position, so an unknown type points at the field
     /// rather than at the whole `type` block.
     pub ty_span: Span,

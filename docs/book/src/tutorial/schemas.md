@@ -30,6 +30,66 @@ Field types are `String`, `Int`, `Float`, `Bool`, `List` and `Object`. `Int` and
 `Float` are separate types, so memory limits in bytes and 64-bit identifiers keep
 their precision — overflow is `E0304`, not a silent wrap.
 
+## Fields that may have no value
+
+A field holds a value of its type and nothing else. When a value is genuinely
+absent — an unlimited quota, a deadline nobody set — mark the field with `?`:
+
+```aura
+type Plan
+  id:    String
+  quota: Int?
+end
+
+unlimited: new Plan
+  id:    "enterprise"
+  quota: null
+end
+```
+
+This exists to kill the sentinel. Without it, "unlimited" gets written as `-1`
+or `2147483647`, and everyone has to remember which number means what and where.
+A sentinel is a valid value of its type, so nothing ever catches a wrong one.
+
+`?` answers one question only: may the value be absent. Whether the field can be
+left out is the separate job of `= default`, and the two compose:
+
+| Declaration | Omitting it | Writing `null` |
+| --- | --- | --- |
+| `quota: Int` | `E0511` | `E0512` |
+| `quota: Int?` | `E0511` | allowed |
+| `quota: Int = 100` | gives `100` | `E0512` |
+| `quota: Int? = null` | gives `null` | allowed |
+
+A nullable field is still type-checked when it does hold a value, and
+`aura types` emits `Option<i64>`, `number | null` and `*int64`.
+
+### The one way `?` can cost you
+
+`?` widens what a field accepts, and that is exactly what makes it worth a
+second look when the value comes from outside:
+
+```aura
+quota: data.get("quota") # no fallback
+```
+
+Without `?` a missing key is `E0512` and the run stops, so two people with
+different input files find out immediately. With `?` the same difference passes
+as `null`, and they ship different configurations without a word.
+
+That combination is `W0513`, and under `--strict` it is an error:
+
+```
+[W0513] Warning: 'quota' is nullable and is filled from `get(key)`, so a
+        missing value becomes null instead of an error
+          Help: name the value that stands for absence: `get(key, fallback)`
+                — or drop the `?` so a missing one is reported
+```
+
+`env(name)` without a fallback is the same case. Naming the fallback is all the
+warning asks for: `data.get("quota", 0)` says which value means absence, and
+says it in the manifest rather than in someone's head.
+
 ## Lists with an element type
 
 `List` on its own accepts any elements. Write `[T]` to say what is in it:

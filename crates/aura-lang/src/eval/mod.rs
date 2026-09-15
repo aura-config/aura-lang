@@ -1126,6 +1126,14 @@ impl<'a> Interpreter<'a> {
                     span,
                 ));
             };
+            // D27: a nullable field accepts `null` and nothing else is checked
+            // about it. The field is still required to be written — `?` widens
+            // what a value may be, it does not make the field optional. That is
+            // `= default`'s job, and keeping the two apart is what stops "not
+            // written" and "written as null" from becoming the same question.
+            if f.nullable && matches!(v, Value::Null) {
+                continue;
+            }
             // D18: a `Custom` name may be an enum — then the field is a plain
             // String constrained to the declared members.
             {
@@ -1172,7 +1180,7 @@ impl<'a> Interpreter<'a> {
             }
             let ok = shape_ok(&f.ty, v);
             if !ok {
-                return Err(rt(
+                let mut d = rt(
                     "E0512",
                     format!(
                         "field '{}' of schema {} expects {}, got {}",
@@ -1182,7 +1190,18 @@ impl<'a> Interpreter<'a> {
                         v.type_name()
                     ),
                     span,
-                ));
+                );
+                // A null here is nearly always someone meaning "absent". Say how
+                // to declare that, rather than only that it is not allowed.
+                if matches!(v, Value::Null) {
+                    d.help = Some(format!(
+                        "to allow an absent value, declare the field nullable: \
+                         {}: {}?",
+                        f.name,
+                        type_label(&f.ty)
+                    ));
+                }
+                return Err(d);
             }
             // D26: the elements of `[T]`. Reported with the index, because
             // "one of these is wrong" is not an answer in a list of forty.
@@ -2293,6 +2312,95 @@ end
             panic!("object")
         };
         assert_eq!(m.keys().cloned().collect::<Vec<_>>(), vec!["a", "z", "y"]);
+    }
+
+    #[test]
+    fn a_nullable_field_admits_null_and_still_checks_the_type() {
+        // D27. The sentinel it replaces: "unlimited" was written as -1 or as
+        // 2147483647 and the reader had to remember which meant what.
+        let v = eval(concat!(
+            "type Plan
+  id: String
+  quota: Int?
+end
+",
+            "unlimited: new Plan
+  id: \"ent\"
+  quota: null
+end
+",
+            "capped:    new Plan
+  id: \"solo\"
+  quota: 50
+end
+",
+        ))
+        .unwrap();
+        assert_eq!(get(&get(&v, "unlimited"), "quota"), Value::Null);
+        assert_eq!(get(&get(&v, "capped"), "quota"), Value::Int(50));
+
+        // `?` widens the domain; it does not stop checking it.
+        let d = eval(concat!(
+            "type P
+  q: Int?
+end
+",
+            "p: new P
+  q: \"no\"
+end
+",
+        ))
+        .unwrap_err();
+        assert_eq!(d.code, "E0512");
+    }
+
+    #[test]
+    fn nullable_is_not_optional() {
+        // The two are orthogonal and must stay so: `?` says the value may be
+        // absent, `= default` says the field may be omitted. Conflating them
+        // would make "not written" and "written as null" the same question.
+        let missing = eval(
+            "type P
+  q: Int?
+end
+p: new P
+end
+",
+        )
+        .unwrap_err();
+        assert_eq!(missing.code, "E0511", "a nullable field is still required");
+
+        // And they compose, which is how "omit it and get nothing" is written.
+        let v = eval(concat!(
+            "type P
+  q: Int? = null
+  r: Int? = 5
+end
+",
+            "p: new P
+end
+",
+        ))
+        .unwrap();
+        assert_eq!(get(&get(&v, "p"), "q"), Value::Null);
+        assert_eq!(get(&get(&v, "p"), "r"), Value::Int(5));
+    }
+
+    #[test]
+    fn a_null_without_the_marker_says_how_to_allow_it() {
+        let d = eval(
+            "type P
+  q: Int
+end
+p: new P
+  q: null
+end
+",
+        )
+        .unwrap_err();
+        assert_eq!(d.code, "E0512");
+        let help = d.help.unwrap_or_default();
+        assert!(help.contains("q: Int?"), "the fix must be shown: {help}");
     }
 
     #[test]

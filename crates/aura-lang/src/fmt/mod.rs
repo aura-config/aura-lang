@@ -131,7 +131,11 @@ pub fn format_source(src: &str) -> Result<String, Diagnostic> {
             TokenKind::Comma
                 | TokenKind::Assign
                 | TokenKind::Dot
-                | TokenKind::Question
+                // `?` is not a continuation: since D27 a line may end with it as
+                // the nullable marker (`quota: Int?`), and treating that as an
+                // unfinished expression indented everything after it. A ternary
+                // broken across lines needs parentheses, and inside those the
+                // continuation rule does not apply anyway.
                 | TokenKind::Plus
                 | TokenKind::Minus
                 | TokenKind::Star

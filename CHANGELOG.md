@@ -9,6 +9,70 @@ still change the language.
 
 ### Added
 
+- **A field can say that it may have no value (D27).** `quota: Int?` admits
+  `null`; every other field still rejects it.
+
+  This exists to kill the sentinel. Without it, "unlimited" gets written as `-1`
+  or `2147483647`, and everyone has to carry in their head which number means
+  what and where. A sentinel is a *valid* value of its type, so nothing catches a
+  wrong one — which makes it the worst kind of the implicit rule this language
+  keeps removing.
+
+  `?` answers exactly one question: may the value be absent. Whether the field
+  may be left out is the separate job of `= default`, and the two compose:
+
+  | Declaration | Omitting it | Writing `null` |
+  | --- | --- | --- |
+  | `quota: Int` | `E0511` | `E0512` |
+  | `quota: Int?` | `E0511` | allowed |
+  | `quota: Int = 100` | gives `100` | `E0512` |
+  | `quota: Int? = null` | gives `null` | allowed |
+
+  A nullable field is still required to be written, and its non-null values are
+  still type-checked. Nullability belongs to the field rather than to the type,
+  which makes `[Int?]` unrepresentable — so there is never a question of whether
+  a list or its elements may be empty — while `[Int]?` still means one thing.
+
+  `aura types` emits `Option<T>`, `T | null` and `*T`. That is a breaking change
+  for a host already reading such a field as a plain value, and deliberately so:
+  the break happens when the author writes the `?`, not silently afterwards.
+
+  **One grammar change came with it, and it is breaking.** A newline is no
+  longer suppressed after `?`. It had to stop being suppressed: with `?` now
+  also the nullable marker, `quota: Int?` at the end of a line swallowed its own
+  separator — the exact defect that ruled `List<T>` out of D26, arriving through
+  the back door. The parser tolerated it and the formatter did not, which is how
+  it surfaced.
+
+  A ternary broken across lines therefore needs parentheses:
+
+  ```aura
+  tier: (replicas > 3 ?
+    "large" : "small")
+  ```
+
+  That was already the rule for breaking after the `:` half, so the two halves
+  now behave alike instead of one carrying an exception.
+
+  **`W0513` guards the one way this could cost determinism.** `?` widens what a
+  field accepts, which matters when the value comes from outside. Without the
+  marker, `quota: data.get("quota")` on a file missing that key is `E0512` and
+  the run stops, so two people with different inputs find out. With the marker,
+  the same difference passes as `null` and they ship different configurations.
+
+  A nullable field filled from `get(key)` or `env(name)` with no fallback is now
+  a warning, and an error under `--strict`. It asks only that the value standing
+  for absence be named: `data.get("quota", 0)` puts it in the manifest instead of
+  in someone's head. A field without `?` is never warned about — there the
+  missing value already stops the run.
+
+  Writing `null` into a field without the marker now names the fix:
+
+  ```
+  [E0512] Error: field 'q' of schema P expects Int, got Null
+            Help: to allow an absent value, declare the field nullable: q: Int?
+  ```
+
 - **A list field can say what it holds (D26, closing D21).** `endpoints: [Endpoint]`,
   `tags: [String]`, nesting as `[[Int]]`, and an `enum` as the element type.
 
