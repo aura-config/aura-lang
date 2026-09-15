@@ -287,6 +287,21 @@ fn nginx_generates_conf() {
     check_ok("nginx", "nginx.aura", &[], &[], "expected.json");
 }
 
+/// Showcase 2: a trading run profile across a chain of three modules.
+///
+/// Different subject and a different file shape on purpose — the language has
+/// to hold up outside the domain it was first written for.
+#[test]
+fn showcase_trading_profile() {
+    check_ok(
+        "trading",
+        "portfolio.aura",
+        &["--strict"],
+        &[],
+        "expected.json",
+    );
+}
+
 /// Full-language showcase: every core construct in one manifest end-to-end.
 #[test]
 fn showcase_all_constructs() {

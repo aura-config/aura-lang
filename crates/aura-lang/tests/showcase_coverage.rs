@@ -23,18 +23,12 @@ use aura_lang::lexer::{Lexer, TokenKind};
 /// Every showcase, by directory. Each has its own subject on purpose — one
 /// person's several projects, all configured in Aura — so the language is shown
 /// working outside the domain it was first written for.
-const SHOWCASES: &[&str] = &["showcase"];
+const SHOWCASES: &[&str] = &["showcase", "trading"];
 
 /// Not demonstrated anywhere yet. Each entry is a promise to a later showcase,
 /// not an exemption: the test fails if one of these turns out to be covered, so
 /// the list cannot quietly outlive its reason.
 const PENDING: &[&str] = &[
-    // trading showcase: numeric precision and thresholds
-    "abs",
-    "to_float",
-    "to_int",
-    "to_str",
-    "format_datetime",
     // data-pipeline showcase: collection processing
     "any",
     "compact",
@@ -42,12 +36,10 @@ const PENDING: &[&str] = &[
     "entries",
     "find",
     "first",
-    "flatten",
     "index_of",
     "keys",
     "last",
     "merge",
-    "reduce",
     "reverse",
     "slice",
     "to_object",
@@ -55,7 +47,6 @@ const PENDING: &[&str] = &[
     // device showcase: text handling and emitting other formats
     "ends_with",
     "lower",
-    "replace",
     "trim",
     "parse_toml",
     "parse_yaml",

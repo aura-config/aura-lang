@@ -1,0 +1,20 @@
+{
+  "exposure": {
+    "carry": 12500.0,
+    "momentum": 50000.0,
+    "total": 62500.0
+  },
+  "drawdown": 3125.5,
+  "within_limit": true,
+  "session": {
+    "opens": "2026-09-15T07:00:00Z",
+    "closes": "2026-09-15T13:30:00Z",
+    "minutes": 390
+  },
+  "route_count": 3,
+  "routes_uniq": true,
+  "compact": "BTCUSDT",
+  "lot": 0.001,
+  "max_lots": "0.7692307692307693",
+  "declared_instruments": 2
+}

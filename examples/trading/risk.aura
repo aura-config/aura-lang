@@ -1,0 +1,44 @@
+# =============================================================================
+# Risk vocabulary: where orders may go, and what a strategy is allowed to do.
+#
+# The rules live in the schemas, so a strategy defined in another manifest is
+# checked by them without its author having read this file (D28).
+# =============================================================================
+
+import "./instruments.aura" as inst
+
+pub enum Venue
+  "binance"
+  "bybit"
+  "okx"
+end
+
+# Money is Float on purpose. A share of equity is not an integer, and the
+# language keeps Int and Float apart so a rounding never happens quietly (D6).
+pub type RiskLimits
+  max_position_pct:   Float
+  max_daily_loss_pct: Float
+  stop_after_losses:  Int? # null means "keep trading", not -1 (D27)
+
+  assert max_position_pct > 0.0, "position cap must be positive"
+  assert max_daily_loss_pct > 0.0, "daily loss cap must be positive"
+  assert max_daily_loss_pct <= max_position_pct, "a day may not risk more than one position"
+end
+
+pub type Strategy
+  name:    String
+  venues:  [Venue] # the element type is checked, not just "some list" (D26)
+  symbols: [String]
+  limits:  RiskLimits
+  warmup_s: Int = 300
+
+  assert venues.len() > 0, "a strategy needs somewhere to trade"
+  assert symbols.len() > 0, "a strategy needs something to trade"
+end
+
+# A strategy's routing table, built from its own fields.
+pub def routes_for(venues, symbols)
+  pairs: venues.map (v, i) ->
+    symbols.map (s, j) -> inst.route(v, s).key end
+  end.flatten()
+end
