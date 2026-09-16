@@ -58,3 +58,10 @@ path = "fuzz_targets/fuzz_resolve.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "fuzz_bridge"
+path = "fuzz_targets/fuzz_bridge.rs"
+test = false
+doc = false
+bench = false

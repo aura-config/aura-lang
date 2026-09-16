@@ -27,10 +27,10 @@ cli = ["dep:ariadne", "dep:clap", "dep:ureq"]
 [dependencies]
 # Library (always)
 indexmap = "2"
-serde_json = { version = "1", features = ["preserve_order"] }
+serde_json = { version = "1", features = ["preserve_order", "arbitrary_precision"] }
 yaml-rust2 = "0.11"
 sha2 = "0.11"
-toml = "1"
+toml = { version = "1", features = ["preserve_order"] }
 # CLI-only (behind the `cli` feature)
 ariadne = { version = "0.6", optional = true }
 clap = { version = "4", features = ["derive", "string"], optional = true }
