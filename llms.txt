@@ -102,6 +102,12 @@ name = "checkout"
 label: "svc-#{name}"
 ```
 
+Every format has two spellings: `to_json()` / `to_yaml()` / `to_toml()` give the
+most compact form the format allows, for a string being embedded somewhere, and
+`to_json_pretty()` / `to_yaml_pretty()` / `to_toml_pretty()` give the form a
+person reads, for a file that gets committed and diffed. Compact YAML is flow
+style — `{a: 1, xs: [1, 2]}` — which is ordinary YAML.
+
 `null` has no text form: interpolating one is `E0324`, not the word `null`.
 Say what the empty case prints — `"#{x == null ? "none" : x}"` — or drop the
 empties before joining a list: `xs.compact().join(", ")`.
@@ -382,9 +388,12 @@ Methods are called on a value (`"a".upper()`, `xs.map(f)`); builtins are global 
 | `max() -> Any` | Largest element (E0317 if empty). |
 | `flatten() -> List` | Spread one level of nested lists. |
 | `slice(start, end) -> List` | Half-open sub-list; indices are clamped. |
-| `to_json() -> String` | Serialize to a JSON string. |
-| `to_yaml() -> String` | Serialize to a YAML string. |
-| `to_toml() -> String` | Serialize to a TOML string. |
+| `to_json() -> String` | Serialize to a compact JSON string, for embedding. |
+| `to_json_pretty() -> String` | Serialize to indented JSON, for a file a person reads. |
+| `to_yaml() -> String` | Serialize to a compact YAML string (flow style), for embedding. |
+| `to_yaml_pretty() -> String` | Serialize to block-style YAML, for a file a person reads. |
+| `to_toml() -> String` | Serialize to TOML with arrays on one line, for embedding. |
+| `to_toml_pretty() -> String` | Serialize to TOML with one array element per line. |
 
 ### Object
 
@@ -397,9 +406,12 @@ Methods are called on a value (`"a".upper()`, `xs.map(f)`); builtins are global 
 | `get(key, default) -> Any` | Value for a key, or a default if absent. |
 | `entries() -> List` | Key/value pairs as { key, value } objects, in declaration order. |
 | `merge(other) -> Object` | Shallow merge; the argument wins on key conflicts. |
-| `to_json() -> String` | Serialize to a JSON string. |
-| `to_yaml() -> String` | Serialize to a YAML string. |
-| `to_toml() -> String` | Serialize to a TOML string. |
+| `to_json() -> String` | Serialize to a compact JSON string, for embedding. |
+| `to_json_pretty() -> String` | Serialize to indented JSON, for a file a person reads. |
+| `to_yaml() -> String` | Serialize to a compact YAML string (flow style), for embedding. |
+| `to_yaml_pretty() -> String` | Serialize to block-style YAML, for a file a person reads. |
+| `to_toml() -> String` | Serialize to TOML with arrays on one line, for embedding. |
+| `to_toml_pretty() -> String` | Serialize to TOML with one array element per line. |
 
 ### Builtins
 

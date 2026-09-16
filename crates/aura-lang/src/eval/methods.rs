@@ -78,6 +78,9 @@ impl<'a> MethodRegistry<'a> {
             r.register(tag, "to_json", m_to_json);
             r.register(tag, "to_yaml", m_to_yaml);
             r.register(tag, "to_toml", m_to_toml);
+            r.register(tag, "to_json_pretty", m_to_json_pretty);
+            r.register(tag, "to_yaml_pretty", m_to_yaml_pretty);
+            r.register(tag, "to_toml_pretty", m_to_toml_pretty);
         }
         // stdlib extension: String
         r.register(TypeTag::Str, "trim", m_str_trim);
@@ -732,7 +735,45 @@ fn m_to_yaml<'a>(
     _args: &[Value<'a>],
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
+    crate::serialize::to_yaml_compact_string(recv)
+        .map(Value::str)
+        .map_err(|d| rt(d.code, d.message, sp))
+}
+
+/// The three `_pretty` counterparts (D32). `to_*` gives the most compact form
+/// the format allows, for a string being embedded somewhere; `to_*_pretty`
+/// gives the form a person reads, for a file that lands in a repository, where
+/// one line per document makes a diff useless.
+fn m_to_json_pretty<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let json = crate::serialize::to_json(recv).map_err(|d| rt(d.code, d.message, sp))?;
+    Ok(Value::str(
+        serde_json::to_string_pretty(&json).expect("valid json"),
+    ))
+}
+
+fn m_to_yaml_pretty<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
     crate::serialize::to_yaml_string(recv)
+        .map(Value::str)
+        .map_err(|d| rt(d.code, d.message, sp))
+}
+
+fn m_to_toml_pretty<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    crate::serialize::to_toml_string(recv)
         .map(Value::str)
         .map_err(|d| rt(d.code, d.message, sp))
 }
@@ -743,7 +784,7 @@ fn m_to_toml<'a>(
     _args: &[Value<'a>],
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
-    crate::serialize::to_toml_string(recv)
+    crate::serialize::to_toml_compact_string(recv)
         .map(Value::str)
         .map_err(|d| rt(d.code, d.message, sp))
 }

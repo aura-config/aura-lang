@@ -281,17 +281,32 @@ List:
   to_json:
     params:  []
     returns: "String"
-    doc:     "Serialize to a JSON string."
+    doc:     "Serialize to a compact JSON string, for embedding."
+  end
+  to_json_pretty:
+    params:  []
+    returns: "String"
+    doc:     "Serialize to indented JSON, for a file a person reads."
   end
   to_yaml:
     params:  []
     returns: "String"
-    doc:     "Serialize to a YAML string."
+    doc:     "Serialize to a compact YAML string (flow style), for embedding."
+  end
+  to_yaml_pretty:
+    params:  []
+    returns: "String"
+    doc:     "Serialize to block-style YAML, for a file a person reads."
   end
   to_toml:
     params:  []
     returns: "String"
-    doc:     "Serialize to a TOML string."
+    doc:     "Serialize to TOML with arrays on one line, for embedding."
+  end
+  to_toml_pretty:
+    params:  []
+    returns: "String"
+    doc:     "Serialize to TOML with one array element per line."
   end
 end
 
@@ -334,17 +349,32 @@ Object:
   to_json:
     params:  []
     returns: "String"
-    doc:     "Serialize to a JSON string."
+    doc:     "Serialize to a compact JSON string, for embedding."
+  end
+  to_json_pretty:
+    params:  []
+    returns: "String"
+    doc:     "Serialize to indented JSON, for a file a person reads."
   end
   to_yaml:
     params:  []
     returns: "String"
-    doc:     "Serialize to a YAML string."
+    doc:     "Serialize to a compact YAML string (flow style), for embedding."
+  end
+  to_yaml_pretty:
+    params:  []
+    returns: "String"
+    doc:     "Serialize to block-style YAML, for a file a person reads."
   end
   to_toml:
     params:  []
     returns: "String"
-    doc:     "Serialize to a TOML string."
+    doc:     "Serialize to TOML with arrays on one line, for embedding."
+  end
+  to_toml_pretty:
+    params:  []
+    returns: "String"
+    doc:     "Serialize to TOML with one array element per line."
   end
 end
 

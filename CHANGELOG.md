@@ -9,6 +9,34 @@ still change the language.
 
 ### Added
 
+- **Every format has a compact and a spelled-out spelling (D32).** `to_json()`,
+  `to_yaml()` and `to_toml()` now give the most compact form the format allows;
+  `to_json_pretty()`, `to_yaml_pretty()` and `to_toml_pretty()` give the form a
+  person reads.
+
+  Before this each emitter had made its own choice and the three had never been
+  compared against each other: JSON came out compact, YAML came out block style,
+  TOML expanded its arrays one element per line. Nothing explained the
+  difference, so the only way to know what a method returned was to run it.
+
+  Compact is the default because a serialised string is usually **embedded** —
+  in a field of another configuration, in an environment variable, in a command
+  argument — where a newline has to be escaped and helps nobody. The spelled-out
+  form is for a file that lands in a repository, where one line per document
+  makes a diff useless. That is the whole rule, and the method set follows from
+  it rather than having to be memorised.
+
+  Compact YAML is flow style, `{a: 1, xs: [1, 2]}`, which is ordinary YAML and
+  not a dialect of it. Compact TOML keeps arrays on one line; a TOML document is
+  several lines whatever happens.
+
+  **This changes output.** `to_yaml()` and `to_toml()` return different strings
+  than before — `to_json()` was already compact. Across the whole example
+  corpus exactly one pinned line moved, in the `device` showcase, which now
+  demonstrates both spellings against the consumer each is for. The CLI is
+  unaffected: `--format yaml|toml` still writes the spelled-out form, because it
+  is producing a document for a person rather than a string for a manifest.
+
 - **`null` has no text form (D31).** `"#{x}"` printed the four letters `null`
   while `x.to_str()` was `E0309`, because `to_str` is not registered for `Null`.
   One spelling of "render this as text" succeeded where the other refused, which
