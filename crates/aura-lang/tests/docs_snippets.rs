@@ -159,7 +159,9 @@ fn no_snippet_names_something_that_does_not_exist() {
             // language rejects — or a method that does not exist.
             let relevant = |r: &aura_lang::facade::Report| match r.code {
                 "E0309" => true,
-                "E0504" => BUILTINS.iter().any(|b| r.message.contains(&format!("'{b}'"))),
+                "E0504" => BUILTINS
+                    .iter()
+                    .any(|b| r.message.contains(&format!("'{b}'"))),
                 _ => false,
             };
             for r in reports.iter().filter(|r| relevant(r)) {
