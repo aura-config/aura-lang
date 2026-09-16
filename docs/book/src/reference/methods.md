@@ -72,7 +72,8 @@ against the implementation rather than transcribed.
 | `find(default) (e, i) -> Bool end` | Any | first match, or the default |
 | `index_of(value, default)` | Int | index of the first equal element, or the default; the default must be an `Int` |
 | `slice(start, end)` | List | `end` exclusive: `[1, 2, 3].slice(1, 3)` → `[2, 3]` |
-| `to_json()` / `to_yaml()` / `to_toml()` | String | `to_toml` on a list is `E0603` |
+| `to_json()` / `to_yaml()` / `to_toml()` | String | the compact form, for embedding; `to_toml` on a list is `E0603` |
+| `to_json_pretty()` / `to_yaml_pretty()` / `to_toml_pretty()` | String | the form a person reads, for a file that gets diffed |
 
 ## Object
 
@@ -84,7 +85,8 @@ against the implementation rather than transcribed.
 | `get(key, default)` | value | a miss gives the default |
 | `entries()` | List | `{ key, value }` objects in declaration order; the inverse of `to_object()` |
 | `merge(other)` | Object | the right side's keys win |
-| `to_json()` / `to_yaml()` / `to_toml()` | String | |
+| `to_json()` / `to_yaml()` / `to_toml()` | String | the compact form, for embedding |
+| `to_json_pretty()` / `to_yaml_pretty()` / `to_toml_pretty()` | String | the form a person reads, for a file that gets diffed |
 
 ## Operators that build values
 

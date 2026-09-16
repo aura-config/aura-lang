@@ -2882,12 +2882,34 @@ end
         let v = eval("d = \"a: 1\\nb:\\n  - x\\n\".parse_yaml()\nfirst_b: d.b[0]").unwrap();
         assert_eq!(get(&v, "first_b"), Value::str("x"));
 
-        let v =
-            eval("def mk()\n  a: 1\nend\nj: mk().to_json()\ny: mk().to_yaml()\nt: mk().to_toml()")
-                .unwrap();
-        assert_eq!(get(&v, "j"), Value::str("{\"a\":1}"));
-        assert_eq!(get(&v, "y"), Value::str("a: 1\n"));
-        assert_eq!(get(&v, "t"), Value::str("a = 1\n"));
+        // `to_*` is the compact form and `to_*_pretty` the spelled-out one, for
+        // every format alike (D32). A method set that has to be memorised
+        // rather than derived from one sentence is the thing being avoided.
+        let v = eval(concat!(
+            "def mk()\n  a: 1\n  xs: [1, 2]\nend\n",
+            "j:  mk().to_json()\n",
+            "jp: mk().to_json_pretty()\n",
+            "y:  mk().to_yaml()\n",
+            "yp: mk().to_yaml_pretty()\n",
+            "t:  mk().to_toml()\n",
+            "tp: mk().to_toml_pretty()\n",
+        ))
+        .unwrap();
+        assert_eq!(get(&v, "j"), Value::str("{\"a\":1,\"xs\":[1,2]}"));
+        assert_eq!(
+            get(&v, "jp"),
+            Value::str("{\n  \"a\": 1,\n  \"xs\": [\n    1,\n    2\n  ]\n}")
+        );
+        // Flow style is ordinary YAML, not a dialect of it.
+        assert_eq!(get(&v, "y"), Value::str("{a: 1, xs: [1, 2]}"));
+        assert_eq!(get(&v, "yp"), Value::str("a: 1\nxs:\n- 1\n- 2\n"));
+        // A TOML document is several lines whatever happens; what compacts is
+        // the array.
+        assert_eq!(get(&v, "t"), Value::str("a = 1\nxs = [1, 2]\n"));
+        assert_eq!(
+            get(&v, "tp"),
+            Value::str("a = 1\nxs = [\n    1,\n    2,\n]\n")
+        );
     }
 
     #[test]

@@ -98,6 +98,12 @@ name = "checkout"
 label: "svc-#{name}"
 ```
 
+Every format has two spellings: `to_json()` / `to_yaml()` / `to_toml()` give the
+most compact form the format allows, for a string being embedded somewhere, and
+`to_json_pretty()` / `to_yaml_pretty()` / `to_toml_pretty()` give the form a
+person reads, for a file that gets committed and diffed. Compact YAML is flow
+style — `{a: 1, xs: [1, 2]}` — which is ordinary YAML.
+
 `null` has no text form: interpolating one is `E0324`, not the word `null`.
 Say what the empty case prints — `"#{x == null ? "none" : x}"` — or drop the
 empties before joining a list: `xs.compact().join(", ")`.

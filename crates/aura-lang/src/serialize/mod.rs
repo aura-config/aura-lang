@@ -79,6 +79,63 @@ pub fn to_yaml_string(v: &Value<'_>) -> Result<String, Diagnostic> {
     Ok(out)
 }
 
+/// YAML in flow style: the whole document on one line.
+///
+/// Flow style is ordinary YAML, not a dialect — `{name: api, tags: [a, b]}` is
+/// what a reader is obliged to accept. It exists here so that every format has
+/// both a compact form, for a string being embedded somewhere, and a spelled-out
+/// one, for a file a person will read (D32).
+pub fn to_yaml_compact_string(v: &Value<'_>) -> Result<String, Diagnostic> {
+    let json = to_json(v)?;
+    let mut out = String::new();
+    emit_yaml_flow(&json, &mut out);
+    Ok(out)
+}
+
+fn emit_yaml_flow(v: &serde_json::Value, out: &mut String) {
+    use serde_json::Value as J;
+    match v {
+        J::Object(m) => {
+            out.push('{');
+            for (i, (k, val)) in m.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                out.push_str(&yaml_flow_scalar(k));
+                out.push_str(": ");
+                emit_yaml_flow(val, out);
+            }
+            out.push('}');
+        }
+        J::Array(xs) => {
+            out.push('[');
+            for (i, item) in xs.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                emit_yaml_flow(item, out);
+            }
+            out.push(']');
+        }
+        J::String(s) => out.push_str(&yaml_flow_scalar(s)),
+        other => out.push_str(&yaml_atom(other)),
+    }
+}
+
+/// A scalar inside flow style. Everything block style has to quote, plus the
+/// punctuation that ends an entry: in `{a: x, y}` the comma is structure, so a
+/// string containing one has to say it is a string.
+fn yaml_flow_scalar(s: &str) -> String {
+    let quoted = yaml_scalar(s);
+    if quoted != s {
+        return quoted;
+    }
+    if s.contains([',', '[', ']', '{', '}']) {
+        return format!("'{}'", s.replace('\'', "''"));
+    }
+    quoted
+}
+
 /// Emit already-serialized JSON as YAML. Hosts that hold an `Evaluated` (whose
 /// `json` is the JSON form) need this without going back to an Aura value.
 pub fn json_to_yaml_string(json: &serde_json::Value) -> String {
@@ -258,6 +315,26 @@ fn reads_back_as_non_string(s: &str) -> bool {
 }
 
 /// The TOML emitter: requires an object at the top level; TOML has no null.
+/// TOML with its arrays kept on one line: `tags = ["a", "b"]` rather than one
+/// element per line. A TOML document is still several lines — tables are lines
+/// by construction — so "compact" here means as few as the format allows (D32).
+pub fn to_toml_compact_string(v: &Value<'_>) -> Result<String, Diagnostic> {
+    let json = to_json(v)?;
+    if !json.is_object() {
+        return Err(err(
+            "E0603",
+            "TOML requires an object at the top level".to_string(),
+        ));
+    }
+    let doc = json_to_toml_value(&json)?;
+    toml::to_string(&doc).map_err(|e| {
+        err(
+            "E0603",
+            format!("cannot emit TOML (note: TOML has no null): {e}"),
+        )
+    })
+}
+
 pub fn to_toml_string(v: &Value<'_>) -> Result<String, Diagnostic> {
     let json = to_json(v)?;
     if !json.is_object() {

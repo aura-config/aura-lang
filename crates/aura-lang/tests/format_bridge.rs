@@ -371,3 +371,59 @@ fn a_number_means_the_same_thing_in_every_format() {
     // And the value survives being written back out and read again.
     assert_eq!(s(&out, "text"), format!("{{\"x\":{digits}}}"));
 }
+
+/// Both spellings of each format must read back as the same value (D32).
+///
+/// Compact YAML is flow style, which is the part of YAML least often exercised
+/// — a reader that only ever sees block style would pass every other test here
+/// and still fail on Aura's own output. Strings carrying flow punctuation are
+/// in the fixture for the same reason: in `{a: x, y}` the comma is structure,
+/// so a string containing one has to say it is a string.
+#[test]
+fn compact_and_pretty_carry_the_same_value() {
+    let out = bridge(
+        "spellings",
+        concat!(
+            "src = read_file(\"in.yaml\").parse_yaml()\n",
+            "canonical:   src.to_json()\n",
+            "via_yaml:    src.to_yaml().parse_yaml().to_json()\n",
+            "via_yaml_p:  src.to_yaml_pretty().parse_yaml().to_json()\n",
+            "via_toml:    src.to_toml().parse_toml().to_json()\n",
+            "via_toml_p:  src.to_toml_pretty().parse_toml().to_json()\n",
+            "via_json:    src.to_json().parse_json().to_json()\n",
+            "via_json_p:  src.to_json_pretty().parse_json().to_json()\n",
+        ),
+        &[(
+            "in.yaml",
+            concat!(
+                "name: \"api\"\n",
+                "punctuated: \"x, y\"\n",
+                "bracketed: \"[not a list]\"\n",
+                "braced: \"{not a map}\"\n",
+                "colonish: \"a: b\"\n",
+                "quoted_num: \"007\"\n",
+                "port: 8080\n",
+                "ratio: 0.5\n",
+                "on: true\n",
+                "tags: [\"a\", \"b\"]\n",
+                "nested:\n  k: 1\n",
+            ),
+        )],
+    );
+
+    let canonical = s(&out, "canonical");
+    for key in [
+        "via_yaml",
+        "via_yaml_p",
+        "via_toml",
+        "via_toml_p",
+        "via_json",
+        "via_json_p",
+    ] {
+        assert_eq!(
+            s(&out, key),
+            canonical,
+            "{key} did not carry the value unchanged"
+        );
+    }
+}
