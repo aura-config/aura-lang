@@ -2309,6 +2309,62 @@ end
     }
 
     #[test]
+    fn a_string_can_be_sliced_by_characters() {
+        // The gap this closes: trimming a trailing separator used to go through
+        // split/filter/join, and the device showcase carried a comment
+        // apologising for it.
+        let v = eval(concat!(
+            "topic = \"telemetry/climate/\"\n",
+            "trimmed: topic.ends_with(\"/\") ? topic.slice(0, topic.len() - 1) : topic\n",
+            "head:    \"checkout-eu\".slice(0, 8)\n",
+            "clamped: \"abc\".slice(0, 99)\n",
+            "empty:   \"abc\".slice(2, 1)\n",
+        ))
+        .unwrap();
+        assert_eq!(get(&v, "trimmed"), Value::str("telemetry/climate"));
+        assert_eq!(get(&v, "head"), Value::str("checkout"));
+        assert_eq!(get(&v, "clamped"), Value::str("abc"), "indices are clamped");
+        assert_eq!(
+            get(&v, "empty"),
+            Value::str(""),
+            "end before start is empty"
+        );
+    }
+
+    #[test]
+    fn slicing_counts_characters_not_bytes() {
+        // `len()` counts characters, so `slice` must too. On bytes,
+        // `s.slice(0, s.len())` would slice past the end of a multi-byte string
+        // - and configuration carries non-ASCII routinely.
+        let v = eval(concat!(
+            "word = \"\u{43f}\u{440}\u{438}\u{432}\u{435}\u{442}\"\n",
+            "whole: word.slice(0, word.len())\n",
+            "part:  word.slice(0, 3)\n",
+            "n:     word.len()\n",
+        ))
+        .unwrap();
+        assert_eq!(get(&v, "n"), Value::Int(6), "six characters, twelve bytes");
+        assert_eq!(
+            get(&v, "whole"),
+            Value::str("\u{43f}\u{440}\u{438}\u{432}\u{435}\u{442}")
+        );
+        assert_eq!(get(&v, "part"), Value::str("\u{43f}\u{440}\u{438}"));
+    }
+
+    #[test]
+    fn an_int_can_be_widened_to_float() {
+        // Before this the only route was dividing by 1.0 - correct under D6,
+        // since Float is contagious, but it reads as a trick rather than intent.
+        let v = eval("a: 7.to_float()\nb: 7.to_float() / 2.0\n").unwrap();
+        assert_eq!(get(&v, "a"), Value::Float(7.0));
+        assert_eq!(get(&v, "b"), Value::Float(3.5));
+
+        // And deliberately no narrowing: it would have to pick a rounding, and a
+        // lossy conversion must not look like a spelling change.
+        assert_eq!(eval("x = 7.5.to_int()").unwrap_err().code, "E0309");
+    }
+
+    #[test]
     fn stdlib_string_and_numeric_methods() {
         let src = concat!(
             "parts: \"a,b,c\".split(\",\")\n",

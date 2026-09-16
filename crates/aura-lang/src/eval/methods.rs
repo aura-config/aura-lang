@@ -99,6 +99,11 @@ impl<'a> MethodRegistry<'a> {
         r.register(TypeTag::List, "max", m_list_max);
         r.register(TypeTag::List, "flatten", m_list_flatten);
         r.register(TypeTag::List, "slice", m_list_slice);
+        r.register(TypeTag::Str, "slice", m_str_slice);
+        // Widening only: Int -> Float loses nothing, and there is deliberately
+        // no Float -> Int, which would have to choose a rounding nobody asked
+        // for and would make a lossy conversion look like a spelling change.
+        r.register(TypeTag::Int, "to_float", m_int_to_float);
         // stdlib extension: numeric + universal to_str
         r.register(TypeTag::Int, "abs", m_num_abs);
         r.register(TypeTag::Float, "abs", m_num_abs);
@@ -1492,6 +1497,53 @@ fn m_list_slice<'a>(
     let s = (*start as usize).min(len);
     let e = (*end as usize).clamp(s, len);
     Ok(Value::list(xs[s..e].to_vec()))
+}
+
+/// `.slice(start, end)` on a String — half-open, indices clamped, **in chars**.
+///
+/// Chars rather than bytes because `len()` counts chars: if they disagreed,
+/// `s.slice(0, s.len())` would panic or truncate the moment a manifest carried
+/// anything outside ASCII, which configuration routinely does.
+///
+/// Its absence was a real gap. Trimming a trailing `/` from a topic went through
+/// `split("/").filter(...).join("/")` — the examples carried a comment
+/// apologising for it.
+fn m_str_slice<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Str(s) = recv else { unreachable!() };
+    let (Some(Value::Int(start)), Some(Value::Int(end))) = (args.first(), args.get(1)) else {
+        let mut d = rt("E0306", "slice(start, end) expects two Int arguments", sp);
+        d.help = Some("to drop a trailing character: s.slice(0, s.len() - 1)".into());
+        return Err(d);
+    };
+    if *start < 0 || *end < 0 {
+        let mut d = rt("E0306", "slice() indices must be non-negative", sp);
+        d.help = Some("count from the end with len(): s.slice(0, s.len() - 1)".into());
+        return Err(d);
+    }
+    let len = s.chars().count();
+    let from = (*start as usize).min(len);
+    let to = (*end as usize).clamp(from, len);
+    let out: String = s.chars().skip(from).take(to - from).collect();
+    Ok(Value::str(out))
+}
+
+/// `.to_float()` on an Int: the only way to widen one.
+///
+/// Before this, an Int reached Float by being divided by `1.0` — correct under
+/// D6, since Float is contagious, but it reads as a trick rather than as intent.
+fn m_int_to_float<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    _args: &[Value<'a>],
+    _sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Int(n) = recv else { unreachable!() };
+    Ok(Value::Float(*n as f64))
 }
 
 // ---- stdlib extension: numeric + universal to_str ----

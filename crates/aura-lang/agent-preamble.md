@@ -73,6 +73,10 @@ A list field says what it holds: `tags: [String]`, `endpoints: [Endpoint]`,
 nesting as `[[Int]]`, and an `enum` works as the element type. A wrong element is
 `E0512` reported with its index. Bare `List` still accepts anything.
 
+`slice(start, end)` takes a substring by **character** index, `end` exclusive:
+`topic.slice(0, topic.len() - 1)` drops a trailing character. `Int.to_float()`
+widens a number; there is no `Float.to_int()`.
+
 A long number may be grouped with `_`, between digits only:
 
 ```aura

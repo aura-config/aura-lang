@@ -51,6 +51,11 @@ String:
     returns: "Bool"
     doc:     "True if the substring occurs anywhere."
   end
+  slice:
+    params:  ["start", "end"]
+    returns: "String"
+    doc:     "Substring by character index; end exclusive, indices clamped."
+  end
   to_int:
     params:  []
     returns: "Int"
@@ -118,6 +123,11 @@ Int:
     params:  []
     returns: "String"
     doc:     "Decimal string form."
+  end
+  to_float:
+    params:  []
+    returns: "Float"
+    doc:     "Widen to Float. There is no Float -> Int: narrowing would have to round."
   end
   format_duration:
     params:  []
