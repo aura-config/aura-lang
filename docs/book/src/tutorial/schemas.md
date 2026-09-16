@@ -26,6 +26,23 @@ What is checked at instantiation:
 | Wrong type (`Int` vs `String`, `Int` vs `Float`) | `E0512` | always |
 | An extra field the schema does not declare | `E0513` | `--strict` only |
 
+A default is checked where the schema is **declared**, not only where it is
+used. `q: Int = "not an int"` is `E0516` at the `type`, because a field that
+callers always supply explicitly would otherwise never reach `new` with its
+default, and the declaration would go on claiming something impossible.
+
+Only literal defaults are judged — what an arbitrary expression evaluates to is
+not knowable before it runs, and `new` still checks the result.
+
+```aura
+type Quota
+  # `Int? = null` — the marker admits null, the default makes the field
+  # optional. The marker alone would still require the field at `new`.
+  limit: Int? = null
+end
+```
+
+
 Field types are `String`, `Int`, `Float`, `Bool`, `List` and `Object`. `Int` and
 `Float` are separate types, so memory limits in bytes and 64-bit identifiers keep
 their precision — overflow is `E0304`, not a silent wrap.

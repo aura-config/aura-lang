@@ -10,7 +10,7 @@ checksum = "7d902e3d592a523def97af8f317b08ce16b7ab854c1985a0c671e6f15cebc236"
 
 [[package]]
 name = "aura-lang"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "indexmap",
  "serde_json",
@@ -21,7 +21,7 @@ dependencies = [
 
 [[package]]
 name = "aura-wasm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aura-lang",
  "js-sys",
