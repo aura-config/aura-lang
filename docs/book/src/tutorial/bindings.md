@@ -82,6 +82,20 @@ image: "company/#{name}:v#{1 + 1}" # → "company/auth:v2"
 Inside `#{...}` the ordinary expression syntax applies, and quotes in nested
 strings need no escaping — `"#{list.join(", ")}"` is valid.
 
+A `null` has no text form, so interpolating one is `E0324` rather than the word
+`null`:
+
+```ruby
+host = env("HOST", null)
+url: "https://#{host == null ? "localhost" : host}/api"
+```
+
+The guard is spelled out because *which text stands in for a missing value* is a
+decision about the configuration. Printing `null` would put those four letters
+into the output, where whatever reads it next sees a setting rather than a
+missing one — and the usual reason a `null` reaches a string is a value that got
+lost upstream.
+
 ## Reaching into data
 
 A dot is for fields; brackets are only for list indices:

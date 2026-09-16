@@ -172,12 +172,17 @@ what makes Aura usable for generating nginx configs, Dockerfiles and the like.
 mandatory (E0207) — there is no path that yields nothing.
 
 ```aura
+environment = "staging"
+
 replicas: cond
-  env == "production" -> 6
-  env == "staging"    -> 2
+  environment == "production" -> 6
+  environment == "staging"    -> 2
   else -> 1
 end
 ```
+
+The binding is named `environment`, not `env`: `env` is the built-in that reads
+an environment variable, and a binding of that name shadows it.
 
 There is no truthiness. A condition must be `Bool`, or it is E0306.
 
