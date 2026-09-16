@@ -25,6 +25,20 @@ struct LineInfo {
     continues: bool,
 }
 
+/// What an `end` (or a bracket) will close. The formatter never parses — that is
+/// deliberate, so it can leave unparseable input alone rather than corrupt it —
+/// but it does need to know which construct each opener belongs to, because `->`
+/// means two different things and only its context tells them apart.
+#[derive(PartialEq, Clone, Copy)]
+enum Opener {
+    /// `domain`, `def`, `type`, `enum`, `new`, and a trailing `key:`.
+    Block,
+    Cond,
+    Lambda,
+    Bracket,
+    Paren,
+}
+
 /// One anchor kind for column alignment.
 #[derive(PartialEq, Clone, Copy)]
 enum Kind {
@@ -77,11 +91,14 @@ pub fn format_source(src: &str) -> Result<String, Diagnostic> {
         }
     };
 
-    // A line with an `end`: an arrow on it is an inline lambda (opens+closes there).
-    let mut line_has_end = vec![false; n];
+    // The offset of the last non-trivia token on each line, so a token can ask
+    // whether it ends its line. A trailing `key:` opens an object block, and the
+    // opener stack has to record that or the `end` closing it pops the wrong
+    // thing and every later question about what is open gets a stale answer.
+    let mut last_tok_start = vec![u32::MAX; n];
     for t in &tokens {
-        if matches!(t.kind, TokenKind::End) {
-            line_has_end[line_of(t.span.start)] = true;
+        if !matches!(t.kind, TokenKind::Newline | TokenKind::Eof) {
+            last_tok_start[line_of(t.span.start)] = t.span.start;
         }
     }
 
@@ -102,30 +119,75 @@ pub fn format_source(src: &str) -> Result<String, Diagnostic> {
     let mut infos = vec![LineInfo::default(); n];
     // Tokens on each physical line (excluding Newline/Eof), in order.
     let mut toks_on: Vec<Vec<&Token>> = vec![Vec::new(); n];
+    // What is currently open, innermost last. A plain counter cannot say which
+    // construct an `end` belongs to, and `->` needs exactly that: in a lambda it
+    // opens a body that an `end` will close, in a `cond` arm it separates a
+    // condition from a value and closes nothing. Guessing from nearby tokens got
+    // both wrong — an arrow whose body opened a block (`-> new R`, closed by
+    // `end end`) credited one level and closed two, and an arm holding an inline
+    // lambda credited two and closed one.
+    let mut open: Vec<Opener> = Vec::new();
+    let mut arrow_seen_on_line: Vec<bool> = vec![false; n];
     for t in &tokens {
         if matches!(t.kind, TokenKind::Newline | TokenKind::Eof) {
             continue;
         }
         let line = line_of(t.span.start);
         toks_on[line].push(t);
+        // An arrow separates a `cond` arm only when a `cond` is the innermost
+        // thing open *and* it is the first arrow on the line: arms are
+        // newline-separated, so any later arrow on the same line belongs to a
+        // lambda inside the arm's value.
+        let arrow_is_arm = matches!(t.kind, TokenKind::Arrow)
+            && matches!(open.last(), Some(Opener::Cond))
+            && !arrow_seen_on_line[line];
+        if matches!(t.kind, TokenKind::Arrow) {
+            arrow_seen_on_line[line] = true;
+        }
         let d: i32 = match t.kind {
             TokenKind::Domain
             | TokenKind::Def
             | TokenKind::Type
             | TokenKind::Enum
-            | TokenKind::New
-            | TokenKind::Cond
-            | TokenKind::LBracket
-            | TokenKind::LParen => 1,
-            TokenKind::End | TokenKind::RBracket | TokenKind::RParen => -1,
-            TokenKind::Arrow if line_has_end[line] => 1,
+            | TokenKind::New => {
+                open.push(Opener::Block);
+                1
+            }
+            TokenKind::Cond => {
+                open.push(Opener::Cond);
+                1
+            }
+            TokenKind::LBracket => {
+                open.push(Opener::Bracket);
+                1
+            }
+            TokenKind::LParen => {
+                open.push(Opener::Paren);
+                1
+            }
+            TokenKind::Arrow if !arrow_is_arm => {
+                open.push(Opener::Lambda);
+                1
+            }
+            TokenKind::End | TokenKind::RBracket | TokenKind::RParen => {
+                open.pop();
+                -1
+            }
+            // A `key:` at the end of its line opens an object block. It adds its
+            // level below (via `ends_with_colon`), not here, but the stack must
+            // still know, so the `end` that closes it pops this and not whatever
+            // encloses it.
+            TokenKind::Colon if t.span.start == last_tok_start[line] => {
+                open.push(Opener::Block);
+                0
+            }
             _ => 0,
         };
         let info = &mut infos[line];
         info.delta += d;
         info.min_prefix = info.min_prefix.min(info.delta);
         info.ends_with_colon = matches!(t.kind, TokenKind::Colon);
-        info.ends_with_arrow = matches!(t.kind, TokenKind::Arrow) && !line_has_end[line];
+        info.ends_with_arrow = matches!(t.kind, TokenKind::Arrow) && !arrow_is_arm;
         info.continues = matches!(
             t.kind,
             TokenKind::Comma
@@ -167,7 +229,11 @@ pub fn format_source(src: &str) -> Result<String, Diagnostic> {
         }
         let info = infos[idx];
         let level = (depth + info.min_prefix.min(0) + i32::from(prev_continues)).max(0) as usize;
-        depth += info.delta + i32::from(info.ends_with_colon) + i32::from(info.ends_with_arrow);
+        // The arrow's own level is already in `delta` — it is pushed like any
+        // other opener now, so adding `ends_with_arrow` here would count it
+        // twice. The flag survives only to tell `analyze_line` that a line
+        // opening a block is not an alignment anchor.
+        depth += info.delta + i32::from(info.ends_with_colon);
         prev_continues = info.continues;
 
         let toks = &toks_on[idx];
@@ -460,6 +526,65 @@ mod tests {
             "t: cond\n  region == \"eu-central\" -> \"a\"\n  region == \"us\" -> \"b\"\n  else -> \"c\"\nend\n";
         let want = "t: cond\n  region == \"eu-central\" -> \"a\"\n  region == \"us\"         -> \"b\"\n  else -> \"c\"\nend\n";
         assert_eq!(format_source(messy).unwrap(), want);
+    }
+
+    #[test]
+    fn a_lambda_whose_body_opens_a_block_keeps_the_rest_of_the_file_indented() {
+        // `-> new R` opens two levels on one line and closes both on `end end`.
+        // The flat depth counter credited only the `new`, so it went negative and
+        // every line after the closing lost a level - including lines belonging
+        // to entirely unrelated blocks further down.
+        let src = concat!(
+            "type R\n  v: Int\nend\n\n",
+            "out:\n",
+            "  items: [1, 2].map (x, i) -> new R\n",
+            // Two openers on one line, so the body sits two levels in and the
+            // pair of `end`s reads as the pair of closings it is. One level per
+            // opener, with no special case for how many share a line.
+            "      v: x\n",
+            "  end end\n",
+            "  tail: 2\n",
+            "end\n",
+            "after: 3\n",
+        );
+        assert_eq!(
+            format_source(src).unwrap(),
+            src,
+            "already canonical input must come back unchanged"
+        );
+    }
+
+    #[test]
+    fn a_cond_arm_containing_a_lambda_does_not_shift_the_file() {
+        // The other half of the same defect, and the one that was live before
+        // anybody wrote `-> new`. Two arrows on one line: the arm separator and
+        // the lambda. `line_has_end` credited a level to both, and only one
+        // closed.
+        let src = concat!(
+            "f  = true\n",
+            "xs = [1]\n",
+            "a: cond\n",
+            "  f -> xs.map (x, i) -> x end\n",
+            "  else -> xs\n",
+            "end\n",
+            "z: 1\n",
+        );
+        assert_eq!(format_source(src).unwrap(), src);
+    }
+
+    #[test]
+    fn formatting_is_idempotent_for_both_arrow_shapes() {
+        // The property that matters more than either case: whatever the first
+        // pass decides, a second pass must agree with it.
+        for src in [
+            "out:\n  xs: [1].map (x, i) -> x end\nend\n",
+            "f = (a) ->\n  a + 1\nend\n",
+            "t: cond\n  true -> 1\n  else -> 2\nend\n",
+        ] {
+            let once = format_source(src).unwrap();
+            let twice = format_source(&once).unwrap();
+            assert_eq!(once, twice, "not idempotent for: {src:?}");
+        }
     }
 
     #[test]
