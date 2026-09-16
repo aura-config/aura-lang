@@ -9,6 +9,11 @@ still change the language.
 
 ## [0.2.0] — 2026-09-16
 
+I design Aura and make every decision about it; this release was built together
+with Claude, an AI model by Anthropic, which wrote the code and the tests that keep
+the documentation honest. [How Aura is built](README.md#how-aura-is-built) tells
+the longer story.
+
 The minor number moves because behaviour moved. Three changes reject or
 re-render something 0.1.1 accepted, so a manifest that worked before may need
 one edit — each is listed under **Changed** below with what to do about it.

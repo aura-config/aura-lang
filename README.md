@@ -23,10 +23,10 @@ One binary, no runtime to install, 16 keywords, a 1.7 MB download.
 </div>
 
 > [!NOTE]
-> Aura is a working preview (`0.1`). All six specification phases are implemented
-> and the syntax has no open design questions, but nothing has run in production
-> anywhere yet. While `0.x`, a minor release may still change the language — the
-> [changelog](CHANGELOG.md) says so plainly.
+> Aura is a working preview (`0.x`). All six specification phases are
+> implemented, but nothing has run in production anywhere yet. Until 1.0 a minor
+> release may still change the language, and the syntax is frozen only at 1.0.
+> The [changelog](CHANGELOG.md) lists every change that needs an edit.
 
 ---
 
@@ -561,14 +561,14 @@ cost — treat them as an order of magnitude, and re-run them on yours.
 
 | | |
 | --- | --- |
-| Tests | 241, on Linux, macOS and Windows |
+| Tests | the whole suite, on Linux, macOS and Windows |
 | Conformance | every example in [examples/](examples/README.md) driven through the **real binary**, output diffed against a pinned expectation |
 | End to end | [packaging/e2e.sh](packaging/e2e.sh) asserts 26 documented claims — exit codes, capability refusals, hermetic mode, output formats, and byte-identical output across two runs |
 | Containers | on a tag, those artefacts run on debian:12, ubuntu:22.04, alpine, ubuntu:20.04, and aarch64 under emulation |
 | Miri | the source arena, under **both** Stacked Borrows and Tree Borrows |
-| Fuzzing | six `cargo-fuzz` targets: lexer, parser, pipeline, formatter, codegen, resolver |
+| Fuzzing | a `cargo-fuzz` target per stage: lexer, parser, pipeline, formatter, codegen, resolver, and the JSON/YAML/TOML readers |
 | Cross-platform | `cargo check` for freebsd, aarch64-linux, musl and wasm32 |
-| Documentation | snippets must be canonical `aura fmt`; the diagnostic catalogue must match the compiler exactly, in both languages |
+| Documentation | snippets must be canonical `aura fmt` and name nothing the language lacks; the diagnostic catalogue, the method reference and the decision log must match the compiler, in both languages |
 
 The recursive-descent parser is DoS-hardened: deeply nested input yields `E0208`
 rather than a stack overflow, and that is checked in release builds, where there
@@ -584,10 +584,61 @@ cargo bench -p aura-lang   # lexer, parser, resolver, full pipeline
 The formal specification, including the numbered design decisions the code refers
 to by name, is [SPEC.md](SPEC.md).
 
+## How Aura is built
+
+My name is [Ilya Brin](https://github.com/ilyabrin). I came up with Aura and I
+develop it, working on the language together with Claude, an AI model by
+Anthropic.
+
+The idea is an old one. It goes back to when I was writing my first language, in
+Go. That was when I came across Starlark and thought that computed configuration
+is a genuinely useful thing. For Go, though, it was overkill: everything compiles
+fast anyway, and a YAML file or a few constants in the code are enough. With Rust
+it became clear that I would have to write such a language myself. I have several
+growing projects and production services that need it. I trusted Claude with
+writing the code, and I read everything it writes. That way I am also learning
+Rust from real code rather than from textbook examples.
+
+We have different responsibilities. I am responsible for what the Aura language
+is: why it exists, what must never be in it, and which rules it keeps. There are
+only a few:
+
+- no magic;
+- the same thing always behaves the same way;
+- code reads one way only;
+- the developer's experience matters more than anything else.
+
+Claude:
+
+- writes the code;
+- tests ideas in practice;
+- looks for places where the documentation has drifted from what the language
+  actually does.
+
+The decisions are mine, and no change reaches the project without my agreement.
+
+Along the way we settled into habits that have proven themselves:
+
+- **One task, one change.** Each comes with an explanation: not only what
+  changed, but why we chose this path.
+- **We don't take text at its word, we check.** If the documentation says the
+  language can do something, we run it and see. That is how we found things you
+  don't notice by reading: the reference was missing half the methods, one example
+  did not compile, and three decisions were mentioned everywhere but written down
+  nowhere.
+- **Every bug we find gets a test.** And we make sure that without the fix the
+  test really fails. Otherwise it only looks like protection.
+- **Hints in error messages are checked too.** If the compiler suggests how to
+  fix your code, a test runs that suggestion and makes sure it works.
+
+Commits written by Claude carry a `Co-Authored-By` trailer, starting with the one
+that added this section. Earlier ones don't: back then Aura was an internal tool for
+my own projects.
+
 ## Status
 
-All six specification phases are implemented, and the syntax has no open design
-questions.
+All six specification phases are implemented. The syntax is still allowed to
+change, and is frozen at 1.0.
 
 <details>
 <summary><b>What is done, and what is not</b></summary>
@@ -621,8 +672,8 @@ questions.
 - [ ] A tree-sitter grammar (Helix, Zed, GitHub Linguist)
 - [ ] npm, PyO3 and a C ABI — on demand rather than ahead of it
 
-**Towards 1.0.** Two criteria remain, and neither of them is code: a promise of
-backward compatibility, and real users whose configs must not break.
+**Towards 1.0.** Three criteria remain: a frozen syntax, a promise of backward
+compatibility, and real users whose configs must not break.
 
 </details>
 
@@ -634,9 +685,10 @@ Issues and pull requests are welcome. Before opening one:
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
+cargo build -p aura-lang && find examples -name '*.aura' -print0 | xargs -0 ./target/debug/aura fmt --check
 ```
 
-CI runs exactly those, plus `aura fmt --check` on any changed `.aura` file. Code
+CI runs exactly those four. The last is the language formatting its own examples. Code
 comments and commit messages are in English. [AGENTS.md](AGENTS.md) records where
 each fact has its single home — worth reading before adding a second copy of one.
 
