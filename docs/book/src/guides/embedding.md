@@ -22,7 +22,7 @@ let opts = EvalOptions {
 let out = eval_file("config/app.aura".as_ref(), &opts)?;
 let cfg: MyConfig = serde_json::from_value(out.json)?;      // straight into your own structs
 for w in &out.warnings {
-    log::warn!("{w}");                                       // Display: error[E..]: ... at file:line:col
+    log::warn!("{w}");                                       // Display: warning[W..]: ... at file:line:col
 }
 if let Some(lock) = out.updated_lockfile {
     std::fs::write("config/aura.lock", lock)?;               // writing it is the host's decision
