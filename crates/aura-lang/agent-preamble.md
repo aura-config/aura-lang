@@ -98,6 +98,10 @@ name = "checkout"
 label: "svc-#{name}"
 ```
 
+`null` has no text form: interpolating one is `E0324`, not the word `null`.
+Say what the empty case prints — `"#{x == null ? "none" : x}"` — or drop the
+empties before joining a list: `xs.compact().join(", ")`.
+
 Multi-line text uses a block string, which ends with `end` at the opener's
 indentation and interpolates the same way:
 

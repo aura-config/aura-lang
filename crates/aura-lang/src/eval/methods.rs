@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::value::{TypeTag, Value};
-use super::Interpreter;
+use super::{Interpreter, TextCtx};
 use crate::error::Diagnostic;
 use crate::span::Span;
 
@@ -918,7 +918,7 @@ fn m_list_join<'a>(
     };
     let parts: Vec<String> = xs
         .iter()
-        .map(|v| it.display(v, sp))
+        .map(|v| it.display(v, sp, TextCtx::Join))
         .collect::<Result<_, _>>()?;
     Ok(Value::str(parts.join(&sep)))
 }
@@ -1650,7 +1650,7 @@ fn m_to_str<'a>(
     _args: &[Value<'a>],
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
-    Ok(Value::str(it.display(recv, sp)?))
+    Ok(Value::str(it.display(recv, sp, TextCtx::Message)?))
 }
 
 fn json_to_value<'a>(j: serde_json::Value) -> Value<'a> {

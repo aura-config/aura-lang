@@ -69,6 +69,7 @@ position, because nothing was parsed yet.
 | E0321 | malformed base64 | `base64_decode()` on input that is not base64 |
 | E0322 | a concatenated list or string exceeds its size limit | `+` doubles: 1M elements / 16 MiB is the ceiling |
 | E0323 | `to_object()` got the same key twice | a silent overwrite would depend on element order; deduplicate first |
+| E0324 | `null` rendered as text | interpolation and `to_str()` must agree; say what the empty case prints (D31) |
 | E0398 | internal: a closure's environment was dropped | a bug in Aura — please report it with the manifest |
 | E0399 | call depth exceeded (256) | recursion in a function? |
 | E0533 | `now()` and `timestamp()` do not exist | the host passes time in: `env("BUILD_TIME", ...)` (D13) |

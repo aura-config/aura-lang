@@ -201,6 +201,36 @@ fn type_label(ty: &TypeName) -> String {
     }
 }
 
+/// Where a value is being turned into text.
+///
+/// It decides only which remedy the diagnostic offers. The same `null` needs
+/// different code to fix depending on where it sits, and a help line that does
+/// not run is worse than none.
+#[derive(Clone, Copy)]
+pub(crate) enum TextCtx {
+    /// `"#{x}"`
+    Interpolation,
+    /// `xs.join(", ")`
+    Join,
+    /// The message of `assert`, an invariant, or `fail()`.
+    Message,
+}
+
+impl TextCtx {
+    fn remedy(self) -> &'static str {
+        match self {
+            // Say what to print instead. The guard is spelled out rather than
+            // hidden behind a default, because which text stands in for a
+            // missing value is a decision about the configuration.
+            TextCtx::Interpolation => "give the empty case a value: #{x == null ? \"none\" : x}",
+            // `compact` removes nulls and nothing else, which is exactly the
+            // question here.
+            TextCtx::Join => "drop the empty entries first: xs.compact().join(\", \")",
+            TextCtx::Message => "a message cannot be null: assert cond, \"why this failed\"",
+        }
+    }
+}
+
 fn rt(code: &'static str, msg: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic::error(code, msg, span, "evaluated here")
 }
@@ -364,7 +394,7 @@ impl<'a> Interpreter<'a> {
                     let msg = match message {
                         Some(m) => {
                             let v = self.eval_expr(env, m)?;
-                            self.display(&v, *span)?
+                            self.display(&v, *span, TextCtx::Message)?
                         }
                         None => "assertion failed".to_string(),
                     };
@@ -731,7 +761,7 @@ impl<'a> Interpreter<'a> {
                         StrPart::Lit(s) => out.push_str(&unescape(s)),
                         StrPart::Interp(src) => {
                             let v = self.eval_interp(env, src, span)?;
-                            out.push_str(&self.display(&v, span)?);
+                            out.push_str(&self.display(&v, span, TextCtx::Interpolation)?);
                         }
                     }
                 }
@@ -765,13 +795,33 @@ impl<'a> Interpreter<'a> {
     }
 
     /// Only scalars are allowed in interpolation and join (E0307).
-    pub(crate) fn display(&self, v: &Value<'a>, span: Span) -> Result<String, Diagnostic> {
+    pub(crate) fn display(
+        &self,
+        v: &Value<'a>,
+        span: Span,
+        ctx: TextCtx,
+    ) -> Result<String, Diagnostic> {
         Ok(match v {
             Value::Str(s) => s.to_string(),
             Value::Int(n) => n.to_string(),
             Value::Float(n) => n.to_string(),
             Value::Bool(b) => b.to_string(),
-            Value::Null => "null".to_string(),
+            // `null` used to render as the four letters "null" (D31). Two
+            // mechanisms answering the same question disagreed: `"#{x}"` gave
+            // "null" while `x.to_str()` was E0309, because `to_str` is not
+            // registered for Null. A language cannot have one spelling of
+            // "render this as text" succeed where the other refuses.
+            //
+            // Closing it upward — rendering Null everywhere — would have made
+            // the common case silent: a key that lost its value reaches the
+            // output as the *word* null, which downstream reads as a setting
+            // rather than as a missing one. That is the failure W0513 already
+            // warns about, so this closes downward instead.
+            Value::Null => {
+                let mut d = rt("E0324", "null has no text form", span);
+                d.help = Some(ctx.remedy().to_string());
+                return Err(d);
+            }
             other => {
                 return Err(rt(
                     "E0307",
@@ -1081,7 +1131,7 @@ impl<'a> Interpreter<'a> {
             }
             "fail" => {
                 let msg = match args.first() {
-                    Some(v) => self.display(v, span)?,
+                    Some(v) => self.display(v, span, TextCtx::Message)?,
                     None => "fail() called".to_string(),
                 };
                 Err(rt("E0531", msg, span))
@@ -1165,7 +1215,7 @@ impl<'a> Interpreter<'a> {
                             let v = self.eval_expr(&env, m)?;
                             // Rendered exactly as a plain `assert` renders its
                             // message, so the two read the same way.
-                            self.display(&v, inv.span)?
+                            self.display(&v, inv.span, TextCtx::Message)?
                         }
                         None => "invariant does not hold".to_string(),
                     };
@@ -1847,6 +1897,82 @@ mod tests {
         assert_eq!(get(&v, "last_safe"), Value::str("none"));
         assert_eq!(get(&v, "min_safe"), Value::Int(0));
         assert_eq!(get(&v, "index_safe"), Value::str("none"));
+    }
+
+    #[test]
+    fn rendering_null_as_text_is_e0324_everywhere() {
+        // Two mechanisms answering the same question disagreed: `"#{x}"` gave
+        // the four letters "null" while `x.to_str()` was E0309. Whichever way
+        // that was closed, it had to be closed the same way in both.
+        // Each remedy is checked against the fragment that makes it specific to
+        // where the null was: advice that fits every site fits none of them.
+        for (src, expected) in [
+            (
+                "n = null
+x: \"v#{n}\"",
+                "#{x == null ?",
+            ),
+            ("x: [\"a\", null].join(\",\")", "compact()"),
+            (
+                "n = null
+x: fail(n)",
+                "assert cond,",
+            ),
+        ] {
+            let d = eval(src).unwrap_err();
+            assert_eq!(d.code, "E0324", "src: {src}");
+            let help = d.help.unwrap_or_default();
+            assert!(
+                help.contains(expected),
+                "the remedy does not fit the site: {src}
+  help: {help}"
+            );
+        }
+
+        // `to_str` is still absent on Null rather than newly rendering it, so
+        // the two agree by both refusing.
+        assert_eq!(
+            eval(
+                "n = null
+x: n.to_str()"
+            )
+            .unwrap_err()
+            .code,
+            "E0309"
+        );
+    }
+
+    #[test]
+    fn the_null_remedies_actually_evaluate() {
+        // One per help line, spelled exactly as the diagnostic prints it.
+        let v = eval(concat!(
+            "x = null
+",
+            "interpolated: \"v#{x == null ? \"none\" : x}\"
+",
+            "joined:       [\"a\", x].compact().join(\", \")
+",
+        ))
+        .unwrap();
+        assert_eq!(get(&v, "interpolated"), Value::str("vnone"));
+        assert_eq!(get(&v, "joined"), Value::str("a"));
+    }
+
+    #[test]
+    fn a_value_that_is_not_null_still_interpolates() {
+        // The change must not reach anything that was already working.
+        let v = eval(concat!(
+            "n = 8080
+",
+            "f = 0.5
+",
+            "b = true
+",
+            "x: \"#{n}/#{f}/#{b}\"
+",
+        ))
+        .unwrap();
+        assert_eq!(get(&v, "x"), Value::str("8080/0.5/true"));
     }
 
     #[test]

@@ -9,6 +9,23 @@ still change the language.
 
 ### Added
 
+- **`null` has no text form (D31).** `"#{x}"` printed the four letters `null`
+  while `x.to_str()` was `E0309`, because `to_str` is not registered for `Null`.
+  One spelling of "render this as text" succeeded where the other refused, which
+  is the kind of divergence this language is meant not to have.
+
+  It is closed **downward**: rendering a `null` as text is now `E0324` in
+  interpolation, in `join`, and in the message of `assert`, an invariant or
+  `fail()`. Closing it upward — printing `null` everywhere — would have made the
+  common case silent, because the usual reason a `null` reaches a string is a
+  key that lost its value, and the word `null` in the output reads downstream as
+  a setting rather than as a missing one. That is what `W0513` already warns
+  about.
+
+  The diagnostic names the remedy for the site it came from, and each one is
+  executed by a test: `#{x == null ? "none" : x}` in a string,
+  `xs.compact().join(", ")` in a list.
+
 - **`String.slice(start, end)` and `Int.to_float()` (D30).** Both gaps were
   found by writing the device showcase, not by theory — the manifest carried a
   comment apologising for the workaround.
