@@ -77,6 +77,18 @@ A list field says what it holds: `tags: [String]`, `endpoints: [Endpoint]`,
 nesting as `[[Int]]`, and an `enum` works as the element type. A wrong element is
 `E0512` reported with its index. Bare `List` still accepts anything.
 
+A long number may be grouped with `_`, between digits only:
+
+```aura
+max_bytes: 10_000_000
+port:      8_080
+```
+
+It is optional and means nothing — `10_000` and `10000` are the same value.
+Where used it must group by threes, counted away from the decimal point, so the
+short group is at the front of an integer and the end of a fraction: `8_080`,
+`1.123_45`. `2_3_7_1_9_3_3`, `1_0000_000`, `100_` and `1__0` are all errors.
+
 `Int` and `Float` are distinct: passing `1` where `1.0` is required is `E0512`.
 
 Strings are single-line and double-quoted, with `#{...}` interpolation:
@@ -413,6 +425,7 @@ position, because nothing was parsed yet.
 | E0105 | unexpected character | |
 | E0106 | an unclosed `#{` interpolation | |
 | E0107 | an unterminated block string | close it with `end` at the opener's indentation (D16) |
+| E0108 | a digit separator is misplaced | `_` groups by threes away from the point: `10_000_000`, `0.000_001` — never `100_`, `1__0` or `2_3_7_1_9_3_3` |
 
 ### Syntax (E02xx)
 

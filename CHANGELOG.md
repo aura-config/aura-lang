@@ -9,6 +9,31 @@ still change the language.
 
 ### Added
 
+- **Digit separators in numbers (D29).** `max_bytes: 10_000_000`, and in the
+  fractional part too, where groups run away from the point: `0.000_001`.
+
+  Configuration is where long numbers actually live — byte limits, quotas,
+  retention windows. Miscounting a zero is the kind of mistake nothing else
+  catches: the value is valid, the type is right, and the service quietly gets
+  ten times the memory it should.
+
+  It is optional and carries no meaning: `2371933` and `2_371_933` are the same
+  token, and nothing asks you to group anything.
+
+  Where used, it must **group by threes, counted away from the decimal point** —
+  so the short group sits at the front of an integer and the end of a fraction:
+  `8_080`, `1.123_45`. This is stricter than Go, Ruby and Rust, where
+  `2_3_7_1_9_3_3` is legal. A separator free to sit anywhere is a second way to
+  write one number, and it misleads: `1_0000_000` is ten million, but a reader
+  scanning for threes sees something far larger. The cost is Indian grouping
+  (`1_00_00_000`), which has to be written without separators.
+
+  `100_`, `1__0` and `1_.5` are the new `E0108` as well. A leading `_` is still
+  an identifier, as it always was.
+
+  Numbers written plainly stay zero-copy; only a literal that actually contains a
+  separator allocates.
+
 - **A schema can state rules about its own values (D28).** `assert` inside a
   `type` body, checked on every `new`:
 
