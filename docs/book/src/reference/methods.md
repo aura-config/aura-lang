@@ -15,6 +15,7 @@ against the implementation rather than transcribed.
 | `starts_with(prefix)` / `ends_with(suffix)` | Bool | |
 | `contains(substr)` | Bool | `"hello".contains("ell")` → `true` |
 | `to_int()` / `to_float()` | Int / Float | a malformed number is an error, not `null` |
+| `slice(start, end)` | String | substring by **character** index, `end` exclusive, indices clamped |
 | `to_str()` | String | identity, for use in chains |
 | `parse_json()` / `parse_yaml()` / `parse_toml()` | Object | integers become `Int`; a failure is `E0314` |
 | `parse_duration()` | Int (seconds) | `"1h30m"` → `5400`; units `d/h/m/s`; `E0319` |
@@ -27,6 +28,7 @@ against the implementation rather than transcribed.
 | Method | Result | Notes |
 | --- | --- | --- |
 | `abs()` | Int | |
+| `to_float()` | Float | widening; there is no `Float.to_int()`, which would have to round |
 | `to_str()` | String | |
 | `format_duration()` | String | `5400` → `"1h30m"`; `0` → `"0s"` |
 | `format_datetime()` | String | RFC 3339 UTC: `946684800` → `"2000-01-01T00:00:00Z"` |

@@ -33,9 +33,10 @@ type Sensor
 end
 
 type Board
-  model:    String
-  flash_mb: Int
-  sleep_ma: Float
+  model:       String
+  flash_mb:    Int
+  sleep_ma:    Float
+  battery_mah: Float
 
   assert flash_mb >= 4, "the image does not fit under 4 MB"
 end
@@ -47,9 +48,8 @@ clean_sensor = (raw) ->
     id:      raw.id.trim()
     bus:     raw.bus.lower()
     poll_ms: raw.poll_ms
-    # A trailing slash is dropped by splitting and rejoining: the language has
-    # no way to take a substring, so this is the honest spelling.
-    topic: raw.topic.ends_with("/") ? raw.topic.split("/").filter (p, i) -> p.len() > 0 end.join("/") : raw.topic
+    # `slice` counts characters, so this is safe on a topic with non-ASCII in it.
+    topic: raw.topic.ends_with("/") ? raw.topic.slice(0, raw.topic.len() - 1) : raw.topic
   end
 end
 
@@ -59,6 +59,10 @@ board_info: new Board
   model:    board.board.model
   flash_mb: board.board.flash_mb
   sleep_ma: board.power.sleep_ma
+  # The vendor writes 2000, so the TOML hands us an Int, but capacity is a
+  # measurement and the schema says Float. There is no arithmetic here to
+  # promote it (D6), so the widening is said out loud.
+  battery_mah: board.power.battery_mah.to_float()
 end
 
 topic_list = wired.map (s, i) -> s.topic end
@@ -71,8 +75,9 @@ topics:      topic_list
 awake_ma   = 80.0
 duty_cycle = 0.02
 average_ma = awake_ma * duty_cycle + board.power.sleep_ma
-# Int / Float promotes to Float (D6), which is the only way to widen an Int:
-# `to_float` exists on String, not on numbers.
+# Int / Float promotes to Float (D6). Where there is nothing to divide by,
+# `to_float` widens on its own — there is no `Float.to_int()`, because
+# narrowing would have to choose a rounding nobody asked for.
 battery_days: (board.power.battery_mah / average_ma / 24.0).to_str()
 
 # --- Output in the shape each consumer wants. One source of truth, three

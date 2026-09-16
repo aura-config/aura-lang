@@ -9,6 +9,26 @@ still change the language.
 
 ### Added
 
+- **`String.slice(start, end)` and `Int.to_float()` (D30).** Both gaps were
+  found by writing the device showcase, not by theory — the manifest carried a
+  comment apologising for the workaround.
+
+  Trimming a trailing separator used to go through
+  `split("/").filter(...).join("/")`. It is now
+  `topic.slice(0, topic.len() - 1)`, and the showcase's output is byte-identical,
+  which is what says the two were equivalent.
+
+  **`slice` counts characters, not bytes**, because `len()` does. If they
+  disagreed, `s.slice(0, s.len())` would be wrong the moment a manifest carried
+  anything outside ASCII — which configuration routinely does. Half-open, indices
+  clamped, same shape as `List.slice`.
+
+  `Int.to_float()` widens. Before it, an `Int` reached `Float` by being divided
+  by `1.0`: correct under D6, since `Float` is contagious, but it reads as a
+  trick rather than as intent. There is deliberately **no `Float.to_int()`** —
+  narrowing would have to choose a rounding nobody asked for, and a lossy
+  conversion must not look like a change of spelling.
+
 - **Digit separators in numbers (D29).** `max_bytes: 10_000_000`, and in the
   fractional part too, where groups run away from the point: `0.000_001`.
 

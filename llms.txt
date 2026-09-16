@@ -77,6 +77,10 @@ A list field says what it holds: `tags: [String]`, `endpoints: [Endpoint]`,
 nesting as `[[Int]]`, and an `enum` works as the element type. A wrong element is
 `E0512` reported with its index. Bare `List` still accepts anything.
 
+`slice(start, end)` takes a substring by **character** index, `end` exclusive:
+`topic.slice(0, topic.len() - 1)` drops a trailing character. `Int.to_float()`
+widens a number; there is no `Float.to_int()`.
+
 A long number may be grouped with `_`, between digits only:
 
 ```aura
@@ -311,6 +315,7 @@ Methods are called on a value (`"a".upper()`, `xs.map(f)`); builtins are global 
 | `starts_with(prefix) -> Bool` | True if the string begins with the prefix. |
 | `ends_with(suffix) -> Bool` | True if the string ends with the suffix. |
 | `contains(substr) -> Bool` | True if the substring occurs anywhere. |
+| `slice(start, end) -> String` | Substring by character index; end exclusive, indices clamped. |
 | `to_int() -> Int` | Parse an integer (E0314 on failure). |
 | `to_float() -> Float` | Parse a float (E0314 on failure). |
 | `to_str() -> String` | The string itself (universal to_str). |
@@ -329,6 +334,7 @@ Methods are called on a value (`"a".upper()`, `xs.map(f)`); builtins are global 
 | --- | --- |
 | `abs() -> Int` | Absolute value. |
 | `to_str() -> String` | Decimal string form. |
+| `to_float() -> Float` | Widen to Float. There is no Float -> Int: narrowing would have to round. |
 | `format_duration() -> String` | Seconds to a duration string (d/h/m/s). |
 | `format_datetime() -> String` | Epoch seconds to an RFC3339 UTC timestamp. |
 
