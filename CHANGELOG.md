@@ -7,6 +7,33 @@ still change the language.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-09-16
+
+The minor number moves because behaviour moved. Three changes reject or
+re-render something 0.1.1 accepted, so a manifest that worked before may need
+one edit — each is listed under **Changed** below with what to do about it.
+
+Everything else is addition: typed list elements, nullable fields, schema
+invariants, folds and predicates, `+` on strings and lists, digit separators,
+substrings, widening, and a compact/spelled-out pair for every serialisation
+format. Three reproducibility defects were also fixed, all of which could
+silently produce a wrong configuration: a YAML merge key that was not applied,
+TOML that came back alphabetised, and the same digits meaning different numbers
+depending on which format carried them.
+
+### Changed — may need an edit
+
+- **Interpolating a `null` is now `E0324`** instead of printing the four letters
+  `null` (D31). Where a value can be absent, say what stands in for it:
+  `"#{x == null ? "none" : x}"`, or `xs.compact().join(", ")` for a list.
+- **`to_yaml()` and `to_toml()` return the compact form** (D32). If the string
+  is written to a file a person reads, use `to_yaml_pretty()` /
+  `to_toml_pretty()`. The CLI is unaffected: `--format` still writes the
+  spelled-out form.
+- **`parse_toml()` preserves the document's key order** instead of sorting it.
+  Output that pinned the alphabetised order will differ; the new order is the
+  one the input file was written in.
+
 ### Added
 
 - **Every format has a compact and a spelled-out spelling (D32).** `to_json()`,
