@@ -225,6 +225,43 @@ still change the language.
 
 ### Fixed
 
+- **Reading a foreign format now reads it faithfully.** Nothing tested Aura as a
+  bridge between formats, and probing it with a deliberately hostile document
+  found two defects immediately.
+
+  A YAML merge key was not applied: `<<: *defaults` survived into the result as
+  a literal key named `<<`, with the referenced mapping nested under it, and the
+  keys it was meant to contribute never arrived. The output was a
+  plausible-looking, wrong configuration — the worst shape a defect can take,
+  because nothing downstream reports it. `<<` is now merged, with both
+  precedence rules from the specification: a key written out in the mapping
+  beats a merged one, and in `<<: [a, b]` the earlier source beats the later.
+  Merging anything that is not a mapping is `E0314` rather than a guess.
+
+  TOML came back in alphabetical order. `serde_json` was already built with
+  `preserve_order` and `yaml-rust2` preserves order by construction, so TOML was
+  the one reader that silently rearranged a document. The `device` showcase had
+  been emitting its vendor's `board.toml` alphabetised, which is how visible
+  this was and how long it went unnoticed.
+
+  Both are pinned by `tests/format_bridge.rs`, a corpus that runs the formats
+  into each other over a document carrying the Norway problem, a quoted number,
+  an integer past the range a double can hold, block and folded scalars, and
+  keys containing spaces and colons. Where the bridge genuinely cannot carry
+  something, the test states the loss rather than hiding it: a TOML datetime
+  becomes a `String`.
+
+  A third defect came from the new `fuzz_bridge` target rather than from
+  reading: **the same digits meant different numbers in different formats.**
+  JSON numbers were parsed by `serde_json`, whose float parser disagrees with
+  Rust's by one unit in the last place on some inputs, while YAML went through
+  Rust's, so `3.3333333333333333e+65` read from a `.json` file and from a
+  `.yaml` file compared as unequal. A manifest's result depending on which
+  format its input arrived in is the exact failure the language exists to
+  prevent. JSON numbers now carry the text they were written with and are
+  parsed here; the TOML emitter maps onto TOML's value tree directly instead of
+  letting serde translate between the two.
+
 - **SPEC described an integrity hash the compiler stopped using.** §5.2 still
   said `integrity = "sha256-..."` and "content hash", while the code has hashed
   the **token stream** under an `aura1-` prefix for some time — and the decision

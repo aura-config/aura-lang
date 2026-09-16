@@ -95,7 +95,52 @@ pub fn json_to_toml_string(json: &serde_json::Value) -> Result<String, Diagnosti
             "TOML requires an object at the top level".to_string(),
         ));
     }
-    toml::to_string_pretty(json).map_err(|e| err("E0603", format!("cannot emit TOML: {e}")))
+    let doc = json_to_toml_value(json)?;
+    toml::to_string_pretty(&doc).map_err(|e| err("E0603", format!("cannot emit TOML: {e}")))
+}
+
+/// Map the JSON form onto TOML's own value tree.
+///
+/// This used to hand the `serde_json::Value` straight to `toml`, letting serde
+/// translate between the two. That works only while a JSON number is a plain
+/// number — and numbers here carry the text they were written with, so that a
+/// float is parsed by Rust rather than by serde_json, whose parser disagrees
+/// with it by one unit in the last place on some inputs. Serialising such a
+/// number through another format emits serde's internal marker instead of the
+/// number, so the mapping is written out here rather than inferred.
+fn json_to_toml_value(v: &serde_json::Value) -> Result<toml::Value, Diagnostic> {
+    use serde_json::Value as J;
+    Ok(match v {
+        // TOML has no null, and dropping the key would leave a configuration
+        // quietly missing a setting.
+        J::Null => {
+            return Err(err(
+                "E0603",
+                "cannot emit TOML (note: TOML has no null)".to_string(),
+            ))
+        }
+        J::Bool(b) => toml::Value::Boolean(*b),
+        J::Number(n) => {
+            let text = n.as_str();
+            match text.parse::<i64>() {
+                Ok(i) => toml::Value::Integer(i),
+                Err(_) => toml::Value::Float(text.parse::<f64>().map_err(|_| {
+                    err("E0603", format!("cannot emit TOML: {text} is not a number"))
+                })?),
+            }
+        }
+        J::String(s) => toml::Value::String(s.clone()),
+        J::Array(xs) => toml::Value::Array(
+            xs.iter()
+                .map(json_to_toml_value)
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+        J::Object(m) => toml::Value::Table(
+            m.iter()
+                .map(|(k, v)| json_to_toml_value(v).map(|v| (k.clone(), v)))
+                .collect::<Result<_, _>>()?,
+        ),
+    })
 }
 
 /// Emit `v` at `indent` spaces. Mappings nest by two spaces; a sequence sits at
@@ -221,7 +266,8 @@ pub fn to_toml_string(v: &Value<'_>) -> Result<String, Diagnostic> {
             "TOML requires an object at the top level".to_string(),
         ));
     }
-    toml::to_string_pretty(&json).map_err(|e| {
+    let doc = json_to_toml_value(&json)?;
+    toml::to_string_pretty(&doc).map_err(|e| {
         err(
             "E0603",
             format!("cannot emit TOML (note: TOML has no null): {e}"),

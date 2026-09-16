@@ -483,6 +483,10 @@ fn m_parse_toml<'a>(
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
     let Value::Str(s) = recv else { unreachable!() };
+    read_toml(s, sp)
+}
+
+pub fn read_toml<'a>(s: &str, sp: Span) -> Result<Value<'a>, Diagnostic> {
     let parsed: toml::Value =
         toml::from_str(s).map_err(|e| rt("E0314", format!("invalid TOML: {e}"), sp))?;
     Ok(toml_to_value(parsed))
@@ -552,6 +556,10 @@ fn m_parse_json<'a>(
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
     let Value::Str(s) = recv else { unreachable!() };
+    read_json(s, sp)
+}
+
+pub fn read_json<'a>(s: &str, sp: Span) -> Result<Value<'a>, Diagnostic> {
     let parsed: serde_json::Value =
         serde_json::from_str(s).map_err(|e| rt("E0314", format!("invalid JSON: {e}"), sp))?;
     Ok(json_to_value(parsed))
@@ -564,6 +572,13 @@ fn m_parse_yaml<'a>(
     sp: Span,
 ) -> Result<Value<'a>, Diagnostic> {
     let Value::Str(s) = recv else { unreachable!() };
+    read_yaml(s, sp)
+}
+
+/// The three readers, reachable without an interpreter so a fuzz target can
+/// drive them on raw bytes. They are the only place Aura accepts input it did
+/// not lex itself.
+pub fn read_yaml<'a>(s: &str, sp: Span) -> Result<Value<'a>, Diagnostic> {
     let docs = yaml_rust2::YamlLoader::load_from_str(s)
         .map_err(|e| rt("E0314", format!("invalid YAML: {e}"), sp))?;
     // A stream with several documents is ambiguous as a single value (D13: one
@@ -580,6 +595,68 @@ fn m_parse_yaml<'a>(
         }
     };
     yaml_to_value(doc, sp)
+}
+
+/// YAML's merge key. Not an Aura concept — it belongs to the file being read,
+/// and reading someone else's format means reading it as that format defines it.
+const MERGE_KEY: &str = "<<";
+
+/// Only scalar keys map onto an Aura object.
+fn scalar_key(k: &yaml_rust2::Yaml, sp: Span) -> Result<String, Diagnostic> {
+    use yaml_rust2::Yaml as Y;
+    Ok(match k {
+        Y::String(s) => s.clone(),
+        Y::Integer(n) => n.to_string(),
+        Y::Boolean(b) => b.to_string(),
+        Y::Real(r) => r.clone(),
+        _ => {
+            return Err(rt(
+                "E0314",
+                "invalid YAML: only scalar keys are supported".to_string(),
+                sp,
+            ))
+        }
+    })
+}
+
+/// Expand one `<<` entry at the position it was written.
+///
+/// Two precedence rules, both from the YAML merge specification: a key written
+/// out in the mapping beats a merged one, and in `<<: [a, b]` the earlier
+/// source beats the later. Both fall out of refusing to overwrite: `explicit`
+/// blocks the first, `contains_key` blocks the second.
+fn merge_into<'a>(
+    map: &mut indexmap::IndexMap<String, Value<'a>>,
+    source: &yaml_rust2::Yaml,
+    explicit: &std::collections::HashSet<String>,
+    sp: Span,
+) -> Result<(), Diagnostic> {
+    use yaml_rust2::Yaml as Y;
+    match source {
+        Y::Hash(h) => {
+            for (k, v) in h {
+                let key = scalar_key(k, sp)?;
+                if explicit.contains(&key) || map.contains_key(&key) {
+                    continue;
+                }
+                map.insert(key, yaml_to_value(v, sp)?);
+            }
+            Ok(())
+        }
+        Y::Array(xs) => {
+            for x in xs {
+                merge_into(map, x, explicit, sp)?;
+            }
+            Ok(())
+        }
+        // Anything else would have to be guessed at, and a guess here silently
+        // changes a configuration.
+        _ => Err(rt(
+            "E0314",
+            "invalid YAML: `<<` merges a mapping, or a list of mappings".to_string(),
+            sp,
+        )),
+    }
 }
 
 /// yaml-rust2's tree into an Aura value. Written out rather than routed through
@@ -606,22 +683,24 @@ fn yaml_to_value<'a>(y: &yaml_rust2::Yaml, sp: Span) -> Result<Value<'a>, Diagno
         }
         Y::Hash(h) => {
             let mut map = indexmap::IndexMap::with_capacity(h.len());
+
+            // `<<` is YAML's merge key, and the keys written out in this
+            // mapping win over anything it pulls in. Which ones those are has
+            // to be known before the merge is expanded, so they are collected
+            // first rather than relying on insertion order.
+            let mut explicit = std::collections::HashSet::new();
+            for (k, _) in h {
+                if !matches!(k, Y::String(s) if s == MERGE_KEY) {
+                    explicit.insert(scalar_key(k, sp)?);
+                }
+            }
+
             for (k, v) in h {
-                // Only scalar keys map onto an Aura object.
-                let key = match k {
-                    Y::String(s) => s.clone(),
-                    Y::Integer(n) => n.to_string(),
-                    Y::Boolean(b) => b.to_string(),
-                    Y::Real(r) => r.clone(),
-                    _ => {
-                        return Err(rt(
-                            "E0314",
-                            "invalid YAML: only scalar keys are supported".to_string(),
-                            sp,
-                        ))
-                    }
-                };
-                map.insert(key, yaml_to_value(v, sp)?);
+                if matches!(k, Y::String(s) if s == MERGE_KEY) {
+                    merge_into(&mut map, v, &explicit, sp)?;
+                    continue;
+                }
+                map.insert(scalar_key(k, sp)?, yaml_to_value(v, sp)?);
             }
             Value::object(map)
         }
@@ -1578,10 +1657,19 @@ fn json_to_value<'a>(j: serde_json::Value) -> Value<'a> {
     match j {
         serde_json::Value::Null => Value::Null,
         serde_json::Value::Bool(b) => Value::Bool(b),
-        serde_json::Value::Number(n) => match n.as_i64() {
-            Some(i) => Value::Int(i),
-            None => Value::Float(n.as_f64().unwrap_or(f64::NAN)),
-        },
+        // The number is taken as the text JSON carried and parsed here, not by
+        // serde_json. Its float parser is off by one unit in the last place
+        // against Rust's on some inputs: `3.3333333333333333e+65` read from
+        // JSON and the same digits read from YAML produced two different
+        // values, so a manifest's result depended on which format the number
+        // arrived in. Found by fuzz_bridge.
+        serde_json::Value::Number(n) => {
+            let text = n.as_str();
+            match text.parse::<i64>() {
+                Ok(i) => Value::Int(i),
+                Err(_) => Value::Float(text.parse::<f64>().unwrap_or(f64::NAN)),
+            }
+        }
         serde_json::Value::String(s) => Value::str(s),
         serde_json::Value::Array(xs) => Value::list(xs.into_iter().map(json_to_value).collect()),
         serde_json::Value::Object(m) => Value::Object(Arc::new(

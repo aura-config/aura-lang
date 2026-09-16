@@ -18,6 +18,7 @@ against the implementation rather than transcribed.
 | `slice(start, end)` | String | substring by **character** index, `end` exclusive, indices clamped |
 | `to_str()` | String | identity, for use in chains |
 | `parse_json()` / `parse_yaml()` / `parse_toml()` | Object | integers become `Int`; a failure is `E0314` |
+| ↳ fidelity | | key order is the document's; YAML `<<` is merged; a TOML datetime becomes a `String` |
 | `parse_duration()` | Int (seconds) | `"1h30m"` → `5400`; units `d/h/m/s`; `E0319` |
 | `parse_datetime()` | Int (epoch UTC) | RFC 3339 or `YYYY-MM-DD`; offsets `±HH:MM`; `E0320` |
 | `sha256()` | String | lower-case hex digest |
