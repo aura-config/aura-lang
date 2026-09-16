@@ -23,6 +23,18 @@ depending on which format carried them.
 
 ### Changed — may need an edit
 
+- **A schema's default value is now checked where the schema is declared**
+  (`E0516`). `q: Int = "not an int"` used to pass `check --strict` with nothing
+  to report but an unused type; the mismatch waited for `new`, and a field that
+  callers always supply explicitly never reaches `new` with its default at all —
+  so a schema could carry an impossible value indefinitely while the declaration
+  claimed otherwise. Only literal defaults are judged, because what an arbitrary
+  expression evaluates to is not knowable before it runs.
+
+  A declaration that was already wrong will now say so. `q: Int = null` wants
+  `q: Int? = null`: the marker admits null and the default makes the field
+  optional — the marker alone still requires it at `new`.
+
 - **Interpolating a `null` is now `E0324`** instead of printing the four letters
   `null` (D31). Where a value can be absent, say what stands in for it:
   `"#{x == null ? "none" : x}"`, or `xs.compact().join(", ")` for a list.

@@ -124,6 +124,7 @@ impl<'a> SemanticAnalyzer<'a> {
         for st in stmts {
             match st {
                 Stmt::TypeDecl(s) => {
+                    self.check_defaults(s);
                     let nullable: Vec<&'a str> = s
                         .fields
                         .iter()
@@ -136,6 +137,81 @@ impl<'a> SemanticAnalyzer<'a> {
                 }
                 Stmt::Block(b) => self.note_schemas(&b.body),
                 _ => {}
+            }
+        }
+    }
+
+    /// E0516: a default that its own field can never accept.
+    ///
+    /// `q: Int = "not an int"` used to reach `check --strict` unremarked; the
+    /// only complaint was that the type went unused. The mismatch surfaced at
+    /// `new`, and a field that callers always supply explicitly never reaches
+    /// `new` with its default at all — so a schema could carry a value that
+    /// cannot be valid, indefinitely, and the declaration went on claiming
+    /// otherwise.
+    ///
+    /// Only literals are judged. A default may be any expression, and what an
+    /// arbitrary one evaluates to is not knowable here; reporting on a guess
+    /// would cost more than the check is worth. A literal is the case that
+    /// actually occurs, and it is decidable.
+    fn check_defaults(&mut self, s: &SchemaDeclaration<'a>) {
+        for f in &s.fields {
+            let Some(default) = &f.default else { continue };
+            let Some((found, span)) = literal_shape(default) else {
+                continue;
+            };
+
+            // `= null` is the one mismatch that has a remedy in the declaration
+            // rather than in the value, so it is worth saying separately.
+            if found == "Null" {
+                if !f.nullable {
+                    let mut d = Diagnostic::error(
+                        "E0516",
+                        format!(
+                            "the default for '{}' is null, which schema {} does not admit",
+                            f.name, s.name
+                        ),
+                        span,
+                        "this default",
+                    );
+                    // The marker alone is not the remedy: `q: Int?` with no
+                    // default still requires the field at `new`. Keeping the
+                    // default is what makes the field optional *and* null.
+                    d.help = Some(format!(
+                        "keep the default and admit null: {}: {}? = null",
+                        f.name,
+                        type_name_label(&f.ty)
+                    ));
+                    self.diags.push(d);
+                }
+                continue;
+            }
+
+            // A custom type is an enum or another schema, and which one is not
+            // settled here — so it is left to `new`, which knows.
+            if matches!(f.ty, TypeName::Custom(_)) {
+                continue;
+            }
+
+            let declared = type_name_label(&f.ty);
+            if !literal_fits(&f.ty, found) {
+                let mut d = Diagnostic::error(
+                    "E0516",
+                    format!(
+                        "the default for '{}' is {found}, but schema {} declares it {declared}",
+                        f.name, s.name
+                    ),
+                    span,
+                    "this default",
+                );
+                // Int and Float are distinct (D6), and that is the mismatch a
+                // reader is most likely to think is a formality.
+                d.help = Some(if declared == "Float" && found == "Int" {
+                    format!("Float and Int are different types: {}: Float = 1.0", f.name)
+                } else {
+                    format!("write the default as {declared}, or declare the field {found}")
+                });
+                self.diags.push(d);
             }
         }
     }
@@ -581,7 +657,7 @@ impl<'a> SemanticAnalyzer<'a> {
 mod tests {
     use super::*;
 
-    fn diags(src: &str) -> Vec<Diagnostic> {
+    pub(super) fn diags(src: &str) -> Vec<Diagnostic> {
         diags_as(src, true)
     }
 
@@ -671,7 +747,7 @@ end
         analyze(&module, is_root)
     }
 
-    fn codes(src: &str) -> Vec<&'static str> {
+    pub(super) fn codes(src: &str) -> Vec<&'static str> {
         diags(src).into_iter().map(|d| d.code).collect()
     }
 
@@ -848,5 +924,186 @@ end
         let ds = diags("x = 1");
         assert!(!has_blocking(&ds, false));
         assert!(has_blocking(&ds, true));
+    }
+}
+
+/// The kind of a literal default, or `None` when the expression is anything
+/// else — a call, a variable, arithmetic — whose value is not knowable here.
+fn literal_shape(e: &Expr<'_>) -> Option<(&'static str, Span)> {
+    match e {
+        Expr::Literal(v, span) => Some((
+            match v {
+                LitValue::Int(_) => "Int",
+                LitValue::Float(_) => "Float",
+                LitValue::Str(_) | LitValue::InterpStr(_) => "String",
+                LitValue::Bool(_) => "Bool",
+                LitValue::Null => "Null",
+            },
+            *span,
+        )),
+        Expr::ListLiteral(_, span) => Some(("List", *span)),
+        // `-1` is an Int written with a sign, and reporting it as "not a
+        // literal" would let `port: String = -1` through.
+        Expr::Unary {
+            op: UnaryOp::Neg,
+            rhs,
+            ..
+        } => literal_shape(rhs),
+        _ => None,
+    }
+}
+
+/// Whether a literal of `found` may stand as a default for a field declared
+/// `ty`. Mirrors the check `new` performs, so the two cannot disagree about
+/// what counts as a mismatch.
+fn literal_fits(ty: &TypeName<'_>, found: &str) -> bool {
+    match ty {
+        TypeName::String => found == "String",
+        TypeName::Int => found == "Int",
+        TypeName::Float => found == "Float",
+        TypeName::Bool => found == "Bool",
+        TypeName::List(_) => found == "List",
+        // An object literal is not an expression, so nothing reaches here that
+        // could be judged; `new` sees the value and decides.
+        TypeName::Object | TypeName::Custom(_) => true,
+    }
+}
+
+/// A declared type as the author wrote it, for a message that quotes them back.
+fn type_name_label(ty: &TypeName<'_>) -> String {
+    match ty {
+        TypeName::String => "String".into(),
+        TypeName::Int => "Int".into(),
+        TypeName::Float => "Float".into(),
+        TypeName::Bool => "Bool".into(),
+        TypeName::Object => "Object".into(),
+        TypeName::Custom(n) => (*n).to_string(),
+        TypeName::List(None) => "List".into(),
+        TypeName::List(Some(el)) => format!("[{}]", type_name_label(el)),
+    }
+}
+
+#[cfg(test)]
+mod default_value_tests {
+    use super::tests::{codes, diags};
+
+    /// The declaration is where a bad default is decidable, and it was not being
+    /// decided: `q: Int = "not an int"` passed `check --strict` with nothing to
+    /// say but that the type was unused. The mismatch waited for `new`, and a
+    /// field callers always supply explicitly never reaches `new` with its
+    /// default — so the schema could carry an impossible value indefinitely.
+    #[test]
+    fn a_default_the_field_cannot_accept_is_e0516() {
+        for src in [
+            "type S\n  q: Int = \"not an int\"\nend\nx: 1",
+            "type S\n  q: String = 7\nend\nx: 1",
+            "type S\n  q: Bool = 1\nend\nx: 1",
+            "type S\n  q: Float = 1\nend\nx: 1",
+            "type S\n  q: [Int] = 3\nend\nx: 1",
+            // A signed number is still a number: reading `-1` as "not a literal"
+            // would let this through.
+            "type S\n  q: String = -1\nend\nx: 1",
+        ] {
+            assert!(codes(src).contains(&"E0516"), "no E0516 for: {src}");
+        }
+    }
+
+    /// `= null` has its own message, because the remedy is in the declaration —
+    /// mark the field nullable — rather than in the value.
+    #[test]
+    fn a_null_default_names_the_nullable_marker() {
+        let ds = diags("type S\n  q: Int = null\nend\nx: 1");
+        let d = ds.iter().find(|d| d.code == "E0516").expect("E0516");
+        assert!(d.message.contains("null"), "{}", d.message);
+        assert!(
+            d.help
+                .as_deref()
+                .unwrap_or_default()
+                .contains("q: Int? = null"),
+            "the marker alone still requires the field at `new`: {:?}",
+            d.help
+        );
+    }
+
+    /// Every remedy E0516 prints, run.
+    ///
+    /// The first draft advised `q: Int?` for a null default, which does not
+    /// work: the marker alone still requires the field at `new`, so following
+    /// the advice exchanged one error for another. A help line is a promise
+    /// about code, and the only way to keep it is to execute it.
+    #[test]
+    fn the_e0516_remedies_actually_evaluate() {
+        use crate::facade::{eval_source, EvalOptions};
+        let src = concat!(
+            "type A
+",
+            "  q: Int? = null
+", // the null remedy
+            "end
+",
+            "type B
+",
+            "  ratio: Float = 1.0
+", // the Int-for-Float remedy
+            "end
+",
+            "type C
+",
+            "  q: String = \"7\"
+", // the general remedy: write it as declared
+            "end
+",
+            "a: new A
+end
+",
+            "b: new B
+end
+",
+            "c: new C
+end
+",
+        );
+        let files = std::collections::HashMap::from([("r.aura".to_string(), src.to_string())]);
+        let out = eval_source(files, "r.aura", &EvalOptions::default())
+            .expect("every remedy must evaluate");
+        assert_eq!(out.json["a"]["q"], serde_json::Value::Null);
+        assert_eq!(out.json["b"]["ratio"], 1.0);
+        assert_eq!(out.json["c"]["q"], "7");
+    }
+
+    /// Nothing that was already valid may start failing.
+    #[test]
+    fn a_default_that_fits_is_silent() {
+        let src = concat!(
+            "type S\n",
+            "  a: Int = 2\n",
+            "  b: Float = 1.5\n",
+            "  c: String = \"x\"\n",
+            "  d: Bool = true\n",
+            "  e: [Int] = []\n",
+            // D27: the marker is what makes null admissible.
+            "  f: Int? = null\n",
+            "  g: String = \"v#{1}\"\n",
+            "end\n",
+            "x: 1\n",
+        );
+        assert!(!codes(src).contains(&"E0516"), "{:?}", codes(src));
+    }
+
+    /// A default may be any expression, and what an arbitrary one evaluates to
+    /// is not knowable here. Reporting on a guess would cost more than the check
+    /// is worth, so only literals are judged — and `new` still checks the rest.
+    #[test]
+    fn a_computed_default_is_left_to_new() {
+        let src = "base = 2\ntype S\n  q: String = base + 1\nend\nx: 1";
+        assert!(!codes(src).contains(&"E0516"), "{:?}", codes(src));
+    }
+
+    /// A custom type is an enum or another schema, and which one is not settled
+    /// at this point, so the judgement belongs to `new`.
+    #[test]
+    fn a_custom_typed_field_is_left_to_new() {
+        let src = "enum T\n  \"a\"\nend\ntype S\n  t: T = \"a\"\nend\nx: 1";
+        assert!(!codes(src).contains(&"E0516"), "{:?}", codes(src));
     }
 }
