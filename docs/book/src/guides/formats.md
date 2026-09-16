@@ -30,13 +30,26 @@ aura eval app.aura --format yaml
 aura eval app.aura --format toml       # requires an object at the top level
 ```
 
-From inside the language, with methods — useful for configs nested as strings:
+From inside the language, with methods. Each format has two of them, and the
+choice is about who reads the result:
 
 ```ruby
 configmap:
+  # Read by a program: the compact form, because the newlines would only be
+  # escaped on the way in.
   "app-config.yaml": settings.to_yaml()
+  # Read by a person, in `kubectl get cm -o yaml` or in a diff: spelled out.
+  "reference.yaml": settings.to_yaml_pretty()
 end
 ```
+
+`to_json` / `to_yaml` / `to_toml` give the most compact form the format allows;
+`to_json_pretty` / `to_yaml_pretty` / `to_toml_pretty` give the form a person
+reads. Compact YAML is flow style — `{a: 1, xs: [1, 2]}` — which is ordinary
+YAML, not a dialect. Compact TOML keeps arrays on one line.
+
+The CLI is the other way round: `--format` always writes the spelled-out form,
+because it is producing a document rather than a string that goes inside one.
 
 TOML's limitations become honest `E0603` errors: it has no `null`, and it requires
 an object at the top level.

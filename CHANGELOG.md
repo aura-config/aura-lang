@@ -270,6 +270,29 @@ still change the language.
 
 ### Fixed
 
+- **The Russian method reference was missing half the library.** Twenty-nine of
+  the fifty-eight names in the stdlib manifest appeared in the English book and
+  not the Russian one — `trim`, `split`, `sort`, `sum`, `min`, `max`, `entries`,
+  `to_object`, every fold, and the two methods added this week.
+
+  A reader cannot tell an undocumented method from a nonexistent one. Someone
+  working from the Russian book would conclude there is no way to trim a string
+  and write `replace(" ", "")` instead, which is not the same thing and is wrong
+  at the edges. Nothing reported it, because nothing failed when a method was
+  added and only one translation was updated; the gap grew one change at a time.
+
+  The page is now written against the manifest rather than patched, and
+  `tests/method_reference.rs` keeps it there: both books must document every
+  name the manifest declares, and the two must not disagree. The manifest was
+  already the single source for the language server's completion, for `aura docs
+  --agent` and for `manifest_matches_registry`; this puts the books on the same
+  chain.
+
+  The same pass gave the Russian tutorial the long-numbers section it never got
+  (D29), and both tutorials an explanation of why interpolating a `null` is
+  `E0324` (D31). The formats guide now teaches the compact/spelled-out choice
+  instead of silently showing one of them (D32).
+
 - **Reading a foreign format now reads it faithfully.** Nothing tested Aura as a
   bridge between formats, and probing it with a deliberately hostile document
   found two defects immediately.
