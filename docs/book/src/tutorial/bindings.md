@@ -43,6 +43,35 @@ end
 "Why is the path different in production?" stops being a silent surprise:
 shadowing is always visible as the word `shadow`.
 
+## Long numbers
+
+Group the digits with `_` where it helps the eye:
+
+```aura
+max_bytes: 10_000_000
+retention: 2_592_000
+port:      8_080
+rate:      0.000_001 # in a fraction the groups run away from the point
+```
+
+It is entirely optional: `2371933` and `2_371_933` are the same number, and
+nothing asks you to group anything.
+
+When you do, the separator has to **group by threes, counted away from the
+decimal point**. The short group therefore sits at the front of an integer and
+at the end of a fraction: `8_080`, `1.123_45`.
+
+That is stricter than Go, Ruby or Rust, where `2_3_7_1_9_3_3` is legal. Two
+reasons. A separator free to sit anywhere is a second way to write one number,
+and this language spends its rules removing those. And it misleads: `1_0000_000`
+is ten million, but anyone scanning for threes reads something far larger.
+
+`100_`, `1__0` and `1_.5` are errors too — there is nothing to separate.
+
+This exists because configuration is where long numbers actually live, and a
+miscounted zero is the mistake nothing else catches — the value is valid, the
+type is right, and the service quietly gets ten times what it should.
+
 ## Strings and interpolation
 
 ```ruby

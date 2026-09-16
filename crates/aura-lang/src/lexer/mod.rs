@@ -117,22 +117,107 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// The digits without their separators, borrowed when there are none.
+    ///
+    /// Separators are a reading aid and carry no meaning, so they are dropped
+    /// before the value is parsed. Numbers written plainly — nearly all of them —
+    /// stay zero-copy, which is the invariant the whole lexer is built on.
+    fn digits_of(text: &str) -> std::borrow::Cow<'_, str> {
+        if text.as_bytes().contains(&b'_') {
+            std::borrow::Cow::Owned(text.replace('_', ""))
+        } else {
+            std::borrow::Cow::Borrowed(text)
+        }
+    }
+
+    /// A run of digits, with `_` allowed only where it groups by three (D29).
+    ///
+    /// Two rules, and both exist because a separator is *only* a reading aid.
+    ///
+    /// It must sit between two digits: `100_`, `1__0` and `1_.5` have no reading
+    /// clearer than the number without them.
+    ///
+    /// And the groups must be threes, counted away from the decimal point —
+    /// `10_000_000`, `0.000_001`. This is stricter than Go, Ruby or Rust, where
+    /// `2_3_7_1_9_3_3` is legal, and deliberately so. A separator free to sit
+    /// anywhere is a second way to write one number, which is what D4 and D7
+    /// spend their rules removing. Worse, it misleads: `1_0000_000` is ten
+    /// million, but a reader scanning for threes sees a far larger number.
+    ///
+    /// The cost is Indian grouping (`1_00_00_000`), which has to be written
+    /// without separators. The caller has already established that the first
+    /// byte is a digit.
+    fn scan_digit_run(&mut self, fractional: bool) -> Result<(), Diagnostic> {
+        let mut groups: Vec<(usize, usize)> = Vec::new(); // (start, len)
+        loop {
+            let g_start = self.pos;
+            while matches!(self.peek(), Some(b'0'..=b'9')) {
+                self.pos += 1;
+            }
+            groups.push((g_start, self.pos - g_start));
+            if self.peek() != Some(b'_') {
+                break;
+            }
+            let sep = self.pos;
+            self.pos += 1;
+            if !matches!(self.peek(), Some(b'0'..=b'9')) {
+                return Err(self.separator_error(
+                    sep,
+                    "a digit separator must sit between two digits",
+                    "nothing to separate here",
+                ));
+            }
+        }
+        if groups.len() < 2 {
+            return Ok(()); // no separator at all: nothing to check
+        }
+        // Integer part: the first group carries the remainder (1..=3), the rest
+        // are exact threes. Fractional part: the last group carries it instead,
+        // because there the groups are counted away from the point.
+        // Which group may be short: the first in an integer, the last in a
+        // fraction, because the threes are counted away from the point.
+        let head = if fractional { groups.len() - 1 } else { 0 };
+        for (i, (start, len)) in groups.iter().enumerate() {
+            let ok = if i == head {
+                (1..=3).contains(len)
+            } else {
+                *len == 3
+            };
+            if !ok {
+                return Err(self.separator_error(
+                    *start,
+                    "digit groups must be threes",
+                    "this group is not three digits",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn separator_error(&self, at: usize, msg: &'static str, label: &'static str) -> Diagnostic {
+        let mut d = Diagnostic::error("E0108", msg, Span::new(self.source, at, at + 1), label);
+        d.help = Some(
+            "group by threes away from the decimal point: 10_000_000, 0.000_001 \
+             — or write the number without separators"
+                .to_string(),
+        );
+        d
+    }
+
     /// Number DFA (SPEC §2.2): Int(i64) | Float(f64); `12.foo` — rollback, `12.` — E0101.
     fn lex_number(&mut self) -> Result<TokenKind<'a>, Diagnostic> {
         let start = self.pos;
-        while matches!(self.peek(), Some(b'0'..=b'9')) {
-            self.pos += 1;
-        }
+        self.scan_digit_run(false)?;
         if self.peek() == Some(b'.') {
             match self.peek_at(1) {
                 Some(b'0'..=b'9') => {
                     self.pos += 1;
-                    while matches!(self.peek(), Some(b'0'..=b'9')) {
-                        self.pos += 1;
-                    }
+                    self.scan_digit_run(true)?;
                     let text = &self.src[start..self.pos];
                     return Ok(TokenKind::Float(
-                        text.parse().expect("DFA guarantees valid float"),
+                        Self::digits_of(text)
+                            .parse()
+                            .expect("DFA guarantees valid float"),
                     ));
                 }
                 Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => {} // rollback: Int, then Dot, Ident
@@ -147,14 +232,17 @@ impl<'a> Lexer<'a> {
             }
         }
         let text = &self.src[start..self.pos];
-        text.parse::<i64>().map(TokenKind::Int).map_err(|_| {
-            Diagnostic::error(
-                "E0103",
-                "integer literal overflows i64",
-                self.span(start),
-                "does not fit in i64",
-            )
-        })
+        Self::digits_of(text)
+            .parse::<i64>()
+            .map(TokenKind::Int)
+            .map_err(|_| {
+                Diagnostic::error(
+                    "E0103",
+                    "integer literal overflows i64",
+                    self.span(start),
+                    "does not fit in i64",
+                )
+            })
     }
 
     /// String DFA (SPEC §2.3): a plain slice without escapes/interp; InterpStr for `#{...}`.
@@ -808,6 +896,87 @@ mod tests {
         // one after `type P`, one after each of the two fields, one after `end`
         // is suppressed at EOF - so three.
         assert_eq!(newlines, 3, "the separator after `Int?` must survive");
+    }
+
+    fn kinds_of(src: &str) -> Vec<TokenKind<'_>> {
+        Lexer::new(src, 0)
+            .tokenize()
+            .expect("lex ok")
+            .into_iter()
+            .map(|t| t.kind)
+            .collect()
+    }
+
+    #[test]
+    fn digit_separators_are_read_and_dropped() {
+        // D29: `_` between digits is a reading aid for the numbers configuration
+        // is actually full of - byte limits, quotas, ports.
+        use TokenKind::*;
+        assert_eq!(kinds_of("10_000_000"), vec![Int(10_000_000), Eof]);
+        assert_eq!(kinds_of("8_080"), vec![Int(8080), Eof]);
+        assert_eq!(kinds_of("0.123_456_789"), vec![Float(0.123_456_789), Eof]);
+        assert_eq!(kinds_of("0.000_001"), vec![Float(0.000_001), Eof]);
+        // A number written plainly is untouched, and still borrows its slice.
+        assert_eq!(kinds_of("42"), vec![Int(42), Eof]);
+    }
+
+    #[test]
+    fn a_separator_must_have_a_digit_on_each_side() {
+        for src in ["100_", "1__0", "1_.5", "1_000_", "1_ + 2"] {
+            let err = Lexer::new(src, 0)
+                .tokenize()
+                .expect_err(&format!("{src} must not lex"));
+            assert_eq!(err.code, "E0108", "for {src}");
+            assert!(
+                err.help.unwrap_or_default().contains("10_000_000"),
+                "the fix must be shown for {src}"
+            );
+        }
+    }
+
+    #[test]
+    fn separators_must_group_by_threes() {
+        // Stricter than Go, Ruby and Rust on purpose. A separator free to sit
+        // anywhere is a second way to write one number — and worse, it misleads:
+        // `1_0000_000` is ten million, while a reader scanning for threes sees
+        // something far larger.
+        for src in ["2_3_7_1_9_3_3", "1_0000_000", "10_00_000", "1.12_345"] {
+            let err = Lexer::new(src, 0)
+                .tokenize()
+                .expect_err(&format!("{src} must not lex"));
+            assert_eq!(err.code, "E0108", "for {src}");
+            assert!(
+                err.message.contains("threes"),
+                "the message must name the rule for {src}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_short_group_is_allowed_where_the_counting_starts() {
+        // Threes are counted away from the decimal point, so the remainder sits
+        // at the front of an integer and at the end of a fraction.
+        use TokenKind::*;
+        assert_eq!(kinds_of("8_080"), vec![Int(8080), Eof]);
+        assert_eq!(kinds_of("12_345_678"), vec![Int(12_345_678), Eof]);
+        assert_eq!(kinds_of("1.123_45"), vec![Float(1.123_45), Eof]);
+    }
+
+    #[test]
+    fn separators_are_never_required() {
+        // The sugar is optional and changes nothing: the same digits give the
+        // same token either way.
+        use TokenKind::*;
+        assert_eq!(kinds_of("2371933"), vec![Int(2_371_933), Eof]);
+        assert_eq!(kinds_of("2_371_933"), kinds_of("2371933"));
+    }
+
+    #[test]
+    fn a_leading_underscore_is_still_an_identifier() {
+        // `_x` was a name before D29 and stays one: the separator rule only
+        // applies inside a run that already started with a digit.
+        use TokenKind::*;
+        assert_eq!(kinds_of("_x"), vec![Ident("_x"), Eof]);
     }
 
     #[test]

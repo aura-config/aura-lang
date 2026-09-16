@@ -24,6 +24,7 @@ position, because nothing was parsed yet.
 | E0105 | unexpected character | |
 | E0106 | an unclosed `#{` interpolation | |
 | E0107 | an unterminated block string | close it with `end` at the opener's indentation (D16) |
+| E0108 | a digit separator is misplaced | `_` groups by threes away from the point: `10_000_000`, `0.000_001` — never `100_`, `1__0` or `2_3_7_1_9_3_3` |
 
 ## Syntax (E02xx)
 
