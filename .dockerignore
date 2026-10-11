@@ -1,0 +1,8 @@
+# The ClusterFuzzLite image is built with the repository as its context.
+# Build output is gigabytes locally and never needed inside the image.
+target/
+fuzz/target/
+fuzz/artifacts/
+crates/aura-wasm/target/
+editors/vscode/node_modules/
+.git/
