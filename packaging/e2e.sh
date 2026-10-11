@@ -198,6 +198,17 @@ expect_code "E0505" "the hermetic refusal is E0505"
 run check --hermetic app.aura
 expect_rc 0 "check --hermetic accepts a manifest that performs no I/O"
 
+# Every evaluation has a budget (D34). The 95-byte manifest that motivated it
+# passes `check --hermetic` and would run for over a minute; the shipped binary
+# must stop it with a budget error instead, whatever the platform.
+printf 'x: range(1000).map (a, i) -> range(1000).map (b, j) -> range(1000).map (c, k) -> 1 end end end\n' >runaway.aura
+run eval runaway.aura
+expect_rc 1 "the default budget stops a runaway manifest"
+expect_code "E032" "the refusal is a budget error"
+
+run eval runaway.aura --max-steps 5000
+expect_code "E0325" "--max-steps narrows the step budget"
+
 # The reference an assistant is told to fetch has to actually come out of the
 # shipped binary, not just out of a test.
 run docs --agent

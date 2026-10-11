@@ -3,7 +3,7 @@
 ```text
 aura eval <file.aura>  [--strict] [--dry-run] [--frozen]
                        [--allow-read=<dir>]... [--allow-env[=A,B]] [--allow-imports-io]
-                       [--hermetic]
+                       [--hermetic] [--max-steps=N] [--max-memory=MB] [--stats]
                        [--format json|json-flat|yaml|toml] [-o out] [--registry-dir=<dir>]
 aura check <file.aura> [--strict] [--hermetic]
 aura docs --agent [-o <file>]
@@ -26,6 +26,9 @@ aura --version
 | `--allow-env[=A,B]` | право на `env()`: список имён либо все |
 | `--hermetic` | никакого I/O: `env()` и `read_file()` — это `E0505` где угодно. Несовместим с флагами `--allow-*` |
 | `--allow-imports-io` | выдать импортам права корня |
+| `--max-steps=N` | сколько выражений вычисление может выполнить, прежде чем остановится с `E0325`. По умолчанию десять миллионов |
+| `--max-memory=MB` | сколько мебибайт значений оно может создать, прежде чем остановится с `E0326`. По умолчанию 256 |
+| `--stats` | напечатать в stderr, сколько шагов и байтов израсходовано |
 | `--format` | `json` (по умолчанию) / `json-flat` / `yaml` / `toml` |
 | `-o, --output <file>` | записать в файл вместо stdout |
 | `--registry-dir=<dir>` | каталог кэша пакетов (по умолчанию `~/.aura/registry`) |

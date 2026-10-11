@@ -51,6 +51,10 @@ pub struct EvalOptions {
     /// Values `env()` sees before the process environment is consulted. A host
     /// without a process environment — wasm in a browser — supplies them here.
     pub env_overrides: HashMap<String, String>,
+    /// How much the evaluation may do (D34): steps and bytes, finite by default,
+    /// so a manifest that runs away — including one pulled in as a dependency —
+    /// ends with `E0325` / `E0326` rather than hanging its host.
+    pub budget: crate::Budget,
 }
 
 /// A plain-form diagnostic: the host renders it itself, with no dependency on ariadne.
@@ -90,6 +94,8 @@ pub struct Evaluated {
     pub warnings: Vec<Report>,
     /// The updated aura.lock, if new entries appeared (the host decides whether to write it).
     pub updated_lockfile: Option<String>,
+    /// What the evaluation spent, so a budget can be set from a measurement.
+    pub usage: crate::Usage,
 }
 
 /// Evaluates a manifest with all its imports and returns a JSON representation.
@@ -188,7 +194,10 @@ fn run(
     interp.allow_imports_io = opts.allow_imports_io;
     interp.env_overrides = opts.env_overrides.clone();
 
+    let meter = opts.budget.begin(&mut interp);
     let result = interp_eval(&mut loader, &mut interp, file_name);
+    let usage = meter.usage(&interp);
+    drop(meter);
 
     let mut reports: Vec<Report> = loader.diags.iter().map(|d| to_report(d, cache)).collect();
     let value = match result {
@@ -212,6 +221,7 @@ fn run(
         json,
         warnings: reports,
         updated_lockfile,
+        usage,
     })
 }
 

@@ -3,7 +3,7 @@
 ```text
 aura eval <file.aura>  [--strict] [--dry-run] [--frozen]
                        [--allow-read=<dir>]... [--allow-env[=A,B]] [--allow-imports-io]
-                       [--hermetic]
+                       [--hermetic] [--max-steps=N] [--max-memory=MB] [--stats]
                        [--format json|json-flat|yaml|toml] [-o out] [--registry-dir=<dir>]
 aura check <file.aura> [--strict] [--hermetic]
 aura docs --agent [-o <file>]
@@ -26,6 +26,9 @@ Evaluates a manifest with all its imports and prints the result.
 | `--allow-env[=A,B]` | permits `env()`: either a list of names, or all of them |
 | `--allow-imports-io` | extends the root's rights to imported modules |
 | `--hermetic` | no I/O at all: `env()` and `read_file()` are `E0505` wherever they appear. Mutually exclusive with the `--allow-*` flags |
+| `--max-steps=N` | expressions the evaluation may run before it stops with `E0325`. Default ten million |
+| `--max-memory=MB` | mebibytes of values it may create before it stops with `E0326`. Default 256 |
+| `--stats` | print the steps and bytes the evaluation spent, to stderr |
 | `--format` | `json` (default), `json-flat`, `yaml` or `toml` |
 | `-o, --output <file>` | write to a file instead of stdout |
 | `--registry-dir=<dir>` | the package cache directory (default `~/.aura/registry`) |
