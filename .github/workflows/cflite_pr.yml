@@ -1,0 +1,33 @@
+# ClusterFuzzLite on pull requests: a short run aimed at the code the change
+# touches, starting from the corpus the nightly batch has accumulated rather
+# than from nothing. A crash fails the check and leaves a reproducer.
+name: ClusterFuzzLite (PR)
+on:
+  pull_request:
+    paths:
+      - "crates/aura-lang/**"
+      - "fuzz/**"
+      - ".clusterfuzzlite/**"
+      - ".github/workflows/cflite_*.yml"
+permissions: read-all
+jobs:
+  fuzz:
+    name: Fuzz the change
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Build fuzzers
+        uses: google/clusterfuzzlite/actions/build_fuzzers@v1
+        with:
+          language: rust
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          sanitizer: address
+      - name: Run fuzzers
+        uses: google/clusterfuzzlite/actions/run_fuzzers@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fuzz-seconds: 420
+          mode: code-change
+          sanitizer: address

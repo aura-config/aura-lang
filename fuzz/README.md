@@ -19,6 +19,10 @@ Windows/MSVC is not supported). On Windows, run it from **WSL** (see below).
   `Diagnostic`, never a crash.
 - **`fuzz_resolve`** — name resolution: every span it reports must be in bounds
   and on a char boundary, or a consumer slicing by it would panic instead.
+- **`fuzz_bridge`** — the JSON, YAML and TOML readers on raw bytes: malformed
+  input is a diagnostic, never a panic, and whatever is read survives being
+  written out and read back unchanged. It found the same digits meaning
+  different numbers depending on the format that carried them.
 
 ## Seed corpora
 
@@ -80,6 +84,24 @@ cargo +nightly fuzz run fuzz_pipeline -- -max_total_time=90 -rss_limit_mb=2048
 
 This is the fastest local reproducer: two char-boundary panics (a block-string
 NBSP indent strip and `parse_datetime`'s byte-indexed `split_at`) were confirmed
-and fixed this way before relying on the non-blocking CI fuzz job.
+and fixed this way.
 
-CI runs each target for a bounded time on Linux nightly (a non-blocking job).
+## In CI: ClusterFuzzLite
+
+Fuzzing in CI runs through [ClusterFuzzLite](https://google.github.io/clusterfuzzlite/),
+configured in [`.clusterfuzzlite/`](../.clusterfuzzlite) and two workflows:
+
+- **nightly** (`cflite_batch.yml`) — an hour across every target, keeping the
+  corpus between runs. This is the fuzzing that goes deep.
+- **per pull request** (`cflite_pr.yml`) — a short run aimed at the changed code,
+  starting from the corpus the nightly job has accumulated. A crash **fails the
+  check** and leaves a reproducer as an artifact.
+
+The targets are read from `cargo fuzz list`, so a new file in `fuzz_targets/` is
+fuzzed in CI without being registered anywhere else. Each starts from its
+committed corpus under `corpus/<target>/` plus every example in `examples/`.
+
+The job this replaced ran a hand-written list of targets for sixty seconds each,
+from an empty corpus, and could not fail: `continue-on-error` hid every crash
+unless someone opened the log. Its list had six targets while seven existed, and
+the one missing, `fuzz_bridge`, was the one that had found a real defect.

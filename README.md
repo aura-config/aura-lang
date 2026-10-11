@@ -566,7 +566,7 @@ cost — treat them as an order of magnitude, and re-run them on yours.
 | End to end | [packaging/e2e.sh](packaging/e2e.sh) asserts 26 documented claims — exit codes, capability refusals, hermetic mode, output formats, and byte-identical output across two runs |
 | Containers | on a tag, those artefacts run on debian:12, ubuntu:22.04, alpine, ubuntu:20.04, and aarch64 under emulation |
 | Miri | the source arena, under **both** Stacked Borrows and Tree Borrows |
-| Fuzzing | a `cargo-fuzz` target per stage: lexer, parser, pipeline, formatter, codegen, resolver, and the JSON/YAML/TOML readers |
+| Fuzzing | a `cargo-fuzz` target per stage: lexer, parser, pipeline, formatter, codegen, resolver, and the JSON/YAML/TOML readers. [ClusterFuzzLite](https://google.github.io/clusterfuzzlite/) runs them nightly with a corpus kept between runs, and on every pull request that touches the compiler |
 | Cross-platform | `cargo check` for freebsd, aarch64-linux, musl and wasm32 |
 | Documentation | snippets must be canonical `aura fmt` and name nothing the language lacks; the diagnostic catalogue, the method reference and the decision log must match the compiler, in both languages |
 

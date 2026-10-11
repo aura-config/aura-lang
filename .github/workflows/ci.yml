@@ -233,29 +233,3 @@ jobs:
           wasm-bindgen target/wasm32-unknown-unknown/release/aura_wasm.wasm \
             --out-dir pkg-node --target nodejs --no-typescript
           node smoke.cjs
-
-  # Coverage-guided fuzzing (nightly + libFuzzer). Non-blocking: a smoke run of
-  # each target for a bounded time, seeded from examples/. See fuzz/README.md.
-  fuzz:
-    name: Fuzz (nightly, smoke)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@nightly
-      - uses: Swatinem/rust-cache@v2
-        with:
-          # Only the default branch writes caches. Every branch that saves its own
-          # would multiply a ~1.4 GB generation per pull request against a 10 GB
-          # repository quota; pull requests still read main's cache, which is where
-          # the speed-up actually comes from. A changed Cargo.lock already creates a
-          # fresh generation on its own.
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - run: cargo install cargo-fuzz --locked
-      - name: Smoke-run each target (60s)
-        # LeakSanitizer stays on: the interpreter's env arena + Weak closures keep
-        # evaluation leak-free (see eval::env, D9). A regression here is a real leak.
-        run: |
-          for t in fuzz_lexer fuzz_parser fuzz_pipeline fuzz_fmt fuzz_codegen fuzz_resolve; do
-            cargo fuzz run "$t" -- -rss_limit_mb=1024 -timeout=10 -max_total_time=60
-          done
