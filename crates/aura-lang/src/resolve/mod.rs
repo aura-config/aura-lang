@@ -140,7 +140,23 @@ struct Resolver<'a> {
 }
 
 impl<'a> Resolver<'a> {
+    /// A span from the expression being walked, made absolute. Inside `#{...}`
+    /// the expression was lexed from the interpolated text alone, so its spans
+    /// start at zero there; `bias` is where that text sits in the file.
+    ///
+    /// Every span the resolver records goes through here. It used to be applied
+    /// to uses only, which left declarations and scopes made inside an
+    /// interpolation pointing near the top of the file.
+    fn abs(&self, span: Span) -> Span {
+        Span {
+            source: span.source,
+            start: span.start + self.bias,
+            end: span.end + self.bias,
+        }
+    }
+
     fn push(&mut self, range: Span) {
+        let range = self.abs(range);
         self.scopes.push(Scope {
             range,
             decls: HashMap::new(),
@@ -156,6 +172,7 @@ impl<'a> Resolver<'a> {
     }
 
     fn declare_vis(&mut self, name: &'a str, decl: Span, kind: BindingKind, public: bool) {
+        let decl = self.abs(decl);
         let scope = self.scopes.last().map(|s| s.range).unwrap_or(decl);
         self.out.bindings.push(Binding {
             name: name.to_string(),
@@ -193,11 +210,7 @@ impl<'a> Resolver<'a> {
     }
 
     fn use_of(&mut self, name: &str, span: Span) {
-        let span = Span {
-            source: span.source,
-            start: span.start + self.bias,
-            end: span.end + self.bias,
-        };
+        let span = self.abs(span);
         let binding = self.lookup(name, span.start);
         self.out.uses.push(Use { span, binding });
     }
@@ -475,19 +488,27 @@ impl<'a> Resolver<'a> {
         let Some(base) = subslice_offset(self.src, sub) else {
             return;
         };
-        let Ok(expr) = Lexer::new(sub, outer.source)
-            .tokenize()
-            .and_then(|toks| Parser::new(toks).parse_expression())
-        else {
+        let Ok(sub_toks) = Lexer::new(sub, outer.source).tokenize() else {
+            return;
+        };
+        let Ok(expr) = Parser::new(sub_toks.clone()).parse_expression() else {
             return;
         };
         // Walk it in the *current* scopes — interpolation sees the enclosing
         // bindings — with the bias that turns its spans absolute, so resolution
         // (which is position-sensitive) sees the real offsets too.
+        //
+        // And with the interpolation's own tokens. Declarations are narrowed to
+        // their name by searching `toks`, and to the file's lexer the whole
+        // string is one token: a lambda parameter inside `#{...}` has no token
+        // of its own there, so the search used to land on whatever unrelated
+        // identifier sat near the top of the file.
         let outer_bias = self.bias;
+        let outer_toks = std::mem::replace(&mut self.toks, sub_toks);
         self.bias = base;
         self.walk_expr(&expr);
         self.bias = outer_bias;
+        self.toks = outer_toks;
     }
 }
 
@@ -515,6 +536,52 @@ mod tests {
             .into_iter()
             .map(|s| (s.start, &src[s.start as usize..s.end as usize]))
             .collect()
+    }
+
+    /// Every occurrence of a lambda parameter declared inside `#{...}` must be
+    /// the parameter's own text, wherever the interpolation sits.
+    ///
+    /// Uses inside an interpolation were shifted to absolute offsets, but the
+    /// declarations and scopes made there were not: a parameter's `decl` was
+    /// relative to the start of the interpolated text, so it pointed near the
+    /// top of the file. A rename would have rewritten whatever bytes happened
+    /// to sit there. ClusterFuzzLite found it the first night, on a block
+    /// string where the wrong offset landed inside a three-byte `—`; plain
+    /// ASCII hid it, because a wrong offset there is still a valid one.
+    #[test]
+    fn a_lambda_inside_interpolation_points_at_its_own_parameter() {
+        for src in [
+            // Plain ASCII in an ordinary string: wrong, but silently.
+            "x: \"#{[1].map (p, i) -> p end}\"\n",
+            // The minimised fuzz input: a block string, and a multibyte
+            // character right before the interpolation.
+            "dcf:text\nr \u{2014}#{s.a(p)->\"\"end\nend",
+            // Indented block content with a multibyte character, the shape the
+            // fuzzer started from.
+            "conf: text\n  # \u{2014} managed\n  #{[1].map (ip, i) -> \"#{ip}\" end.join(\",\")}\nend\n",
+        ] {
+            let r = resolved(src);
+            for b in &r.bindings {
+                let (s, e) = (b.decl.start as usize, b.decl.end as usize);
+                assert!(
+                    e <= src.len() && src.is_char_boundary(s) && src.is_char_boundary(e),
+                    "decl {s}..{e} of '{}' is not a valid range in {src:?}",
+                    b.name
+                );
+                assert_eq!(
+                    &src[s..e],
+                    b.name,
+                    "the declaration of '{}' points at other text in {src:?}",
+                    b.name
+                );
+                let (s, e) = (b.scope.start as usize, b.scope.end as usize);
+                assert!(
+                    s <= b.decl.start as usize && b.decl.end as usize <= e,
+                    "'{}' is declared outside its own scope {s}..{e} in {src:?}",
+                    b.name
+                );
+            }
+        }
     }
 
     #[test]
