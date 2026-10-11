@@ -14,7 +14,7 @@ with Claude, an AI model by Anthropic, which wrote the code and the tests that k
 the documentation honest. [How Aura is built](README.md#how-aura-is-built) tells
 the longer story.
 
-The minor number moves because behaviour moved. Three changes reject or
+The minor number moves because behaviour moved. Four changes reject or
 re-render something 0.1.1 accepted, so a manifest that worked before may need
 one edit — each is listed under **Changed** below with what to do about it.
 
