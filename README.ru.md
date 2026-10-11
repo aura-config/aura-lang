@@ -484,8 +484,19 @@ let cfg: MyConfig = serde_json::from_value(out.json)?;
 
 `pub def` манифеста — тоже вызываемое значение, поэтому правила могут жить в
 `.aura`-файле, а приложение вызывать их на каждый запрос, меняя поведение без
-пересборки. Это **набросок, а не поддерживаемый API** — см.
-`cargo run --example scripting` и D19 в [SPEC.md](SPEC.md).
+пересборки:
+
+```rust
+use aura_lang::Script;
+
+let rules = Script::load("rules.aura")?;            // герметично: доказывает, что ничего не читает
+let route: Route = rules.call("route", (path, method))?;
+```
+
+У каждого вызова бюджет в шагах и байтах, память на вызов постоянна, и один
+`Script` обслуживает все потоки. См.
+[руководство по встраиванию](https://aura-config.github.io/aura-lang/book/ru/guides/embedding.html)
+и `cargo run --example embedding`.
 
 </details>
 

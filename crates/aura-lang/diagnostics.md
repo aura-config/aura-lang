@@ -12,6 +12,11 @@ position, because nothing was parsed yet.
 | Code | Meaning | How to fix it |
 | --- | --- | --- |
 | E0001 | the host could not open a file, or `aura.lock` is unreadable | the message carries the underlying I/O error |
+| E0002 | the script exports nothing by that name | check the name; only `:` properties and `pub def` are exports |
+| E0003 | the export is not a function | bind it with `get`, not `function` or `call` |
+| E0004 | the function takes a different number of arguments | checked when the function is bound, before any call |
+| E0005 | an argument has no exact Aura value | an integer past `i64`, a NaN or an infinity, a byte string; refused rather than coerced |
+| E0006 | the result does not match the host's type | the message names the path inside the value where it did not |
 
 ## Lexing (E01xx)
 
@@ -70,6 +75,8 @@ position, because nothing was parsed yet.
 | E0322 | a concatenated list or string exceeds its size limit | `+` doubles: 1M elements / 16 MiB is the ceiling |
 | E0323 | `to_object()` got the same key twice | a silent overwrite would depend on element order; deduplicate first |
 | E0324 | `null` rendered as text | interpolation and `to_str()` must agree; say what the empty case prints (D31) |
+| E0325 | a call ran out of its step budget | the budget is per call, set by the host (D33); give it more, or pass less work into one call |
+| E0326 | a call ran out of its memory budget | counted as every value the call creates; give it more, or pass less work into one call |
 | E0398 | internal: a closure's environment was dropped | a bug in Aura — please report it with the manifest |
 | E0399 | call depth exceeded (256) | recursion in a function? |
 | E0533 | `now()` and `timestamp()` do not exist | the host passes time in: `env("BUILD_TIME", ...)` (D13) |

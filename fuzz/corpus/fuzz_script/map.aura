@@ -1,0 +1,3 @@
+pub def f()
+  xs: range(10).map (a, i) -> a * 2 end
+end

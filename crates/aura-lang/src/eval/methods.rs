@@ -3,7 +3,6 @@
 
 use indexmap::IndexMap;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use super::value::{TypeTag, Value};
 use super::{Interpreter, TextCtx};
@@ -1713,9 +1712,9 @@ fn json_to_value<'a>(j: serde_json::Value) -> Value<'a> {
         }
         serde_json::Value::String(s) => Value::str(s),
         serde_json::Value::Array(xs) => Value::list(xs.into_iter().map(json_to_value).collect()),
-        serde_json::Value::Object(m) => Value::Object(Arc::new(
-            m.into_iter().map(|(k, v)| (k, json_to_value(v))).collect(),
-        )),
+        serde_json::Value::Object(m) => {
+            Value::object(m.into_iter().map(|(k, v)| (k, json_to_value(v))).collect())
+        }
     }
 }
 
@@ -1727,8 +1726,8 @@ fn toml_to_value<'a>(t: toml::Value) -> Value<'a> {
         toml::Value::Boolean(b) => Value::Bool(b),
         toml::Value::Datetime(d) => Value::str(d.to_string()),
         toml::Value::Array(xs) => Value::list(xs.into_iter().map(toml_to_value).collect()),
-        toml::Value::Table(t) => Value::Object(Arc::new(
-            t.into_iter().map(|(k, v)| (k, toml_to_value(v))).collect(),
-        )),
+        toml::Value::Table(t) => {
+            Value::object(t.into_iter().map(|(k, v)| (k, toml_to_value(v))).collect())
+        }
     }
 }

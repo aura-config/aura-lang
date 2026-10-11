@@ -13,6 +13,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 aura-lang = { path = "../crates/aura-lang" }
+serde = "1"
 
 [workspace]
 
@@ -62,6 +63,13 @@ bench = false
 [[bin]]
 name = "fuzz_bridge"
 path = "fuzz_targets/fuzz_bridge.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_script"
+path = "fuzz_targets/fuzz_script.rs"
 test = false
 doc = false
 bench = false

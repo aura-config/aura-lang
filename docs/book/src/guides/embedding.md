@@ -8,7 +8,7 @@
 # and ureq — which the library never uses. Measured on an empty project: 38
 # packages instead of 96. The feature is on by default only so that
 # `cargo install aura-lang` produces the `aura` binary.
-aura-lang = { version = "0.1", default-features = false }
+aura-lang = { version = "0.2", default-features = false }
 ```
 
 ```rust
@@ -37,25 +37,62 @@ A manifest that exists only in memory — a test harness, a browser, an editor
 holding unsaved buffers — goes through `eval_source` instead, which takes a map of
 name to text and resolves imports inside it.
 
-A note on threads: `Interpreter` is not `Send`, and every `eval_file` call is
-self-contained, so in an async context wrap the whole call in `spawn_blocking`.
+In an async context, wrap `eval_file` in `spawn_blocking`: it reads files and
+evaluates synchronously.
 
-### Sketch: rules the application executes, not just data it reads
+### Calling into a script: `Script`
 
 `eval_file` returns JSON, and JSON cannot hold a function. But an Aura `pub def`
-*is* a value, and the interpreter can call one — so a script can define
-`route(path, method)` and the application can call it per request, changing
-behaviour by editing a file rather than rebuilding.
+*is* a value, so rules can live in a `.aura` file and the application can call
+them — per request, per event, per batch — changing behaviour by editing the file
+rather than rebuilding. `Script` is the type for that (D33).
 
-`cargo run --example scripting` in this repository demonstrates it end to end.
+```rust
+use aura_lang::{Budget, Script};
 
-It is marked a sketch deliberately. The pieces are public API and work today,
-but reaching them means dropping below `facade` and keeping the `SourceCache`
-alive by hand, and a script still cannot call *back* into the application.
-Closing that second gap has to be shaped like the capability model rather than
-bolted beside it — arbitrary host functions would give away exactly the property
-that makes Aura worth embedding, that `aura check --hermetic` can prove a script
-touches nothing before you run it.
+#[derive(serde::Serialize)]
+struct Event { device: String, temp_c: f64 }
+
+#[derive(serde::Deserialize)]
+struct Summary { total: u64, alerts: u64 }
+
+let rules = Script::builder()
+    .file("telemetry.aura")
+    .budget(Budget::per_call().steps(5_000_000).memory_mb(32))
+    .load()?;                                                // parse, analyse, prove hermetic — once
+
+let summarize = rules.function::<(&[Event],), Summary>("summarize")?;  // name, kind, arity — checked now
+
+for chunk in events.chunks(10_000) {
+    let s = summarize.call((chunk,))?;                       // one call, one budget, nothing left behind
+}
+```
+
+What it guarantees, in the order the decision ranks them:
+
+- **Hermetic by default.** With no grants, `load` proves statically that the
+  script reads no file, variable or clock, and fails with `E0505` if it could —
+  on a branch that never runs, too. `allow_env` and `allow_read` grant exactly
+  what `--allow-env` and `--allow-read` do, and reach the root module only.
+- **Every call has a budget**, counted in steps and bytes — never in time, which
+  would make the outcome depend on the machine. A runaway ends with `E0325` or
+  `E0326` instead of stalling the host. The default is finite.
+- **Memory per call is constant.** Each call runs in its own interpreter and
+  releases what it made when it returns.
+- **The boundary is checked.** Arguments cross by `serde`; an integer past `i64`
+  or a NaN is `E0005` rather than a silently different input, and a result that
+  does not fit your type is `E0006`, naming the path inside it.
+- **`Script` is `Send + Sync`.** One instance serves every thread.
+
+Measured on one core: a call costs about 1.2 µs, and a rule over events processes
+roughly 0.9 million events a second called per event, 1.3 million in batches —
+`cargo bench --bench script`. `cargo run --example embedding` runs the example
+above end to end.
+
+What it deliberately does not do yet is let a script call *back* into the
+application. That has to be shaped like the capability model rather than bolted
+beside it: arbitrary host functions would give away the property that makes Aura
+worth embedding, that `load` can prove a script touches nothing before it runs.
 
 ## Any language: a subprocess
 

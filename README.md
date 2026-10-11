@@ -479,9 +479,20 @@ let cfg: MyConfig = serde_json::from_value(out.json)?;
 There is no intermediate file: the application reads the manifest itself.
 
 A manifest's `pub def` is also a callable value, so rules can live in a `.aura`
-file and be executed by the application per request, changing behaviour without a
-rebuild. That is a **sketch, not a supported API** — see
-`cargo run --example scripting` and D19 in [SPEC.md](SPEC.md).
+file and the application can call them per request, changing behaviour without a
+rebuild:
+
+```rust
+use aura_lang::Script;
+
+let rules = Script::load("rules.aura")?;            // hermetic: proves it reads nothing
+let route: Route = rules.call("route", (path, method))?;
+```
+
+Every call has a budget in steps and bytes, memory per call is constant, and one
+`Script` serves every thread. See the
+[embedding guide](https://aura-config.github.io/aura-lang/book/guides/embedding.html)
+and `cargo run --example embedding`.
 
 </details>
 

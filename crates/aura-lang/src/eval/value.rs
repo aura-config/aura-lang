@@ -115,15 +115,22 @@ impl<'a> Value<'a> {
     }
 
     pub fn object(map: IndexMap<String, Value<'a>>) -> Self {
+        super::budget::charge(
+            map.len() * std::mem::size_of::<(String, Value<'a>)>()
+                + map.keys().map(String::len).sum::<usize>(),
+        );
         Value::Object(Arc::new(map))
     }
 
     pub fn list(items: Vec<Value<'a>>) -> Self {
+        super::budget::charge_list(items.len());
         Value::List(Arc::new(items))
     }
 
     pub fn str(s: impl AsRef<str>) -> Self {
-        Value::Str(Arc::from(s.as_ref()))
+        let s = s.as_ref();
+        super::budget::charge(s.len());
+        Value::Str(Arc::from(s))
     }
 }
 

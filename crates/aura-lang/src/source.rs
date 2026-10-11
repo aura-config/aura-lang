@@ -1,7 +1,7 @@
 //! The source owner (SPEC §1.2): every `&'a str` in the lexer/AST/Value borrows from here.
 //! An append-only arena: entries are never removed or mutated.
 
-use std::cell::RefCell;
+use std::sync::{Mutex, MutexGuard};
 
 use crate::span::SourceId;
 
@@ -24,14 +24,34 @@ use crate::span::SourceId;
 /// retags nothing, shared references derived from it stay valid, and `Drop` frees
 /// through the same provenance it was created with. Checked under both Stacked
 /// Borrows and Tree Borrows; see `references_survive_later_insertions_and_reallocation`.
+///
+/// A `Mutex` rather than a `RefCell` so a loaded script can be shared across
+/// threads (D33). It guards the list of entries only; the texts themselves are
+/// never written after `add`, which is what makes the slices safe to share.
 #[derive(Default)]
 pub struct SourceCache {
-    files: RefCell<Vec<(String, *mut str)>>,
+    files: Mutex<Vec<(String, *mut str)>>,
 }
+
+// SAFETY: the raw pointers are the only reason these are not derived. Each one
+// owns a heap string that is written once, in `add`, before any reference to it
+// exists, and freed once, in `Drop`, after every reference bounded by `&self`
+// has ended. In between it is only ever read. Moving the cache to another
+// thread moves that ownership with it; sharing it hands out `&str`, which is
+// `Send + Sync`; and every access to the list itself goes through the `Mutex`.
+unsafe impl Send for SourceCache {}
+unsafe impl Sync for SourceCache {}
 
 impl SourceCache {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The list of entries. A panic while it was held cannot have left it
+    /// half-written — `push` either happened or did not — so poisoning is
+    /// recovered from rather than propagated.
+    fn files(&self) -> MutexGuard<'_, Vec<(String, *mut str)>> {
+        self.files.lock().unwrap_or_else(|p| p.into_inner())
     }
 
     /// Registers a source and returns a slice with the cache's lifetime.
@@ -40,7 +60,7 @@ impl SourceCache {
     /// arena that owns it.
     pub fn add(&self, name: String, text: String) -> (SourceId, &str) {
         let ptr: *mut str = Box::into_raw(text.into_boxed_str());
-        let mut files = self.files.borrow_mut();
+        let mut files = self.files();
         files.push((name, ptr));
         let id = (files.len() - 1) as SourceId;
         // SAFETY: `ptr` owns a live allocation from `Box::into_raw`. Nothing moves
@@ -50,13 +70,13 @@ impl SourceCache {
     }
 
     pub fn name(&self, id: SourceId) -> Option<String> {
-        self.files.borrow().get(id as usize).map(|(n, _)| n.clone())
+        self.files().get(id as usize).map(|(n, _)| n.clone())
     }
 
     pub fn text(&self, id: SourceId) -> Option<&str> {
-        // The pointer is copied out before the borrow ends, so nothing borrowed
-        // from the `RefCell` escapes it.
-        let ptr = *self.files.borrow().get(id as usize).map(|(_, p)| p)?;
+        // The pointer is copied out before the guard is dropped, so nothing
+        // borrowed from the lock escapes it.
+        let ptr = *self.files().get(id as usize).map(|(_, p)| p)?;
         // SAFETY: see `add`.
         Some(unsafe { &*ptr })
     }
@@ -64,7 +84,7 @@ impl SourceCache {
 
 impl Drop for SourceCache {
     fn drop(&mut self) {
-        for (_, ptr) in self.files.borrow_mut().drain(..) {
+        for (_, ptr) in self.files().drain(..) {
             // SAFETY: each pointer came from `Box::into_raw` in `add`, is owned by
             // this arena alone, and is reconstructed exactly once. Every slice
             // handed out was bounded by `&self`, so none outlives this.

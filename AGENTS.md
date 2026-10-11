@@ -46,6 +46,7 @@ that fail if a second copy appears and disagrees.
 | Snippets in the books | the Markdown itself | `tests/docs_snippets.rs` — formatted, and naming nothing the language lacks |
 | Playground examples | `playground/app.js` | `tests/playground_examples.rs` runs each one |
 | Stdlib coverage in examples | `examples/` | `tests/showcase_coverage.rs` — the showcases together use every stdlib name |
+| The embedding contract | D33 in `SPEC.md` | `tests/script_api.rs` (written before the implementation, one test per clause), `tests/script_memory.rs` (a counting allocator), and the `fuzz_script` target |
 | Reading foreign formats | the three readers in `eval/methods.rs` | `tests/format_bridge.rs` and the `fuzz_bridge` target |
 | Line-ending independence | — | `tests/line_endings.rs` writes CRLF at run time, because `.gitattributes` hides it from every checkout CI makes |
 
@@ -92,6 +93,7 @@ executing it showed that.
 ```
 crates/aura-lang/   the language: lexer, parser, resolve, analysis, eval,
                     serialize, fmt, codegen, vfs, and the host-facing facade
+                    and `Script` (D33)
 crates/aura-lsp/    the language server, built on aura-lang
 crates/aura-wasm/   the browser build (own workspace, size-tuned profile)
 packaging/e2e.sh    end-to-end checks run against a built binary, in containers

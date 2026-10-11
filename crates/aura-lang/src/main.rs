@@ -479,7 +479,7 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
     };
 
     // Dry-run (SPEC §6.3): all reads are performed but recorded into a report
-    let read_log = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
+    let read_log = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
     let recording;
     let resolver_ref: &dyn aura_lang::vfs::FileResolver = if cfg.dry_run {
         recording = aura_lang::vfs::RecordingResolver {
@@ -553,7 +553,7 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
 
     // Dry-run report of the reads performed (modules + read_file)
     if cfg.dry_run {
-        let mut reads = read_log.borrow().clone();
+        let mut reads = read_log.lock().unwrap_or_else(|p| p.into_inner()).clone();
         reads.dedup();
         for r in reads {
             eprintln!("[dry-run] read: {r}");
