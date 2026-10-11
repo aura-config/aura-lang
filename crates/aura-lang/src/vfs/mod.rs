@@ -161,7 +161,7 @@ impl FileResolver for LocalFsResolver {
 /// Dry-run wrapper (SPEC §6.3): module loads are performed but recorded into a report.
 pub struct RecordingResolver<'r> {
     pub inner: &'r dyn FileResolver,
-    pub log: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+    pub log: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 impl FileResolver for RecordingResolver<'_> {
@@ -175,7 +175,10 @@ impl FileResolver for RecordingResolver<'_> {
     fn load(&self, id: &ModuleId) -> Result<String, String> {
         let result = self.inner.load(id);
         if result.is_ok() {
-            self.log.borrow_mut().push(id.to_string());
+            self.log
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .push(id.to_string());
         }
         result
     }
@@ -207,7 +210,13 @@ impl FileResolver for MemoryResolver {
 
     fn load(&self, id: &ModuleId) -> Result<String, String> {
         let key = match id {
-            ModuleId::Local(p) => p.to_string_lossy().replace('\\', "/"),
+            // `./lib.aura` and `lib.aura` name the same file on disk, so they
+            // name the same source here: a manifest must not resolve from a
+            // directory and fail from memory over a prefix that means nothing.
+            ModuleId::Local(p) => {
+                let key = p.to_string_lossy().replace('\\', "/");
+                key.strip_prefix("./").map(str::to_string).unwrap_or(key)
+            }
             ModuleId::Registry { path, version } => format!("{path}@v{version}"),
             ModuleId::Url(u) => u.clone(),
         };
@@ -221,6 +230,22 @@ impl FileResolver for MemoryResolver {
 #[cfg(test)]
 mod tests {
     use super::registry_url;
+
+    /// `import "./lib.aura"` resolves from memory exactly as it does from disk.
+    /// The in-memory resolver used to look the path up verbatim, so the same
+    /// manifest that ran from a directory failed with E0404 when an embedder
+    /// supplied its sources directly.
+    #[test]
+    fn a_leading_dot_slash_means_nothing_in_memory_either() {
+        use super::{FileResolver, MemoryResolver, ModuleId};
+        let r = MemoryResolver {
+            files: [("lib.aura".to_string(), "x: 1".to_string())].into(),
+        };
+        for spelled in ["lib.aura", "./lib.aura"] {
+            let id = ModuleId::Local(spelled.into());
+            assert_eq!(r.load(&id).as_deref(), Ok("x: 1"), "{spelled}");
+        }
+    }
 
     #[test]
     fn registry_url_convention() {

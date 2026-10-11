@@ -291,6 +291,28 @@ pub enum Expr<'a> {
     },
 }
 
+impl Expr<'_> {
+    /// Where the expression was written. An object literal carries no span of
+    /// its own, only its properties do, so it reports its first property's —
+    /// and nothing when it is empty.
+    pub fn span(&self) -> Option<Span> {
+        Some(match self {
+            Expr::Literal(_, s) | Expr::Variable(_, s) | Expr::ListLiteral(_, s) => *s,
+            Expr::Unary { span, .. }
+            | Expr::Binary { span, .. }
+            | Expr::Ternary { span, .. }
+            | Expr::Cond { span, .. }
+            | Expr::Call { span, .. }
+            | Expr::MethodCall { span, .. }
+            | Expr::FieldAccess { span, .. }
+            | Expr::Index { span, .. }
+            | Expr::Lambda { span, .. }
+            | Expr::SchemaInstance { span, .. } => *span,
+            Expr::ObjectLiteral(body) => return body.props.first().map(|(_, _, s)| *s),
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ObjectBody<'a> {
     pub props: Vec<(&'a str, Expr<'a>, Span)>,

@@ -7,10 +7,13 @@
 //! buffers and returns `serde_json::Value` together with plain diagnostics, and
 //! it is the part meant to stay stable.
 //!
+//! To call into a script — a manifest's `pub def`, per request or per batch —
+//! use [`Script`] (D33): hermetic by default, a budget on every call, constant
+//! memory per call, and `Send + Sync`.
+//!
 //! The layers beneath — [`lexer`], [`parser`], [`eval`], [`source`], [`resolve`]
-//! — are public because tools need them: the language server, the browser
-//! playground, and `examples/scripting.rs`, which calls a manifest's `pub def`
-//! from Rust. They are useful and they are not frozen. While the project is
+//! — are public because tools need them: the language server and the browser
+//! playground. They are useful and they are not frozen. While the project is
 //! `0.x` they may change in a minor release, so prefer [`facade`] unless you
 //! need something it does not expose.
 //!
@@ -48,7 +51,11 @@ pub mod fmt;
 pub mod lexer;
 pub mod parser;
 pub mod resolve;
+pub mod script;
 pub mod serialize;
 pub mod source;
 pub mod span;
 pub mod vfs;
+
+/// The embedding API (D33). See [`script`].
+pub use script::{Args, Budget, Error, Function, Script, ScriptBuilder};

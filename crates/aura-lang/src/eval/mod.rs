@@ -1,6 +1,7 @@
 //! Evaluation engine (SPEC §4). Deterministic tree-walking interpreter
 //! with a capability model for effects (D1).
 
+pub mod budget;
 pub mod env;
 pub mod methods;
 pub mod value;
@@ -62,7 +63,9 @@ pub enum FileError {
 }
 
 /// File access behind a trait: the VFS builds on this, dry-run wraps it in RecordingFs.
-pub trait FileAccess {
+/// `Send + Sync` because a loaded script is shared across threads (D33) and
+/// its calls read files through the same grant.
+pub trait FileAccess: Send + Sync {
     fn read(&self, path: &str) -> Result<String, FileError>;
 }
 
@@ -87,13 +90,16 @@ impl FileAccess for MemFs {
 /// Dry-run wrapper (SPEC §6.3): reads are performed but recorded into a report.
 pub struct RecordingFs {
     pub inner: Box<dyn FileAccess>,
-    pub log: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+    pub log: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
 }
 impl FileAccess for RecordingFs {
     fn read(&self, path: &str) -> Result<String, FileError> {
         let result = self.inner.read(path);
         if result.is_ok() {
-            self.log.borrow_mut().push(path.to_string());
+            self.log
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .push(path.to_string());
         }
         result
     }
@@ -123,7 +129,10 @@ impl FileAccess for RealFs {
 }
 
 pub struct Interpreter<'a> {
-    pub registry: MethodRegistry<'a>,
+    /// Shared rather than owned: building it is most of what `Interpreter::new`
+    /// costs (~4.8 µs, measured), more than a typical call. A script makes an
+    /// interpreter per call (D33), so they share one registry.
+    pub registry: Arc<MethodRegistry<'a>>,
     pub fs: Box<dyn FileAccess>,
     pub env_cap: EnvCap,
     /// Environment overrides for tests/dry-run snapshots; take priority over the real env.
@@ -136,6 +145,12 @@ pub struct Interpreter<'a> {
     /// Evaluated modules by alias; populated by the VFS loader (or by tests directly).
     modules: HashMap<String, Value<'a>>,
     call_depth: u32,
+    /// Expressions this interpreter may still evaluate (D33). `u64::MAX` — no
+    /// budget — unless a host set one, so the CLI is unaffected.
+    steps_left: u64,
+    /// Function values created so far. A call that made none cannot have left
+    /// anything that refers to its frames, so they can be released on return.
+    closures_made: u64,
     /// Strong owner of every environment created during evaluation. Closures hold
     /// only a `WeakEnv`, so this arena is what keeps envs alive; it also breaks the
     /// env<->function Arc cycle (freed with the interpreter, a DAG that drops cleanly).
@@ -237,8 +252,15 @@ fn rt(code: &'static str, msg: impl Into<String>, span: Span) -> Diagnostic {
 
 impl<'a> Interpreter<'a> {
     pub fn new(options: Options) -> Self {
+        Self::with_registry(Arc::new(MethodRegistry::builtin()), options)
+    }
+
+    /// An interpreter over a registry someone else already built. This is the
+    /// cheap constructor — the registry is most of what `new` costs — and it is
+    /// how a script makes a fresh interpreter for every call (D33).
+    pub fn with_registry(registry: Arc<MethodRegistry<'a>>, options: Options) -> Self {
         Interpreter {
-            registry: MethodRegistry::builtin(),
+            registry,
             fs: Box::new(DenyFs),
             env_cap: EnvCap::Deny,
             env_overrides: HashMap::new(),
@@ -248,11 +270,18 @@ impl<'a> Interpreter<'a> {
             modules: HashMap::new(),
             call_depth: 0,
             env_arena: Vec::new(),
+            steps_left: u64::MAX,
+            closures_made: 0,
         }
     }
 
     /// Register a freshly created env in the arena (its strong owner) and return it.
     fn track(&mut self, env: Env<'a>) -> Env<'a> {
+        // An environment lives in the arena until the interpreter is dropped, so
+        // it is memory the call holds, and the budget has to see it (D33). Left
+        // uncounted, a call could keep millions of lambda frames alive — measured
+        // at gigabytes — while its value count stayed far under the limit.
+        budget::charge(budget::ENV_COST);
         self.env_arena.push(env.clone());
         env
     }
@@ -357,6 +386,7 @@ impl<'a> Interpreter<'a> {
                 public,
                 span,
             } => {
+                self.closures_made += 1;
                 let v = Value::Function(Arc::new(FunctionDef {
                     params: params.clone(),
                     body: FuncBody::Block(body.clone()),
@@ -456,7 +486,40 @@ impl<'a> Interpreter<'a> {
         Ok(Value::object(exports))
     }
 
+    /// Limit the expressions this interpreter will evaluate from now on (D33).
+    pub fn set_step_budget(&mut self, steps: u64) {
+        self.steps_left = steps;
+    }
+
+    /// Charge one step, and stop if either budget is spent. Checked on every
+    /// expression because every repetition in the language — a lambda over a
+    /// list, a recursive call — evaluates expressions, so nothing can loop
+    /// without passing through here.
+    #[inline]
+    fn step(&mut self, e: &Expr<'a>) -> Result<(), Diagnostic> {
+        if self.steps_left == 0 {
+            return Err(self.budget_error("E0325", "this call ran out of its step budget", e));
+        }
+        self.steps_left -= 1;
+        if budget::bytes_exhausted() {
+            return Err(self.budget_error("E0326", "this call ran out of its memory budget", e));
+        }
+        Ok(())
+    }
+
+    #[cold]
+    fn budget_error(&self, code: &'static str, msg: &str, e: &Expr<'a>) -> Diagnostic {
+        let span = e.span().unwrap_or(Span::new(0, 0, 0));
+        let mut d = rt(code, msg, span);
+        d.help = Some(
+            "the budget is per call; give it more with Budget::per_call(),              or pass less work into a single call"
+                .to_string(),
+        );
+        d
+    }
+
     pub fn eval_expr(&mut self, env: &Env<'a>, e: &Expr<'a>) -> Result<Value<'a>, Diagnostic> {
+        self.step(e)?;
         match e {
             Expr::Literal(lit, span) => self.eval_literal(env, lit, *span),
             Expr::Variable(name, span) => env.get(name).ok_or_else(|| {
@@ -634,12 +697,15 @@ impl<'a> Interpreter<'a> {
                     .collect::<Result<_, _>>()?;
                 Ok(Value::list(vs))
             }
-            Expr::Lambda { params, body, .. } => Ok(Value::Function(Arc::new(FunctionDef {
-                params: params.clone(),
-                body: FuncBody::Lambda(body.clone()),
-                closure: Arc::downgrade(env),
-                defined_in_root: self.current_root,
-            }))),
+            Expr::Lambda { params, body, .. } => {
+                self.closures_made += 1;
+                Ok(Value::Function(Arc::new(FunctionDef {
+                    params: params.clone(),
+                    body: FuncBody::Lambda(body.clone()),
+                    closure: Arc::downgrade(env),
+                    defined_in_root: self.current_root,
+                })))
+            }
             Expr::SchemaInstance {
                 schema,
                 schema_alias,
@@ -1019,6 +1085,8 @@ impl<'a> Interpreter<'a> {
             self.call_depth -= 1;
             rt("E0398", "internal: closure environment was dropped", span)
         })?;
+        let arena_mark = self.env_arena.len();
+        let closures_mark = self.closures_made;
         let env = self.track(Environment::child(&closure));
         for (p, a) in def.params.iter().zip(args) {
             env.insert(p, a.clone());
@@ -1033,6 +1101,16 @@ impl<'a> Interpreter<'a> {
         };
         self.current_root = saved_root;
         self.call_depth -= 1;
+        // Release the frames this call made, if nothing can refer to them. Only a
+        // function value holds a reference to an environment, so a call that
+        // created no function left nothing behind that could: its result and
+        // every value inside it are plain data. Without this, `xs.map(...)` kept
+        // a frame per element alive until the whole evaluation ended — millions
+        // of them, measured at gigabytes, for one ordinary-looking expression.
+        if self.closures_made == closures_mark {
+            drop(env);
+            self.env_arena.truncate(arena_mark);
+        }
         result
     }
 

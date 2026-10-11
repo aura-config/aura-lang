@@ -27,6 +27,12 @@ cli = ["dep:ariadne", "dep:clap", "dep:ureq"]
 [dependencies]
 # Library (always)
 indexmap = "2"
+# The embedding API (D33): host types cross the boundary through serde, the
+# loaded state borrows from the source arena it owns, and a result that does not
+# fit names the path where it did not.
+serde = "1"
+self_cell = "1"
+serde_path_to_error = "0.1"
 serde_json = { version = "1", features = ["preserve_order", "arbitrary_precision"] }
 yaml-rust2 = "0.11"
 sha2 = "0.11"
@@ -38,6 +44,7 @@ ureq = { version = "3", optional = true }
 
 [dev-dependencies]
 criterion = "0.8"
+serde = { version = "1", features = ["derive"] }
 proptest = "1"
 
 [[bench]]
@@ -58,4 +65,8 @@ harness = false
 
 [[bench]]
 name = "schema"
+harness = false
+
+[[bench]]
+name = "script"
 harness = false

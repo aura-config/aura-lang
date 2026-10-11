@@ -7,6 +7,60 @@ still change the language.
 
 ## [Unreleased]
 
+### Added
+
+- **`Script`: calling into Aura from Rust (D33).** A host loads a script once and
+  calls its `pub def` functions as often as it likes, from as many threads as it
+  likes, with host types crossing through `serde`:
+
+  ```rust
+  let rules = Script::builder().file("rules.aura").load()?;
+  let route: Route = rules.call("route", (path, method))?;
+  ```
+
+  The route this replaces drove the compiler's internals by hand and went around
+  the facade, so it had no capability model, no analysis and no diagnostics.
+  Measuring it found two defects that ruled it out for a long-running process:
+  every call kept about 2 KB alive forever, and a 95-byte manifest that passes
+  `check --hermetic` ran for over a minute.
+
+  - **Hermetic by default**: with no grants, `load` proves the script reads no
+    file, variable or clock (`E0505`). Grants mirror the CLI's flags.
+  - **A budget on every call**, in steps and bytes — never in time, which would
+    make the outcome depend on the machine. `E0325` / `E0326`; the default is
+    finite.
+  - **A checked boundary**: a value Aura cannot hold exactly is `E0005`, and a
+    result of the wrong shape is `E0006` with the path inside it. Binding a
+    function checks its name, kind and arity once (`E0002`–`E0004`).
+  - **`Send + Sync`**, so one instance serves every thread.
+
+  Measured on one core: about 1.2 µs a call, against 3.8 µs on the old route;
+  0.9 million events a second called per event, 1.3 million in batches.
+  Tested before it was implemented — `tests/script_api.rs` was written against
+  the designed API — and fuzzed by the new `fuzz_script` target.
+
+### Changed
+
+- **A function call releases its frames when nothing can refer to them.** Every
+  call kept its environment until the whole evaluation ended, so `xs.map(...)`
+  over a long list held a frame per element — measured at gigabytes for one
+  ordinary-looking expression. Only a function value refers to an environment,
+  so a call that created none releases its frames on return. The evaluator
+  benchmarks are unchanged or faster.
+- **Environments hold their bindings in an `RwLock`**, and the source arena in a
+  `Mutex`, so values can be shared across threads. Measured: no slowdown. Miri
+  passes on the arena under both Stacked and Tree Borrows.
+- **`import "./lib.aura"` resolves from in-memory sources** as it does from
+  disk. The in-memory resolver looked the path up verbatim, so the same manifest
+  ran from a directory and failed with `E0404` from memory.
+
+### Removed
+
+- `examples/scripting.rs`, the sketch that called a `pub def` through the
+  compiler's internals. `Script` supersedes it; `cargo run --example embedding`
+  shows the supported way.
+
+
 ## [0.2.0] — 2026-09-16
 
 I design Aura and make every decision about it; this release was built together

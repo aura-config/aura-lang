@@ -223,7 +223,7 @@ fn interp_eval<'a>(
     loader.eval_entry(interp, &ImportSpec::File(file_name))
 }
 
-fn to_report(d: &Diagnostic, cache: &SourceCache) -> Report {
+pub(crate) fn to_report(d: &Diagnostic, cache: &SourceCache) -> Report {
     let (file, line, column) = locate(d.primary.0, cache);
     Report {
         code: d.code,
