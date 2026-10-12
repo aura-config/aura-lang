@@ -427,3 +427,40 @@ fn compact_and_pretty_carry_the_same_value() {
         );
     }
 }
+
+/// A document that happens to use serde_json's internal marker as a key is
+/// still an object.
+///
+/// Reading JSON numbers exactly used to rely on serde_json's
+/// `arbitrary_precision`, which represents a number internally as an object
+/// with the single key `$serde_json::private::Number`. A real document with
+/// that key was then read as a number: `{"$serde_json::private::Number": "123"}`
+/// came back as the integer 123, without an error. The nightly fuzz run found
+/// it by reading YAML, writing JSON and reading that back, which failed.
+/// `float_roundtrip` gives the precision without the marker.
+#[test]
+fn the_json_libraries_internal_key_is_ordinary_data() {
+    let key = "$serde_json::private::Number";
+    let out = bridge(
+        "marker",
+        concat!(
+            "j = read_file(\"in.json\").parse_json()\n",
+            "y = read_file(\"in.yaml\").parse_yaml()\n",
+            "from_json: j.to_json()\n",
+            "from_yaml: y.to_json()\n",
+            "round:     j.to_json().parse_json().to_json()\n",
+        ),
+        &[
+            ("in.json", &format!("{{\"{key}\": \"123\"}}")),
+            ("in.yaml", &format!("\"{key}\": \"hello\"")),
+        ],
+    );
+    let expect = format!("{{\"{key}\":\"123\"}}");
+    assert_eq!(
+        s(&out, "from_json"),
+        expect,
+        "an object read as something else"
+    );
+    assert_eq!(s(&out, "round"), expect, "the round trip changed it");
+    assert_eq!(s(&out, "from_yaml"), format!("{{\"{key}\":\"hello\"}}"));
+}

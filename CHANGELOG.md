@@ -7,6 +7,19 @@ still change the language.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A JSON object whose key was `$serde_json::private::Number` was read as a
+  number.** `{"$serde_json::private::Number": "123"}` came back from
+  `parse_json()` as the integer 123, with no error. The key is serde_json's own
+  internal marker: Aura read numbers through its `arbitrary_precision` mode,
+  which represents a number as an object with exactly that key, and so could
+  not tell the two apart. Present since 0.2.0; found by the nightly
+  ClusterFuzzLite run, which read such a key from YAML, wrote JSON and failed to
+  read it back. Numbers are now read with `float_roundtrip` instead, which keeps
+  the precision fix from 0.2.0 – the same digits still mean the same number in
+  every format – without a marker that data can collide with.
+
 ## [0.3.0] – 2026-10-12
 
 A security and embedding release. `Script` (D33) lets a Rust host call into

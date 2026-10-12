@@ -33,7 +33,11 @@ indexmap = "2"
 serde = "1"
 self_cell = "1"
 serde_path_to_error = "0.1"
-serde_json = { version = "1", features = ["preserve_order", "arbitrary_precision"] }
+# `float_roundtrip`, not `arbitrary_precision`: the second makes serde_json
+# encode a number as an object with the key `$serde_json::private::Number`, and
+# then any document carrying that key as data is read as a number. The first
+# makes float parsing correctly rounded, which is all the precision fix needed.
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 yaml-rust2 = "0.11"
 sha2 = "0.11"
 toml = { version = "1", features = ["preserve_order"] }

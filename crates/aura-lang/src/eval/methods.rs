@@ -1697,19 +1697,16 @@ fn json_to_value<'a>(j: serde_json::Value) -> Value<'a> {
     match j {
         serde_json::Value::Null => Value::Null,
         serde_json::Value::Bool(b) => Value::Bool(b),
-        // The number is taken as the text JSON carried and parsed here, not by
-        // serde_json. Its float parser is off by one unit in the last place
-        // against Rust's on some inputs: `3.3333333333333333e+65` read from
-        // JSON and the same digits read from YAML produced two different
-        // values, so a manifest's result depended on which format the number
-        // arrived in. Found by fuzz_bridge.
-        serde_json::Value::Number(n) => {
-            let text = n.as_str();
-            match text.parse::<i64>() {
-                Ok(i) => Value::Int(i),
-                Err(_) => Value::Float(text.parse::<f64>().unwrap_or(f64::NAN)),
-            }
-        }
+        // serde_json is built with `float_roundtrip`, so its float parser is
+        // correctly rounded and agrees with Rust's – `3.3333333333333333e+65`
+        // reads as the same value from JSON as from YAML. That used to need
+        // `arbitrary_precision`, which fuzz_bridge then showed turned a
+        // document's `{"$serde_json::private::Number": "123"}` into the number
+        // 123: the feature's own marker key, read as data.
+        serde_json::Value::Number(n) => match n.as_i64() {
+            Some(i) => Value::Int(i),
+            None => Value::Float(n.as_f64().unwrap_or(f64::NAN)),
+        },
         serde_json::Value::String(s) => Value::str(s),
         serde_json::Value::Array(xs) => Value::list(xs.into_iter().map(json_to_value).collect()),
         serde_json::Value::Object(m) => {
