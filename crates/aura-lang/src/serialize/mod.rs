@@ -158,13 +158,9 @@ pub fn json_to_toml_string(json: &serde_json::Value) -> Result<String, Diagnosti
 
 /// Map the JSON form onto TOML's own value tree.
 ///
-/// This used to hand the `serde_json::Value` straight to `toml`, letting serde
-/// translate between the two. That works only while a JSON number is a plain
-/// number — and numbers here carry the text they were written with, so that a
-/// float is parsed by Rust rather than by serde_json, whose parser disagrees
-/// with it by one unit in the last place on some inputs. Serialising such a
-/// number through another format emits serde's internal marker instead of the
-/// number, so the mapping is written out here rather than inferred.
+/// Written out rather than left to serde, so the mapping between the two value
+/// models is explicit: which JSON number becomes a TOML integer, and that a
+/// null is refused rather than dropped.
 fn json_to_toml_value(v: &serde_json::Value) -> Result<toml::Value, Diagnostic> {
     use serde_json::Value as J;
     Ok(match v {
@@ -178,11 +174,10 @@ fn json_to_toml_value(v: &serde_json::Value) -> Result<toml::Value, Diagnostic> 
         }
         J::Bool(b) => toml::Value::Boolean(*b),
         J::Number(n) => {
-            let text = n.as_str();
-            match text.parse::<i64>() {
-                Ok(i) => toml::Value::Integer(i),
-                Err(_) => toml::Value::Float(text.parse::<f64>().map_err(|_| {
-                    err("E0603", format!("cannot emit TOML: {text} is not a number"))
+            match n.as_i64() {
+                Some(i) => toml::Value::Integer(i),
+                None => toml::Value::Float(n.as_f64().ok_or_else(|| {
+                    err("E0603", format!("cannot emit TOML: {n} is not a number"))
                 })?),
             }
         }

@@ -6,3 +6,6 @@
 # seeds, which are tracked explicitly.
 corpus/*/*
 !corpus/*/*.aura
+# A crash a fuzzer found, kept so it is replayed forever. Named for what it
+# broke, and in whatever format the target reads: the bridge's are YAML.
+!corpus/*/regression_*
