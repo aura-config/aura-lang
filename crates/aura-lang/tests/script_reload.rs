@@ -414,6 +414,40 @@ fn a_touch_does_not_load_the_script_again() {
     );
 }
 
+/// D36 §6. Content that does not hold still costs no load. The file is changed
+/// for a fifth of an interval and put back, again and again: two reads one
+/// interval apart can never both see the change, so it is never loaded - not
+/// even tried. Found on macOS CI, where a rewrite of the same bytes was read
+/// half done and loaded once for nothing; Windows never showed it, which is
+/// why this test makes the brief change itself instead of hoping to catch one.
+#[test]
+fn a_change_that_does_not_hold_still_is_never_loaded() {
+    let d = dir("watch-blip");
+    let body = "import \"host:k\" as k\nn: k.load()\n";
+    let path = write(&d, "r.aura", body);
+    let loads = Arc::new(AtomicUsize::new(0));
+    let l = loads.clone();
+    let interval = Duration::from_millis(100);
+    let _s = Script::builder()
+        .file(&path)
+        .pure("k.load", move || l.fetch_add(1, Ordering::Relaxed) as i64)
+        .watch(interval, |_| {})
+        .load()
+        .expect("loads");
+
+    for _ in 0..25 {
+        write(&d, "r.aura", &format!("{body}# a passing edit\n"));
+        std::thread::sleep(interval / 5);
+        write(&d, "r.aura", body);
+        std::thread::sleep(interval + interval / 2);
+    }
+    assert_eq!(
+        loads.load(Ordering::Relaxed),
+        1,
+        "content that never held still for an interval was loaded"
+    );
+}
+
 /// D36 §1, §9. A dropped script is freed, watcher and all: nothing it holds -
 /// here, a host function's captured state - outlives it.
 #[test]

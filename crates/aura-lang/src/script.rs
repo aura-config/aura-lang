@@ -850,7 +850,8 @@ fn watch_loop(
         }
         // Something about the files changed. Only content counts: a touch
         // leaves the hash as it was, and nothing happens.
-        let read_hash = reread(&current.files).as_deref().map(hash_files);
+        let first = reread(&current.files);
+        let read_hash = first.as_deref().map(hash_files);
         if read_hash.as_deref() == Some(current.id.hash.as_str()) {
             quiet = Some(now);
             continue;
@@ -859,14 +860,32 @@ fn watch_loop(
         if read_hash.is_some() && read_hash == failed {
             continue;
         }
+        drop(current);
+        drop(script);
+
+        // D36 §6: nothing is loaded until the files read the same one interval
+        // later. A file being written - truncated, then filled - is caught in
+        // between by a read, and must cost no load, let alone be loaded. Found
+        // on macOS CI, where a plain rewrite of the same bytes was read empty
+        // and loaded once for nothing.
+        if !tick(&stopped, interval) {
+            return;
+        }
+        let Some(script) = shared.upgrade() else {
+            return;
+        };
+        let current = script.current();
+        if first.is_none() || reread(&current.files) != first {
+            continue;
+        }
         let attempt = script.attempt();
         drop(current);
         drop(script);
 
-        // D36 §6: accept only what reads the same one interval later, so a
-        // file being written, or an edit across several files, is not loaded
-        // half done. A load that failed is held to the same test before it is
-        // reported: a half-written file is not a broken one yet.
+        // The load reads the files once more, and may read new imports. All of
+        // it must still read the same one interval later; a load that failed
+        // is held to the same test before it is reported, since a
+        // half-written file is not a broken one yet.
         if !tick(&stopped, interval) {
             return;
         }
