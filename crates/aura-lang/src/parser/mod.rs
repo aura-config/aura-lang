@@ -7,6 +7,9 @@ use crate::lexer::{Token, TokenKind};
 use crate::span::Span;
 use ast::*;
 
+/// The prefix of an import path naming a host module (D35).
+pub const HOST_PREFIX: &str = "host:";
+
 /// lbp of the ternary `? :`; right associativity — the else branch parses with min_bp = TERNARY_LBP - 1.
 const TERNARY_LBP: u8 = 2;
 const UNARY_RBP: u8 = 15;
@@ -307,6 +310,21 @@ impl<'a> Parser<'a> {
                 let s = ImportSource::Registry { path, version };
                 self.bump();
                 s
+            }
+            // D35: a `host:` path names a module the embedding application
+            // provides. The prefix cannot begin a file path anyone would write,
+            // so it needs no new grammar - only a name after it.
+            TokenKind::Str(p) if p.starts_with(HOST_PREFIX) => {
+                let name = &p[HOST_PREFIX.len()..];
+                if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                    return Err(self.err(
+                        "E0200",
+                        "a host module is named like a variable: \"host:geo\"",
+                        "invalid host module name",
+                    ));
+                }
+                self.bump();
+                ImportSource::Host(name)
             }
             TokenKind::Str(p) => {
                 let s = ImportSource::File(p);

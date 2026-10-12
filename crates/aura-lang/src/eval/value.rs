@@ -61,6 +61,9 @@ pub enum FuncBody<'a> {
     Lambda(LambdaBody<'a>),
     /// A `def` body — statements (D17), like a block.
     Block(Vec<Stmt<'a>>),
+    /// D35: a function the host provides. It has no body in the language and
+    /// closes over nothing; `call_value` hands it to the host.
+    Host(Arc<crate::host::HostFn>),
 }
 
 impl fmt::Debug for FunctionDef<'_> {

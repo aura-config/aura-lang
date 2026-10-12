@@ -48,6 +48,7 @@ that fail if a second copy appears and disagrees.
 | Stdlib coverage in examples | `examples/` | `tests/showcase_coverage.rs` — the showcases together use every stdlib name |
 | The embedding contract | D33 in `SPEC.md` | `tests/script_api.rs` (written before the implementation, one test per clause), `tests/script_memory.rs` (a counting allocator), and the `fuzz_script` target |
 | Reading foreign formats | the three readers in `eval/methods.rs` | `tests/format_bridge.rs` and the `fuzz_bridge` target |
+| Host functions | D35 in `SPEC.md` | `tests/host_functions_api.rs` (written before the implementation, one test per clause) and `tests/host_functions_cli.rs` |
 | Line-ending independence | — | `tests/line_endings.rs` writes CRLF at run time, because `.gitattributes` hides it from every checkout CI makes |
 
 If you are about to write down a fact that already exists somewhere, do not.
@@ -87,6 +88,11 @@ executing it showed that.
 - Benchmarks (criterion) for anything on a hot path: lexer, parser, evaluator,
   resolver.
 - Never commit without the maintainer's approval of the commit message.
+- **A hyphen, not a dash.** In new commits, pull requests, code comments and
+  documentation, write a plain hyphen `-` with spaces around it where you would
+  reach for a dash. Neither `—` (U+2014) nor `–` (U+2013): GitHub renders both as
+  a long bar, and almost everything here is read there. Existing text is not
+  rewritten wholesale; new and edited lines follow the rule.
 
 ## Layout
 

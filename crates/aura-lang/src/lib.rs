@@ -48,6 +48,7 @@ pub mod error;
 pub mod eval;
 pub mod facade;
 pub mod fmt;
+pub mod host;
 pub mod lexer;
 pub mod parser;
 pub mod resolve;
@@ -59,4 +60,4 @@ pub mod vfs;
 
 /// The embedding API (D33). See [`script`].
 pub use eval::budget::{Budget, Usage};
-pub use script::{Args, Error, Function, Script, ScriptBuilder};
+pub use script::{Args, EffectFn, Error, Function, PureFn, Script, ScriptBuilder};

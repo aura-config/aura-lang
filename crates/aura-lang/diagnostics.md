@@ -6,8 +6,9 @@ logs and to refer to in discussion. `E` is an error, `W` a warning — and under
 
 ## Host (E00xx)
 
-Raised by the embedding API rather than by a manifest: they carry no source
-position, because nothing was parsed yet.
+Raised at the boundary between a manifest and the application that embeds it.
+`E0001`-`E0006` carry no source position, because nothing was parsed yet;
+`E0007`-`E0009` point at the call in the script (D35).
 
 | Code | Meaning | How to fix it |
 | --- | --- | --- |
@@ -17,6 +18,10 @@ position, because nothing was parsed yet.
 | E0004 | the function takes a different number of arguments | checked when the function is bound, before any call |
 | E0005 | an argument has no exact Aura value | an integer past `i64`, a NaN or an infinity, a byte string; refused rather than coerced |
 | E0006 | the result does not match the host's type | the message names the path inside the value where it did not |
+| E0007 | the script imports or calls a host function the host did not provide | a `host:` module is provided by the application at run time, so `aura eval` stops here; `aura check` lists what the script needs |
+| E0008 | a host function returned an error | the message is the application's; the script cannot recover from it |
+| E0009 | a host function was called with the wrong number of arguments (at load) or the wrong types (at the call), or returned a value Aura cannot hold | the message names the function |
+| E0010 | a script was called from inside one of its own host functions | not allowed (D35): return a value to the script instead |
 
 ## Lexing (E01xx)
 
