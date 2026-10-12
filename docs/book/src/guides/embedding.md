@@ -8,7 +8,7 @@
 # and ureq — which the library never uses. Measured on an empty project: 38
 # packages instead of 96. The feature is on by default only so that
 # `cargo install aura-lang` produces the `aura` binary.
-aura-lang = { version = "0.2", default-features = false }
+aura-lang = { version = "0.3", default-features = false }
 ```
 
 ```rust
