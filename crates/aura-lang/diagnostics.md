@@ -22,6 +22,7 @@ Raised at the boundary between a manifest and the application that embeds it.
 | E0008 | a host function returned an error | the message is the application's; the script cannot recover from it |
 | E0009 | a host function was called with the wrong number of arguments (at load) or the wrong types (at the call), or returned a value Aura cannot hold | the message names the function |
 | E0010 | a script was called from inside one of its own host functions | not allowed (D35): return a value to the script instead |
+| E0011 | a reload would change what the script exports: an export removed, or its kind or number of arguments changed | the host may have bound it, so the old version keeps serving (D36); restart to change the exports |
 
 ## Lexing (E01xx)
 

@@ -1,0 +1,58 @@
+# Checkout risk rules for an online store: every order is approved, held for
+# review or declined here. The risk team edits this file during the day; the
+# service reloads it without a release (D36).
+#
+# The rules need three things only the service has (D35):
+#   geo.country       where an address is      - a table shipped with the binary
+#   risk.chargebacks  a customer's disputes    - a database, so it can fail
+#   fx.rate           an exchange rate         - asked for by ./money.aura
+
+import "./money.aura" as money
+import "host:geo" as geo
+import "host:risk" as risk
+
+pub enum Action
+  "approve"
+  "review"
+  "decline"
+end
+
+# What the service acts on. The invariant travels with the schema: no rule
+# edit can hold an order without saying why (D28).
+pub type Decision
+  action:    Action
+  reasons:   [String]
+  total_eur: Float?
+
+  assert action == "approve" || reasons.len() > 0, "a held order must say why"
+end
+
+# Tuned by the risk team. Changing a number here is a reload, not a release.
+review_over_eur = 1000.0
+max_chargebacks = 2
+blocked         = ["KP", "IR"]
+
+pub def decide(order)
+  country  = geo.country(order.ip)
+  subtotal = order.lines.reduce(0.0) (acc, l) -> acc + l.price * l.qty.to_float() end
+  total    = money.to_eur(subtotal, order.currency).value
+  disputes = risk.chargebacks(order.customer)
+
+  where = country == null ? "location unknown" : null
+  price = total == null ? "no exchange rate for #{order.currency}" : null
+  size  = total != null && total > review_over_eur ? "over the review threshold" : null
+  fraud = disputes > max_chargebacks ? "#{disputes} chargebacks" : null
+  ban   = country != null && blocked.contains(country) ? "ships to #{country}" : null
+
+  reasons = [ban, fraud, where, price, size].compact()
+
+  decision: new Decision
+    action: cond
+      ban != null || fraud != null -> "decline"
+      reasons.len() > 0            -> "review"
+      else -> "approve"
+    end
+    reasons:   reasons
+    total_eur: total
+  end
+end

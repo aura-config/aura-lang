@@ -9,6 +9,16 @@ still change the language.
 
 ### Added
 
+- **A script can be reloaded while the service runs (D36).** `Script::reload()`
+  loads the files again; `ScriptBuilder::watch(interval, on_reload)` does it when
+  their content changes - a `touch` loads nothing, and a file still being written
+  is not loaded until two reads one interval apart agree. A reload is a full load
+  with the first load's grants and its `aura.lock`, frozen: it can never get more
+  than the first load was given. Every export keeps its kind and number of
+  arguments, or the reload is `E0011` and the old version keeps serving; a bound
+  `Function` follows its name. Calls in flight finish on the version they began
+  on. `on_reload` is required, so a failed automatic reload cannot pass
+  unnoticed. `Script::version()` returns the generation and a content hash.
 - **A script can call functions its host provides (D35).** The script imports
   them - `import "host:geo" as geo` - and the host registers them with
   `ScriptBuilder::pure` or `ScriptBuilder::effect`. A `pure` function is the
