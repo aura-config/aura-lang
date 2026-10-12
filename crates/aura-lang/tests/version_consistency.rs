@@ -116,3 +116,61 @@ fn the_changelog_has_a_section_for_this_version() {
          verifies this and will refuse the tag."
     );
 }
+
+/// Every `aura-lang = { version = "X.Y" … }` a reader can copy names the
+/// current release.
+///
+/// Both READMEs told readers to depend on `"0.1"` after 0.3.0 shipped, so
+/// copying the line gave a version without `Script` and without the budget
+/// that closes 0.2.0's runaway. Nothing failed: the line sits in prose, and
+/// prose is only checked when something checks it. This does, for every
+/// Markdown file a reader is pointed at.
+#[test]
+fn the_dependency_line_in_the_docs_names_this_release() {
+    let version = env!("CARGO_PKG_VERSION");
+    // Cargo resolves `"0.3"` to the newest 0.3.x, which is what a reader wants;
+    // a patch number in the docs would only go stale faster.
+    let wanted = version.rsplit_once('.').map_or(version, |(mm, _)| mm);
+
+    let mut files = vec![
+        repo_root().join("README.md"),
+        repo_root().join("README.ru.md"),
+    ];
+    for book in ["docs/book/src", "docs/book-ru/src"] {
+        collect_md(&repo_root().join(book), &mut files);
+    }
+
+    let mut wrong = Vec::new();
+    for file in files {
+        let text = std::fs::read_to_string(&file).expect("readable");
+        for (n, line) in text.lines().enumerate() {
+            let Some(rest) = line.trim_start().strip_prefix("aura-lang = { version = \"") else {
+                continue;
+            };
+            let written = rest.split('"').next().unwrap_or_default();
+            if written != wanted {
+                let rel = file.strip_prefix(repo_root()).unwrap_or(&file);
+                wrong.push(format!("{}:{} says {written}", rel.display(), n + 1));
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "the release is {version}, so readers should be told \"{wanted}\":\n  {}",
+        wrong.join("\n  ")
+    );
+}
+
+fn collect_md(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            collect_md(&p, out);
+        } else if p.extension().is_some_and(|x| x == "md") {
+            out.push(p);
+        }
+    }
+}
