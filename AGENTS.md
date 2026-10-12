@@ -87,6 +87,11 @@ executing it showed that.
 - Benchmarks (criterion) for anything on a hot path: lexer, parser, evaluator,
   resolver.
 - Never commit without the maintainer's approval of the commit message.
+- **En dash, not em dash.** In new commits, pull requests, code comments and
+  documentation, write `–` (U+2013) where you would reach for `—` (U+2014).
+  GitHub renders the em dash as a very long bar, and almost everything here is
+  read there. Existing text is not rewritten wholesale; new and edited lines
+  follow the rule.
 
 ## Layout
 
