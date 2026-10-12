@@ -7,6 +7,21 @@ still change the language.
 
 ## [Unreleased]
 
+### Added
+
+- **A script can call functions its host provides (D35).** The script imports
+  them – `import "host:geo" as geo` – and the host registers them with
+  `ScriptBuilder::pure` or `ScriptBuilder::effect`. A `pure` function is the
+  host's promise of determinism and leaves the load hermetic; an `effect` is a
+  grant, like `allow_env`. Host functions reach the root module only, unless
+  `grant_to_imports` opens one to imports. Every use is checked at load: a
+  module or function not provided is `E0007`, a wrong number of arguments
+  `E0009`. At the call, wrong types are `E0009`, an `Err` from the host is
+  `E0008`, and a host function that calls back into the script gets `E0010`.
+  Each call costs 100 steps of the budget (`host_call_steps`). `aura eval` has
+  no host, so a `host:` import there is `E0007`; `aura check` lists what the
+  script needs, and the language server explains the import line.
+
 ## [0.3.1] – 2026-10-12
 
 A data-integrity release: a JSON object could be read as a number. No new

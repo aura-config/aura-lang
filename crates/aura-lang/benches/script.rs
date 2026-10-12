@@ -73,6 +73,30 @@ fn bench_script(c: &mut Criterion) {
         b.iter(|| route.call(("/api/orders",)).expect("call"))
     });
 
+    // D35: the cost a host call adds – arguments out as JSON, the result back
+    // through the exact serializer. Compare with the plain call above.
+    let hosted = Script::builder()
+        .source(
+            "hosted.aura",
+            "import \"host:geo\" as geo
+pub def route(ip)
+  region: geo.region(ip)
+end
+",
+        )
+        .pure("geo.region", |ip: String| -> Option<String> {
+            (ip == "203.0.113.7").then(|| "eu".to_string())
+        })
+        .budget(Budget::per_call().steps(u64::MAX).memory_bytes(u64::MAX))
+        .load()
+        .expect("loads");
+    let hosted_route = hosted
+        .function::<(&str,), serde_json::Value>("route")
+        .expect("binds");
+    c.bench_function("script/call/one_host_call", |b| {
+        b.iter(|| hosted_route.call(("203.0.113.7",)).expect("call"))
+    });
+
     // Loading: lex, parse, analyse, prove hermetic, evaluate the module.
     c.bench_function("script/load", |b| {
         b.iter(|| {

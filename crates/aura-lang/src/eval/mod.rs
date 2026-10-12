@@ -148,6 +148,8 @@ pub struct Interpreter<'a> {
     /// Expressions this interpreter may still evaluate (D33). `u64::MAX` — no
     /// budget — unless a host set one, so the CLI is unaffected.
     steps_left: u64,
+    /// D35 §5: what one call to a host function costs in steps.
+    pub host_call_steps: u64,
     /// Function values created so far. A call that made none cannot have left
     /// anything that refers to its frames, so they can be released on return.
     closures_made: u64,
@@ -271,6 +273,7 @@ impl<'a> Interpreter<'a> {
             call_depth: 0,
             env_arena: Vec::new(),
             steps_left: u64::MAX,
+            host_call_steps: crate::host::DEFAULT_HOST_CALL_STEPS,
             closures_made: 0,
         }
     }
@@ -1078,6 +1081,9 @@ impl<'a> Interpreter<'a> {
                 span,
             ));
         };
+        if let FuncBody::Host(host) = &def.body {
+            return self.call_host(host, args, span);
+        }
         if args.len() < def.params.len() {
             return Err(rt(
                 "E0312",
@@ -1113,6 +1119,7 @@ impl<'a> Interpreter<'a> {
             FuncBody::Block(body) => self.eval_stmt_body(&env, body),
             FuncBody::Lambda(LambdaBody::Expr(e)) => self.eval_expr(&env, e),
             FuncBody::Lambda(LambdaBody::Block(body)) => self.eval_stmt_body(&env, body),
+            FuncBody::Host(_) => unreachable!("host functions return before a frame is made"),
         };
         self.current_root = saved_root;
         self.call_depth -= 1;
@@ -1127,6 +1134,74 @@ impl<'a> Interpreter<'a> {
             self.env_arena.truncate(arena_mark);
         }
         result
+    }
+
+    /// D35: a call into the host. Charged a fixed number of steps up front – the
+    /// time spent inside the host is invisible to the budget, so the count is
+    /// what bounds a loop of calls. The result is rebuilt as an Aura value, so
+    /// its memory is charged like any other.
+    fn call_host(
+        &mut self,
+        host: &crate::host::HostFn,
+        args: &[Value<'a>],
+        span: Span,
+    ) -> Result<Value<'a>, Diagnostic> {
+        use crate::host::HostOutcome;
+        if args.len() != host.arity {
+            return Err(rt(
+                "E0009",
+                format!(
+                    "host function '{}' takes {} argument{}, got {}",
+                    host.name,
+                    host.arity,
+                    if host.arity == 1 { "" } else { "s" },
+                    args.len()
+                ),
+                span,
+            ));
+        }
+        if self.steps_left < self.host_call_steps {
+            self.steps_left = 0;
+            let mut d = rt("E0325", "the evaluation ran out of its step budget", span);
+            d.help = Some(format!(
+                "a call to a host function costs {} steps; raise the budget with \
+                 Budget::steps, or lower the cost with host_call_steps",
+                self.host_call_steps
+            ));
+            return Err(d);
+        }
+        self.steps_left -= self.host_call_steps;
+        let json = args
+            .iter()
+            .map(crate::serialize::to_json)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|mut d| {
+                d.code = "E0009";
+                d.message = format!("host function '{}': {}", host.name, d.message);
+                d.primary.0 = span;
+                d
+            })?;
+        let outcome = {
+            let _inside = crate::host::InsideHost::enter();
+            (host.call)(&json)
+        };
+        match outcome {
+            HostOutcome::Value(v) => Ok(crate::host::rebind(&v)),
+            HostOutcome::Failed(msg) => {
+                let mut d = rt(
+                    "E0008",
+                    format!("host function '{}' failed: {msg}", host.name),
+                    span,
+                );
+                d.help = Some("the error comes from the application, not from the script".into());
+                Err(d)
+            }
+            HostOutcome::BadArgument(msg) => Err(rt(
+                "E0009",
+                format!("host function '{}': {msg}", host.name),
+                span,
+            )),
+        }
     }
 
     /// Effectful builtins under capability control (D1, SPEC §4.3).

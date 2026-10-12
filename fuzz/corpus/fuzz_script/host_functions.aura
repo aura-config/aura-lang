@@ -1,0 +1,7 @@
+import "host:h" as h
+
+pub def f(x)
+  a: h.id(x)
+  b: h.id([x, "#{h.id(1)}"])
+  c: x == 7 ? h.nan() : h.fail(x)
+end

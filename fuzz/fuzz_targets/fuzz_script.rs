@@ -10,6 +10,10 @@
 //! The harness calls `f` with zero, one and two arguments. The fuzzer finds
 //! `pub def f(` quickly from the seed corpus, and every arity that does not
 //! match is itself a path worth exercising: it must be E0004, not a crash.
+//!
+//! A `host:h` module is provided (D35), so the host boundary is fuzzed too:
+//! `h.id` returns its argument, `h.nan` a value Aura cannot hold, and `h.fail`
+//! an error. Whatever the script does with them must end in a value or an error.
 
 use libfuzzer_sys::fuzz_target;
 use serde::de::IgnoredAny;
@@ -23,6 +27,11 @@ fuzz_target!(|data: &[u8]| {
     let Ok(script) = Script::builder()
         .source("fuzz.aura", src)
         .budget(Budget::per_call().steps(100_000).memory_mb(16))
+        .pure("h.id", |v: serde_json::Value| v)
+        .pure("h.nan", || f64::NAN)
+        .effect("h.fail", |_: serde_json::Value| -> Result<i64, String> {
+            Err("refused".into())
+        })
         .load()
     else {
         return;

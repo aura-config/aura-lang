@@ -33,6 +33,7 @@ use crate::eval::methods::MethodRegistry;
 use crate::eval::value::Value;
 use crate::eval::{DenyFs, EnvCap, FileAccess, FileError, Interpreter, MemFs, Options, RealFs};
 use crate::facade::{to_report, Report};
+use crate::host::{HostCall, HostFn, HostKind, HostOutcome, HostTable};
 use crate::source::SourceCache;
 use crate::span::Span;
 use crate::vfs::loader::Loader;
@@ -112,6 +113,9 @@ pub struct ScriptBuilder {
     read: Vec<PathBuf>,
     strict: bool,
     budget: Budget,
+    host: Vec<HostFn>,
+    host_for_imports: Vec<String>,
+    host_call_steps: Option<u64>,
 }
 
 impl ScriptBuilder {
@@ -163,6 +167,52 @@ impl ScriptBuilder {
         self
     }
 
+    /// D35: a function the script may call as `import "host:geo" as geo` …
+    /// `geo.region(ip)`, named `"geo.region"` here. *Pure* is the host's
+    /// promise that the function is deterministic – the language cannot check
+    /// it – and it is what lets the script stay hermetic. Return `Option` for a
+    /// value that may be absent: `None` reaches the script as `null`.
+    pub fn pure<Args, F: PureFn<Args>>(mut self, name: impl Into<String>, f: F) -> Self {
+        self.host.push(HostFn {
+            name: name.into(),
+            kind: HostKind::Pure,
+            arity: F::ARITY,
+            for_imports: false,
+            call: f.erase(),
+        });
+        self
+    }
+
+    /// D35: a function with an effect – it reads or changes something outside
+    /// the script. Registering it is the grant, like `allow_env`, so the load
+    /// is no longer hermetic. `Err` stops the call with `E0008`.
+    pub fn effect<Args, F: EffectFn<Args>>(mut self, name: impl Into<String>, f: F) -> Self {
+        self.host.push(HostFn {
+            name: name.into(),
+            kind: HostKind::Effect,
+            arity: F::ARITY,
+            for_imports: false,
+            call: f.erase(),
+        });
+        self
+    }
+
+    /// D35 §3: let imported modules call this host function too. By default
+    /// only the root module can – a package the script imports does not reach
+    /// the host's services unless the host says so, one function at a time.
+    pub fn grant_to_imports(mut self, name: impl Into<String>) -> Self {
+        self.host_for_imports.push(name.into());
+        self
+    }
+
+    /// D35 §5: what one call to a host function costs, in steps. The default
+    /// is 100. Time spent inside the host is not measured; this is what bounds
+    /// a loop of host calls.
+    pub fn host_call_steps(mut self, steps: u64) -> Self {
+        self.host_call_steps = Some(steps);
+        self
+    }
+
     pub fn load(self) -> Result<Script, Error> {
         Script::build(self)
     }
@@ -180,6 +230,7 @@ struct State<'a> {
     registry: Arc<MethodRegistry<'a>>,
     fs: Arc<dyn FileAccess>,
     env_cap: EnvCap,
+    host_call_steps: u64,
     strict: bool,
     _closures: Interpreter<'a>,
 }
@@ -210,8 +261,10 @@ impl Script {
         ScriptBuilder::default()
     }
 
-    fn build(b: ScriptBuilder) -> Result<Script, Error> {
-        let granted = b.env.is_some() || !b.read.is_empty();
+    fn build(mut b: ScriptBuilder) -> Result<Script, Error> {
+        let host = Arc::new(host_table(&mut b)?);
+        // An effect is a grant like any other (D35 §2); a pure function is not.
+        let granted = b.env.is_some() || !b.read.is_empty() || host.has_effects();
         let env_cap = match &b.env {
             None => EnvCap::Deny,
             Some(names) => EnvCap::Allow(names.clone()),
@@ -286,6 +339,7 @@ impl Script {
             // D33 §1: nothing granted, so prove nothing is used.
             loader.hermetic = !granted;
             loader.lock = lock;
+            loader.host = host.clone();
 
             let registry = Arc::new(MethodRegistry::builtin());
             let mut interp = Interpreter::with_registry(
@@ -297,6 +351,7 @@ impl Script {
             );
             interp.fs = Box::new(SharedFs(fs.clone()));
             interp.env_cap = env_cap.clone();
+            interp.host_call_steps = host.call_steps;
             // Loading is held to the call budget: a script that cannot finish
             // evaluating its own module must not hang the host's startup.
             let _meter = budget.begin(&mut interp);
@@ -323,6 +378,7 @@ impl Script {
                 registry,
                 fs,
                 env_cap,
+                host_call_steps: host.call_steps,
                 strict: b.strict,
                 _closures: interp,
             })
@@ -333,6 +389,7 @@ impl Script {
 
     /// A value the script exports, as any `Deserialize` type.
     pub fn get<T: DeserializeOwned>(&self, name: &str) -> Result<T, Error> {
+        refuse_reentry()?;
         let json = self.loaded.with_dependent(|cache, state| {
             let v = state.exports.get(name).ok_or_else(|| no_export(name))?;
             crate::serialize::to_json(v).map_err(|d| Error::from(vec![to_report(&d, cache)]))
@@ -386,6 +443,7 @@ impl Script {
 
     /// One call, start to finish, in its own interpreter.
     fn invoke<A: Args>(&self, index: usize, args: A) -> Result<serde_json::Value, Error> {
+        refuse_reentry()?;
         let budget = self.budget;
         self.loaded.with_dependent(|cache, state| {
             let f = &state.exports[index];
@@ -398,6 +456,7 @@ impl Script {
             );
             it.fs = Box::new(SharedFs(state.fs.clone()));
             it.env_cap = state.env_cap.clone();
+            it.host_call_steps = state.host_call_steps;
             let _meter = budget.begin(&mut it);
 
             let args = args.to_values().map_err(|e| Error::host("E0005", e.0))?;
@@ -415,6 +474,160 @@ impl Script {
         })
     }
 }
+
+/// D35 §6: a host function may not call back into a script. Re-entrancy across
+/// the boundary is the class of defect behind the 2016 DAO exploit; a closure
+/// can capture the script, so the type system cannot rule it out.
+fn refuse_reentry() -> Result<(), Error> {
+    if crate::host::inside_host() {
+        return Err(Error::host(
+            "E0010",
+            "a script was called from inside one of its host functions",
+        ));
+    }
+    Ok(())
+}
+
+/// The functions the builder was given, checked as a whole: each named
+/// `module.function`, none twice, none shadowed by a built-in object method,
+/// and every name granted to imports one that exists.
+fn host_table(b: &mut ScriptBuilder) -> Result<HostTable, Error> {
+    let registry = MethodRegistry::builtin();
+    let mut table = HostTable::new();
+    if let Some(steps) = b.host_call_steps {
+        table.call_steps = steps;
+    }
+    let ident = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    for mut f in std::mem::take(&mut b.host) {
+        let Some((module, func)) = f.name.split_once('.').filter(|(m, n)| ident(m) && ident(n))
+        else {
+            return Err(Error::host(
+                "E0001",
+                format!(
+                    "host function '{}' must be named module.function, like \"geo.region\"",
+                    f.name
+                ),
+            ));
+        };
+        if table.get(module, func).is_some() {
+            return Err(Error::host(
+                "E0001",
+                format!("host function '{}' is provided twice", f.name),
+            ));
+        }
+        // Builtin methods win over an object's fields (D12), so `geo.keys()`
+        // would never reach the host. Refused here rather than shadowed silently.
+        if registry
+            .get(crate::eval::value::TypeTag::Object, func)
+            .is_some()
+        {
+            return Err(Error::host(
+                "E0001",
+                format!(
+                    "host function '{}' is named like the built-in object method '{func}'",
+                    f.name
+                ),
+            ));
+        }
+        f.for_imports = b.host_for_imports.contains(&f.name);
+        table.insert(f);
+    }
+    for n in &b.host_for_imports {
+        if !table.fns().any(|f| f.name == *n) {
+            return Err(Error::host(
+                "E0001",
+                format!("grant_to_imports names '{n}', which is not provided"),
+            ));
+        }
+    }
+    Ok(table)
+}
+
+/// A Rust closure that can be given to [`ScriptBuilder::pure`]: up to six
+/// arguments that `Deserialize`, and a result that `Serialize`s.
+pub trait PureFn<Args>: Send + Sync + 'static {
+    const ARITY: usize;
+    #[doc(hidden)]
+    fn erase(self) -> Arc<HostCall>;
+}
+
+/// A Rust closure that can be given to [`ScriptBuilder::effect`]: as
+/// [`PureFn`], returning `Result<R, E>` where `E` explains the failure.
+pub trait EffectFn<Args>: Send + Sync + 'static {
+    const ARITY: usize;
+    #[doc(hidden)]
+    fn erase(self) -> Arc<HostCall>;
+}
+
+/// A host result into an Aura value, by the same exact rules as arguments.
+fn host_result<R: Serialize>(r: R) -> HostOutcome {
+    match r.serialize(ToValue(PhantomData)) {
+        Ok(v) => HostOutcome::Value(v),
+        Err(e) => HostOutcome::BadArgument(format!("its result: {e}")),
+    }
+}
+
+macro_rules! host_fn {
+    ($n:expr $(, $t:ident $v:ident $i:tt)*) => {
+        impl<F, R, $($t),*> PureFn<($($t,)*)> for F
+        where
+            F: Fn($($t),*) -> R + Send + Sync + 'static,
+            R: Serialize,
+            $($t: DeserializeOwned,)*
+        {
+            const ARITY: usize = $n;
+            fn erase(self) -> Arc<HostCall> {
+                Arc::new(move |args: &[serde_json::Value]| {
+                    $(
+                        let $v: $t = match serde_json::from_value(args[$i].clone()) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                return HostOutcome::BadArgument(format!("argument {}: {e}", $i + 1))
+                            }
+                        };
+                    )*
+                    let _ = args;
+                    host_result(self($($v),*))
+                })
+            }
+        }
+
+        impl<F, R, Er, $($t),*> EffectFn<($($t,)*)> for F
+        where
+            F: Fn($($t),*) -> Result<R, Er> + Send + Sync + 'static,
+            R: Serialize,
+            Er: fmt::Display,
+            $($t: DeserializeOwned,)*
+        {
+            const ARITY: usize = $n;
+            fn erase(self) -> Arc<HostCall> {
+                Arc::new(move |args: &[serde_json::Value]| {
+                    $(
+                        let $v: $t = match serde_json::from_value(args[$i].clone()) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                return HostOutcome::BadArgument(format!("argument {}: {e}", $i + 1))
+                            }
+                        };
+                    )*
+                    let _ = args;
+                    match self($($v),*) {
+                        Ok(r) => host_result(r),
+                        Err(e) => HostOutcome::Failed(e.to_string()),
+                    }
+                })
+            }
+        }
+    };
+}
+
+host_fn!(0);
+host_fn!(1, A a 0);
+host_fn!(2, A a 0, B b 1);
+host_fn!(3, A a 0, B b 1, C c 2);
+host_fn!(4, A a 0, B b 1, C c 2, D d 3);
+host_fn!(5, A a 0, B b 1, C c 2, D d 3, E e 4);
+host_fn!(6, A a 0, B b 1, C c 2, D d 3, E e 4, G g 5);
 
 fn no_export(name: &str) -> Error {
     Error::host(

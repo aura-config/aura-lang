@@ -89,10 +89,52 @@ roughly 0.9 million events a second called per event, 1.3 million in batches —
 `cargo bench --bench script`. `cargo run --example embedding` runs the example
 above end to end.
 
-What it deliberately does not do yet is let a script call *back* into the
-application. That has to be shaped like the capability model rather than bolted
-beside it: arbitrary host functions would give away the property that makes Aura
-worth embedding, that `load` can prove a script touches nothing before it runs.
+### Advanced: a script that calls its host
+
+Some rules need data only the application has – which region an address is in,
+whether a feature is on for a customer. Rather than computing every such value
+in advance, the host can give the script named functions to call (D35). This is
+an advanced use: read the guarantees below before relying on it.
+
+```aura
+import "host:geo" as geo
+
+pub def route(ip)
+  region = geo.region(ip)
+  backend: region == null ? "global" : "#{region}-cluster"
+end
+```
+
+```rust
+let rules = Script::builder()
+    .file("routing.aura")
+    .pure("geo.region", move |ip: String| geoip.get(&ip).cloned())   // Option: None is null
+    .effect("flags.enabled", move |flag: String, customer: String| {
+        flags.enabled(&flag, &customer)                               // Result: Err is E0008
+    })
+    .load()?;
+```
+
+`pure` and `effect` are methods of the Rust API, not words of the language. The
+part of the name before the dot is the module the script imports.
+
+- **`pure` is your promise, and the language cannot check it.** A pure function
+  must give the same answer for the same arguments – a table that ships with the
+  binary, a formula. It leaves the load hermetic. Anything that reads the world –
+  a database, a flag service, the clock – is an `effect`: registering it is a
+  grant, like `allow_env`, and the load is no longer hermetic.
+- **The root module only.** A package the script imports cannot call host
+  functions; `grant_to_imports("geo.region")` opens one function to imports.
+- **Checked at load.** A module or function the host did not provide is `E0007`,
+  a call with the wrong number of arguments is `E0009` – on branches that never
+  run, too. Argument types are checked at the call, also as `E0009`.
+- **Budgeted.** A host call costs 100 steps (`host_call_steps` changes it). The
+  time spent inside your function is invisible to the budget: bound it yourself.
+- **No call back.** A host function that calls into the script gets `E0010`.
+
+`aura eval` has no host, so a `host:` import there stops with `E0007`;
+`aura check` lists what the script needs from whichever application runs it.
+`cargo run --example host_functions` runs a complete example.
 
 ## Any language: a subprocess
 

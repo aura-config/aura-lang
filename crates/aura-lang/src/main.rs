@@ -233,6 +233,27 @@ fn front_end(
     for d in &diags {
         render(d, cache);
     }
+    // D35 §7: the CLI has no host, so `check` says what one would have to provide.
+    let mut needs: Vec<String> = Vec::new();
+    for r in aura_lang::host::requirements(&module) {
+        let name = match (r.func, r.arity) {
+            (Some(f), Some(n)) => format!(
+                "{}.{f} ({n} argument{})",
+                r.module,
+                if n == 1 { "" } else { "s" }
+            ),
+            _ => format!("{}.* (the module is used as a value)", r.module),
+        };
+        if !needs.contains(&name) {
+            needs.push(name);
+        }
+    }
+    if !needs.is_empty() {
+        eprintln!("note: provided by the application at run time, this script calls:");
+        for n in &needs {
+            eprintln!("  {n}");
+        }
+    }
     Ok(has_blocking(&diags, strict))
 }
 

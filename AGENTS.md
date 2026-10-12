@@ -48,6 +48,7 @@ that fail if a second copy appears and disagrees.
 | Stdlib coverage in examples | `examples/` | `tests/showcase_coverage.rs` — the showcases together use every stdlib name |
 | The embedding contract | D33 in `SPEC.md` | `tests/script_api.rs` (written before the implementation, one test per clause), `tests/script_memory.rs` (a counting allocator), and the `fuzz_script` target |
 | Reading foreign formats | the three readers in `eval/methods.rs` | `tests/format_bridge.rs` and the `fuzz_bridge` target |
+| Host functions | D35 in `SPEC.md` | `tests/host_functions_api.rs` (written before the implementation, one test per clause) and `tests/host_functions_cli.rs` |
 | Line-ending independence | — | `tests/line_endings.rs` writes CRLF at run time, because `.gitattributes` hides it from every checkout CI makes |
 
 If you are about to write down a fact that already exists somewhere, do not.

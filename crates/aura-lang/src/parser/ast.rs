@@ -25,6 +25,9 @@ pub enum ImportSource<'a> {
         version: &'a str,
     },
     File(&'a str),
+    /// `import "host:geo" as geo` (D35): a module the embedding application
+    /// provides at run time. Holds the name after the prefix.
+    Host(&'a str),
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -3,12 +3,14 @@
 //! once), aura.lock integration, and capability isolation for imports (D1).
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use super::lockfile::{integrity_of, LockEntry, Lockfile};
 use super::{parse_version, version_satisfies, FileResolver, ImportSpec, ModuleId};
 use crate::error::Diagnostic;
 use crate::eval::value::Value;
 use crate::eval::Interpreter;
+use crate::host::HostTable;
 use crate::lexer::Lexer;
 use crate::parser::ast::ImportSource;
 use crate::parser::Parser;
@@ -33,6 +35,9 @@ pub struct Loader<'a, 'r> {
     /// Static analysis diagnostics for ALL loaded modules (SPEC §6.1):
     /// warnings accumulate here; analysis errors abort loading the module.
     pub diags: Vec<Diagnostic>,
+    /// D35: the functions the host provides. Empty for the CLI, which has no
+    /// host, so every `host:` import there fails with E0007.
+    pub host: Arc<HostTable>,
     state: HashMap<ModuleId, LoadState>,
     values: HashMap<ModuleId, Value<'a>>,
     chain: Vec<ModuleId>,
@@ -51,6 +56,7 @@ impl<'a, 'r> Loader<'a, 'r> {
             frozen: false,
             hermetic: false,
             diags: Vec::new(),
+            host: Arc::new(HostTable::new()),
             state: HashMap::new(),
             values: HashMap::new(),
             chain: Vec::new(),
@@ -146,14 +152,20 @@ impl<'a, 'r> Loader<'a, 'r> {
             return Err(first);
         }
         self.diags.extend(analysis);
+        self.check_host(&module, is_root)?;
 
         // First recursively evaluate all imports, then publish the aliases:
         // child modules overwrite the global alias map during their own eval.
         let mut resolved: Vec<(&str, Value<'a>)> = Vec::with_capacity(module.imports.len());
         for imp in &module.imports {
+            if let ImportSource::Host(m) = imp.source {
+                resolved.push((imp.alias, crate::host::module_value(&self.host, m)));
+                continue;
+            }
             let spec = match &imp.source {
                 ImportSource::File(p) => ImportSpec::File(p),
                 ImportSource::Registry { path, version } => ImportSpec::Registry { path, version },
+                ImportSource::Host(_) => unreachable!("handled above"),
             };
             let child_id = self.resolve_with_lock(&spec, Some(id), imp.span)?;
             let value = self.eval_module_rec(interp, child_id, imp.span, false)?;
@@ -169,6 +181,70 @@ impl<'a, 'r> Loader<'a, 'r> {
         let result = interp.eval_module(&module);
         interp.current_root = saved_root;
         result
+    }
+
+    /// D35 §3, §8, §9: every host function the module uses is provided, called
+    /// with the right number of arguments, and allowed where it is used – all
+    /// before anything runs, so a branch that is never taken is checked too.
+    fn check_host(
+        &self,
+        module: &crate::parser::ast::Module<'_>,
+        is_root: bool,
+    ) -> Result<(), Diagnostic> {
+        for (_, name, span) in crate::host::host_imports(module) {
+            if !self.host.has_module(name) {
+                return Err(not_provided(
+                    format!("host module '{name}' is not provided"),
+                    span,
+                ));
+            }
+        }
+        for req in crate::host::requirements(module) {
+            let fns: Vec<_> = match req.func {
+                Some(func) => {
+                    let Some(f) = self.host.get(req.module, func) else {
+                        return Err(not_provided(
+                            format!("host function '{}.{func}' is not provided", req.module),
+                            req.span,
+                        ));
+                    };
+                    if let Some(n) = req.arity.filter(|n| *n != f.arity) {
+                        return Err(rt(
+                            "E0009",
+                            format!(
+                                "host function '{}' takes {} argument{}, but is called with {n}",
+                                f.name,
+                                f.arity,
+                                if f.arity == 1 { "" } else { "s" },
+                            ),
+                            req.span,
+                        ));
+                    }
+                    vec![f.clone()]
+                }
+                // The module itself is used as a value, so any of its
+                // functions may be called through it.
+                None => self.host.module_fns(req.module).cloned().collect(),
+            };
+            for f in fns {
+                if !is_root && !f.for_imports {
+                    let mut d = rt(
+                        "E0310",
+                        format!(
+                            "an imported module has no capability to call host function '{}'",
+                            f.name
+                        ),
+                        req.span,
+                    );
+                    d.help = Some(format!(
+                        "host functions reach the root module only; the application can grant this one with grant_to_imports(\"{}\")",
+                        f.name
+                    ));
+                    return Err(d);
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Resolution prioritizes aura.lock (SPEC §5.2): a matching lock entry wins;
@@ -262,4 +338,14 @@ impl<'a, 'r> Loader<'a, 'r> {
         }
         Ok(())
     }
+}
+
+/// D35 §7. The same words wherever a host module is missing – the CLI, which
+/// has no host, and an application that did not provide it.
+pub const HOST_HELP: &str = "a `host:` module is provided by the application that embeds the script, at run time; `aura check` lists what this script needs from it";
+
+fn not_provided(msg: String, span: Span) -> Diagnostic {
+    let mut d = rt("E0007", msg, span);
+    d.help = Some(HOST_HELP.to_string());
+    d
 }
