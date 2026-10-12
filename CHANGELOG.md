@@ -7,6 +7,11 @@ still change the language.
 
 ## [Unreleased]
 
+## [0.3.1] – 2026-10-12
+
+A data-integrity release: a JSON object could be read as a number. No new
+API, nothing to change in a manifest.
+
 ### Fixed
 
 - **A JSON object whose key was `$serde_json::private::Number` was read as a
