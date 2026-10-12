@@ -76,3 +76,90 @@ impl Drop for ByteBudget {
         BYTES_LEFT.with(|c| c.set(self.previous));
     }
 }
+
+/// How much one call may do (D33). Counted in steps and bytes, never in time:
+/// a time limit would let the same call pass on a fast machine and fail on a
+/// slow one.
+///
+/// The default is finite. A host that sets nothing is protected all the same.
+#[derive(Debug, Clone, Copy)]
+pub struct Budget {
+    steps: u64,
+    bytes: u64,
+}
+
+impl Budget {
+    /// Ten million expressions and 256 MiB of values per call. Provisional:
+    /// D33 leaves the final numbers to the benchmarks.
+    pub const DEFAULT: Budget = Budget {
+        steps: 10_000_000,
+        bytes: 256 * 1024 * 1024,
+    };
+
+    /// The default budget, to be narrowed or widened.
+    pub fn per_call() -> Self {
+        Self::DEFAULT
+    }
+
+    /// Expressions one call may evaluate.
+    pub fn steps(mut self, steps: u64) -> Self {
+        self.steps = steps;
+        self
+    }
+
+    /// Bytes of values one call may create — cumulatively, released or not, so
+    /// the count is a property of the program and its input alone.
+    pub fn memory_bytes(mut self, bytes: u64) -> Self {
+        self.bytes = bytes;
+        self
+    }
+
+    /// [`Budget::memory_bytes`] in mebibytes.
+    pub fn memory_mb(self, mb: u64) -> Self {
+        self.memory_bytes(mb.saturating_mul(1024 * 1024))
+    }
+}
+
+impl Default for Budget {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// What an evaluation actually spent, so a host — or someone who just hit
+/// `E0325` — can see how much budget a manifest needs instead of guessing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Usage {
+    pub steps: u64,
+    pub bytes: u64,
+}
+
+/// A budget in force on one interpreter, for as long as this lives: the step
+/// count set on the interpreter, the byte count installed for the thread. Every
+/// path that evaluates — the CLI, the facade, `Script` — starts one the same
+/// way, so none of them can apply half a budget.
+pub struct Metered {
+    _bytes: ByteBudget,
+    budget: Budget,
+}
+
+impl Budget {
+    /// Put this budget in force on `interp` until the returned guard is dropped.
+    pub fn begin(self, interp: &mut super::Interpreter<'_>) -> Metered {
+        interp.set_step_budget(self.steps);
+        Metered {
+            _bytes: ByteBudget::install(self.bytes),
+            budget: self,
+        }
+    }
+}
+
+impl Metered {
+    /// What has been spent since `begin`.
+    pub fn usage(&self, interp: &super::Interpreter<'_>) -> Usage {
+        Usage {
+            steps: self.budget.steps - interp.steps_left(),
+            bytes: self.budget.bytes - BYTES_LEFT.with(Cell::get),
+        }
+    }
+}

@@ -37,6 +37,23 @@ CUE, KCL and Starlark are hermetic by construction. Aura makes it a mode, so one
 repository can hold both the manifests that must read the environment and the
 manifests that must not, and CI can require the strict kind per directory.
 
+## Bounded evaluation
+
+Hermetic proves a manifest cannot *take* anything. It does not prove the manifest
+will *finish*: three nested `range(1000).map` fit in 95 bytes, pass
+`check --hermetic`, and would run for over a minute. Every evaluation therefore
+has a budget — the CLI, `eval_file`, the playground and `Script` alike:
+
+| Budget | Exhausted | Default | Flag |
+| --- | --- | --- | --- |
+| steps — expressions evaluated | `E0325` | 10 million | `--max-steps=N` |
+| bytes — every value and frame created | `E0326` | 256 MiB | `--max-memory=MB` |
+
+Both are counted, never timed, so the same manifest stops at the same point on
+every machine. The defaults are about thirty thousand times what the heaviest
+example in the repository spends; `--stats` prints what a manifest spends, so a
+budget can be set from a measurement.
+
 ## Import isolation
 
 Rights belong to the **root manifest**. An imported module:

@@ -399,6 +399,7 @@ $ aura check --hermetic deploy.aura
 ```text
 aura eval <file.aura>  [--strict] [--dry-run] [--frozen] [--hermetic]
                        [--allow-read=<dir>] [--allow-env[=A,B]] [--allow-imports-io]
+                       [--max-steps=N] [--max-memory=MB] [--stats]
                        [--format json|json-flat|yaml|toml] [-o out.json] [--registry-dir=<dir>]
 aura check <file.aura> [--strict] [--hermetic]
 aura fmt <files...>    [--check]

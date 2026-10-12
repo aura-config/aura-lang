@@ -9,6 +9,17 @@ still change the language.
 
 ### Added
 
+- **Every evaluation has a budget, not only `Script` (D34).** `aura eval`,
+  `eval_file` and the browser playground used to evaluate with no limit, and
+  `aura eval` runs third-party packages: a 95-byte manifest that passes
+  `check --hermetic` ran for over a minute, which in CI is a build that hangs
+  until its job times out. The default is the same everywhere — 10 million steps
+  and 256 MiB, exhausted as `E0325` / `E0326` — and was measured rather than
+  guessed: the heaviest example in the repository spends 302 steps and 17 KB.
+  `--max-steps` and `--max-memory` change it, and `--stats` prints what an
+  evaluation spent; `Evaluated::usage` reports the same to a host. A manifest
+  that legitimately needs more now has to say so.
+
 - **`Script`: calling into Aura from Rust (D33).** A host loads a script once and
   calls its `pub def` functions as often as it likes, from as many threads as it
   likes, with host types crossing through `serde`:

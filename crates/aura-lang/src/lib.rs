@@ -58,4 +58,5 @@ pub mod span;
 pub mod vfs;
 
 /// The embedding API (D33). See [`script`].
-pub use script::{Args, Budget, Error, Function, Script, ScriptBuilder};
+pub use eval::budget::{Budget, Usage};
+pub use script::{Args, Error, Function, Script, ScriptBuilder};

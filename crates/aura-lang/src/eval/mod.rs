@@ -491,6 +491,11 @@ impl<'a> Interpreter<'a> {
         self.steps_left = steps;
     }
 
+    /// Expressions this interpreter may still evaluate.
+    pub fn steps_left(&self) -> u64 {
+        self.steps_left
+    }
+
     /// Charge one step, and stop if either budget is spent. Checked on every
     /// expression because every repetition in the language — a lambda over a
     /// list, a recursive call — evaluates expressions, so nothing can loop
@@ -498,11 +503,15 @@ impl<'a> Interpreter<'a> {
     #[inline]
     fn step(&mut self, e: &Expr<'a>) -> Result<(), Diagnostic> {
         if self.steps_left == 0 {
-            return Err(self.budget_error("E0325", "this call ran out of its step budget", e));
+            return Err(self.budget_error("E0325", "the evaluation ran out of its step budget", e));
         }
         self.steps_left -= 1;
         if budget::bytes_exhausted() {
-            return Err(self.budget_error("E0326", "this call ran out of its memory budget", e));
+            return Err(self.budget_error(
+                "E0326",
+                "the evaluation ran out of its memory budget",
+                e,
+            ));
         }
         Ok(())
     }
@@ -511,9 +520,15 @@ impl<'a> Interpreter<'a> {
     fn budget_error(&self, code: &'static str, msg: &str, e: &Expr<'a>) -> Diagnostic {
         let span = e.span().unwrap_or(Span::new(0, 0, 0));
         let mut d = rt(code, msg, span);
+        // Both remedies are named because the same error reaches a CLI user and
+        // a host: the flag for one, the builder method for the other.
         d.help = Some(
-            "the budget is per call; give it more with Budget::per_call(),              or pass less work into a single call"
-                .to_string(),
+            if code == "E0325" {
+                "raise it with --max-steps (Budget::steps in a host); --stats shows what is spent"
+            } else {
+                "raise it with --max-memory (Budget::memory_mb in a host); --stats shows what is spent"
+            }
+            .to_string(),
         );
         d
     }

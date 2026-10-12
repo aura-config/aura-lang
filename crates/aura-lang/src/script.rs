@@ -28,7 +28,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::error::Severity;
-use crate::eval::budget::ByteBudget;
+use crate::eval::budget::Budget;
 use crate::eval::methods::MethodRegistry;
 use crate::eval::value::Value;
 use crate::eval::{DenyFs, EnvCap, FileAccess, FileError, Interpreter, MemFs, Options, RealFs};
@@ -96,59 +96,6 @@ impl fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
-
-// ---------------------------------------------------------------------------
-// Budget
-// ---------------------------------------------------------------------------
-
-/// How much one call may do (D33). Counted in steps and bytes, never in time:
-/// a time limit would let the same call pass on a fast machine and fail on a
-/// slow one.
-///
-/// The default is finite. A host that sets nothing is protected all the same.
-#[derive(Debug, Clone, Copy)]
-pub struct Budget {
-    steps: u64,
-    bytes: u64,
-}
-
-impl Budget {
-    /// Ten million expressions and 256 MiB of values per call. Provisional:
-    /// D33 leaves the final numbers to the benchmarks.
-    pub const DEFAULT: Budget = Budget {
-        steps: 10_000_000,
-        bytes: 256 * 1024 * 1024,
-    };
-
-    /// The default budget, to be narrowed or widened.
-    pub fn per_call() -> Self {
-        Self::DEFAULT
-    }
-
-    /// Expressions one call may evaluate.
-    pub fn steps(mut self, steps: u64) -> Self {
-        self.steps = steps;
-        self
-    }
-
-    /// Bytes of values one call may create — cumulatively, released or not, so
-    /// the count is a property of the program and its input alone.
-    pub fn memory_bytes(mut self, bytes: u64) -> Self {
-        self.bytes = bytes;
-        self
-    }
-
-    /// [`Budget::memory_bytes`] in mebibytes.
-    pub fn memory_mb(self, mb: u64) -> Self {
-        self.memory_bytes(mb.saturating_mul(1024 * 1024))
-    }
-}
-
-impl Default for Budget {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Builder
@@ -352,8 +299,7 @@ impl Script {
             interp.env_cap = env_cap.clone();
             // Loading is held to the call budget: a script that cannot finish
             // evaluating its own module must not hang the host's startup.
-            interp.set_step_budget(budget.steps);
-            let _bytes = ByteBudget::install(budget.bytes);
+            let _meter = budget.begin(&mut interp);
 
             let value = loader.eval_entry(&mut interp, &ImportSpec::File(&entry));
             let mut reports: Vec<Report> =
@@ -452,8 +398,7 @@ impl Script {
             );
             it.fs = Box::new(SharedFs(state.fs.clone()));
             it.env_cap = state.env_cap.clone();
-            it.set_step_budget(budget.steps);
-            let _bytes = ByteBudget::install(budget.bytes);
+            let _meter = budget.begin(&mut it);
 
             let args = args.to_values().map_err(|e| Error::host("E0005", e.0))?;
             let span = Span::new(0, 0, 0);

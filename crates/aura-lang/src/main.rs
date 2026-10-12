@@ -70,6 +70,15 @@ enum Cmd {
         /// Local registry cache directory (default ~/.aura/registry)
         #[arg(long = "registry-dir", value_name = "DIR")]
         registry_dir: Option<PathBuf>,
+        /// Expressions the evaluation may run before it stops with E0325 (D34)
+        #[arg(long = "max-steps", value_name = "N")]
+        max_steps: Option<u64>,
+        /// Mebibytes of values it may create before it stops with E0326 (D34)
+        #[arg(long = "max-memory", value_name = "MB")]
+        max_memory: Option<u64>,
+        /// Print the steps and bytes the evaluation spent, to stderr
+        #[arg(long)]
+        stats: bool,
     },
     /// Lex + parse + static analysis only
     Check {
@@ -150,6 +159,9 @@ fn main() -> ExitCode {
             format,
             output,
             registry_dir,
+            max_steps,
+            max_memory,
+            stats,
         } => run_eval(EvalConfig {
             file,
             strict,
@@ -162,6 +174,9 @@ fn main() -> ExitCode {
             format,
             output,
             registry_dir,
+            max_steps,
+            max_memory,
+            stats,
         }),
     }
 }
@@ -178,6 +193,9 @@ struct EvalConfig {
     format: OutFormat,
     output: Option<PathBuf>,
     registry_dir: Option<PathBuf>,
+    max_steps: Option<u64>,
+    max_memory: Option<u64>,
+    stats: bool,
 }
 
 /// lex + parse + analysis; returns whether the result blocks (exit 1).
@@ -535,7 +553,20 @@ fn run_eval(cfg: EvalConfig) -> ExitCode {
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
+    let mut budget = aura_lang::Budget::per_call();
+    if let Some(n) = cfg.max_steps {
+        budget = budget.steps(n);
+    }
+    if let Some(mb) = cfg.max_memory {
+        budget = budget.memory_mb(mb);
+    }
+    let meter = budget.begin(&mut interp);
     let result = loader.eval_entry(&mut interp, &ImportSpec::File(&file_name));
+    if cfg.stats {
+        let used = meter.usage(&interp);
+        eprintln!("steps: {}  bytes: {}", used.steps, used.bytes);
+    }
+    drop(meter);
     for d in &loader.diags {
         render(d, &cache);
     }
