@@ -313,7 +313,7 @@ impl<'a> Parser<'a> {
             }
             // D35: a `host:` path names a module the embedding application
             // provides. The prefix cannot begin a file path anyone would write,
-            // so it needs no new grammar – only a name after it.
+            // so it needs no new grammar - only a name after it.
             TokenKind::Str(p) if p.starts_with(HOST_PREFIX) => {
                 let name = &p[HOST_PREFIX.len()..];
                 if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {

@@ -91,7 +91,7 @@ above end to end.
 
 ### Advanced: a script that calls its host
 
-Some rules need data only the application has – which region an address is in,
+Some rules need data only the application has - which region an address is in,
 whether a feature is on for a customer. Rather than computing every such value
 in advance, the host can give the script named functions to call (D35). This is
 an advanced use: read the guarantees below before relying on it.
@@ -119,14 +119,14 @@ let rules = Script::builder()
 part of the name before the dot is the module the script imports.
 
 - **`pure` is your promise, and the language cannot check it.** A pure function
-  must give the same answer for the same arguments – a table that ships with the
-  binary, a formula. It leaves the load hermetic. Anything that reads the world –
-  a database, a flag service, the clock – is an `effect`: registering it is a
+  must give the same answer for the same arguments - a table that ships with the
+  binary, a formula. It leaves the load hermetic. Anything that reads the world -
+  a database, a flag service, the clock - is an `effect`: registering it is a
   grant, like `allow_env`, and the load is no longer hermetic.
 - **The root module only.** A package the script imports cannot call host
   functions; `grant_to_imports("geo.region")` opens one function to imports.
 - **Checked at load.** A module or function the host did not provide is `E0007`,
-  a call with the wrong number of arguments is `E0009` – on branches that never
+  a call with the wrong number of arguments is `E0009` - on branches that never
   run, too. Argument types are checked at the call, also as `E0009`.
 - **Budgeted.** A host call costs 100 steps (`host_call_steps` changes it). The
   time spent inside your function is invisible to the budget: bound it yourself.

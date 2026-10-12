@@ -247,7 +247,7 @@ hash of the module's token stream; a mismatch is E0402.
 
 `import "host:geo" as geo` is different: the functions come from the application
 that embeds the script, not from a file. Write one only when that application
-provides it – `aura eval` has no host and stops with E0007, and `aura check`
+provides it - `aura eval` has no host and stops with E0007, and `aura check`
 lists what the script needs.
 
 ## Capabilities — the part most likely to surprise you

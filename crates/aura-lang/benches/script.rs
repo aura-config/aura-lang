@@ -73,7 +73,7 @@ fn bench_script(c: &mut Criterion) {
         b.iter(|| route.call(("/api/orders",)).expect("call"))
     });
 
-    // D35: the cost a host call adds – arguments out as JSON, the result back
+    // D35: the cost a host call adds - arguments out as JSON, the result back
     // through the exact serializer. Compare with the plain call above.
     let hosted = Script::builder()
         .source(

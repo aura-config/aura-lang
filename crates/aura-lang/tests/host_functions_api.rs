@@ -98,7 +98,7 @@ fn pure_functions_leave_the_script_hermetic() {
     assert_eq!(code(&err), "E0505", "{err}");
 }
 
-/// D35 §2. An effect function is a grant – of itself, not of anything else.
+/// D35 §2. An effect function is a grant - of itself, not of anything else.
 #[test]
 fn an_effect_grants_only_itself() {
     let rules = Script::builder()
@@ -122,7 +122,7 @@ fn an_effect_grants_only_itself() {
 }
 
 /// D35 §3. An imported module cannot call a host function, even one granted
-/// to the root – a third-party package must not reach the host's services.
+/// to the root - a third-party package must not reach the host's services.
 #[test]
 fn host_functions_do_not_reach_imports() {
     let rules = Script::builder()
@@ -164,7 +164,7 @@ fn a_host_function_can_be_granted_to_imports_explicitly() {
 
 /// D35 §6. A host function may not call back into the script. Re-entrancy
 /// across the boundary is the class of defect behind the 2016 DAO exploit, and
-/// the API alone cannot prevent it – a closure can capture the script – so it
+/// the API alone cannot prevent it - a closure can capture the script - so it
 /// is refused at run time.
 #[test]
 fn a_host_function_cannot_call_back_into_the_script() {
@@ -215,7 +215,7 @@ fn an_unprovided_host_module_fails_the_load() {
     assert_eq!(code(&err), "E0007", "{err}");
 }
 
-/// D35 §8. A function the host does not provide fails the load too – on a
+/// D35 §8. A function the host does not provide fails the load too - on a
 /// branch that would never run, which is what makes it a check and not a
 /// surprise.
 #[test]

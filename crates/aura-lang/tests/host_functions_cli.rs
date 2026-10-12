@@ -49,7 +49,7 @@ const ROUTING: &str = concat!(
     "end\n",
 );
 
-/// `eval` fails with E0007, and the explanation names the application – not a
+/// `eval` fails with E0007, and the explanation names the application - not a
 /// missing file.
 #[test]
 fn eval_explains_that_the_host_provides_it() {

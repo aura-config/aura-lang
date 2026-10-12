@@ -1,8 +1,8 @@
 //! Host functions (D35): what a host provides, and what a script asks for.
 //!
-//! Two halves, kept apart on purpose. [`HostTable`] is the host's side – the
+//! Two halves, kept apart on purpose. [`HostTable`] is the host's side - the
 //! functions it registered, their kind and arity. [`requirements`] is the
-//! script's side – every use of a `host:` module, found by walking the AST
+//! script's side - every use of a `host:` module, found by walking the AST
 //! before anything runs. The loader checks one against the other at load, `aura
 //! check` lists the second without the first, and the language server explains
 //! the import line from it. One walk, three readers, so they cannot disagree
@@ -34,9 +34,9 @@ pub enum HostOutcome {
     /// a host result is held to the same rules: no NaN turned into `null`, no
     /// integer wrapped. Plain data, so it has no lifetime of its own.
     Value(Value<'static>),
-    /// The host returned `Err` – `E0008`.
+    /// The host returned `Err` - `E0008`.
     Failed(String),
-    /// An argument did not fit the function's types – `E0009`.
+    /// An argument did not fit the function's types - `E0009`.
     BadArgument(String),
 }
 
@@ -108,7 +108,7 @@ impl HostTable {
         self.fns.values()
     }
 
-    /// Whether any registered function is an effect – a grant, so the load is
+    /// Whether any registered function is an effect - a grant, so the load is
     /// no longer hermetic (D35 §2).
     pub fn has_effects(&self) -> bool {
         self.fns.values().any(|f| f.kind == HostKind::Effect)
@@ -189,7 +189,7 @@ pub struct Requirement<'a> {
     /// The alias the script bound it to.
     pub alias: &'a str,
     /// The function, when the use is a direct call `alias.func(...)`. `None`
-    /// for any other use – the module passed around, stored, inspected – which
+    /// for any other use - the module passed around, stored, inspected - which
     /// is then taken to use every function the module has: the check has to
     /// stay sound when it cannot see which one is called (D35).
     pub func: Option<&'a str>,

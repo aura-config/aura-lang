@@ -25,8 +25,8 @@ pub fn hover_markdown(text: &str, line: u32, character: u32, stdlib: &Stdlib) ->
     Some(md.trim_end().to_string())
 }
 
-/// D35 §7: on an `import "host:..."` line, say where the module comes from –
-/// not from a file, so there is nothing to find – and which of its functions
+/// D35 §7: on an `import "host:..."` line, say where the module comes from -
+/// not from a file, so there is nothing to find - and which of its functions
 /// this file calls, the same list `aura check` prints.
 fn host_import_markdown(text: &str, line: u32) -> Option<String> {
     let toks = aura_lang::lexer::Lexer::new(text, 0).tokenize().ok()?;
@@ -39,7 +39,7 @@ fn host_import_markdown(text: &str, line: u32) -> Option<String> {
         "```aura
 import \"host:{name}\" as {alias}
 ```
-         A host module: provided by the application that embeds this script, at          run time – not by a file. `aura eval` has no host, so it stops with          E0007; `aura check` lists what the script needs."
+         A host module: provided by the application that embeds this script, at          run time - not by a file. `aura eval` has no host, so it stops with          E0007; `aura check` lists what the script needs."
     );
     let mut calls: Vec<String> = Vec::new();
     for r in aura_lang::host::requirements(&module) {

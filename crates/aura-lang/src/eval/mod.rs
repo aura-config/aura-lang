@@ -1136,7 +1136,7 @@ impl<'a> Interpreter<'a> {
         result
     }
 
-    /// D35: a call into the host. Charged a fixed number of steps up front – the
+    /// D35: a call into the host. Charged a fixed number of steps up front - the
     /// time spent inside the host is invisible to the budget, so the count is
     /// what bounds a loop of calls. The result is rebuilt as an Aura value, so
     /// its memory is charged like any other.

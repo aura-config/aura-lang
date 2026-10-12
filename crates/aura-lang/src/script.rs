@@ -169,8 +169,8 @@ impl ScriptBuilder {
 
     /// D35: a function the script may call as `import "host:geo" as geo` …
     /// `geo.region(ip)`, named `"geo.region"` here. *Pure* is the host's
-    /// promise that the function is deterministic – the language cannot check
-    /// it – and it is what lets the script stay hermetic. Return `Option` for a
+    /// promise that the function is deterministic - the language cannot check
+    /// it - and it is what lets the script stay hermetic. Return `Option` for a
     /// value that may be absent: `None` reaches the script as `null`.
     pub fn pure<Args, F: PureFn<Args>>(mut self, name: impl Into<String>, f: F) -> Self {
         self.host.push(HostFn {
@@ -183,7 +183,7 @@ impl ScriptBuilder {
         self
     }
 
-    /// D35: a function with an effect – it reads or changes something outside
+    /// D35: a function with an effect - it reads or changes something outside
     /// the script. Registering it is the grant, like `allow_env`, so the load
     /// is no longer hermetic. `Err` stops the call with `E0008`.
     pub fn effect<Args, F: EffectFn<Args>>(mut self, name: impl Into<String>, f: F) -> Self {
@@ -198,7 +198,7 @@ impl ScriptBuilder {
     }
 
     /// D35 §3: let imported modules call this host function too. By default
-    /// only the root module can – a package the script imports does not reach
+    /// only the root module can - a package the script imports does not reach
     /// the host's services unless the host says so, one function at a time.
     pub fn grant_to_imports(mut self, name: impl Into<String>) -> Self {
         self.host_for_imports.push(name.into());

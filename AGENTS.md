@@ -88,11 +88,11 @@ executing it showed that.
 - Benchmarks (criterion) for anything on a hot path: lexer, parser, evaluator,
   resolver.
 - Never commit without the maintainer's approval of the commit message.
-- **En dash, not em dash.** In new commits, pull requests, code comments and
-  documentation, write `–` (U+2013) where you would reach for `—` (U+2014).
-  GitHub renders the em dash as a very long bar, and almost everything here is
-  read there. Existing text is not rewritten wholesale; new and edited lines
-  follow the rule.
+- **A hyphen, not a dash.** In new commits, pull requests, code comments and
+  documentation, write a plain hyphen `-` with spaces around it where you would
+  reach for a dash. Neither `—` (U+2014) nor `–` (U+2013): GitHub renders both as
+  a long bar, and almost everything here is read there. Existing text is not
+  rewritten wholesale; new and edited lines follow the rule.
 
 ## Layout
 

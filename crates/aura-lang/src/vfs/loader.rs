@@ -184,7 +184,7 @@ impl<'a, 'r> Loader<'a, 'r> {
     }
 
     /// D35 §3, §8, §9: every host function the module uses is provided, called
-    /// with the right number of arguments, and allowed where it is used – all
+    /// with the right number of arguments, and allowed where it is used - all
     /// before anything runs, so a branch that is never taken is checked too.
     fn check_host(
         &self,
@@ -340,7 +340,7 @@ impl<'a, 'r> Loader<'a, 'r> {
     }
 }
 
-/// D35 §7. The same words wherever a host module is missing – the CLI, which
+/// D35 §7. The same words wherever a host module is missing - the CLI, which
 /// has no host, and an application that did not provide it.
 pub const HOST_HELP: &str = "a `host:` module is provided by the application that embeds the script, at run time; `aura check` lists what this script needs from it";
 

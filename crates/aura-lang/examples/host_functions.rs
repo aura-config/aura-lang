@@ -9,7 +9,7 @@
 //!
 //! What it is written to show:
 //!
-//! 1. The script declares what it needs – `import "host:geo" as geo` – so the
+//! 1. The script declares what it needs - `import "host:geo" as geo` - so the
 //!    requirement is visible at the top of the file, and the load fails if the
 //!    host did not provide it.
 //! 2. The host declares what kind each function is. `geo.region` is `pure`: a
@@ -36,7 +36,7 @@ pub def route(ip, customer)
   # the rule says where those go.
   backend: region == null ? "global" : "#{region}-cluster"
 
-  # Read only when the region is known – a host call costs budget like any
+  # Read only when the region is known - a host call costs budget like any
   # other work, so a rule should not make one it does not need.
   canary: region != null && flags.enabled("canary", customer)
 end

@@ -7,8 +7,8 @@ logs and to refer to in discussion. `E` is an error, `W` a warning — and under
 ## Host (E00xx)
 
 Raised at the boundary between a manifest and the application that embeds it.
-`E0001`–`E0006` carry no source position, because nothing was parsed yet;
-`E0007`–`E0009` point at the call in the script (D35).
+`E0001`-`E0006` carry no source position, because nothing was parsed yet;
+`E0007`-`E0009` point at the call in the script (D35).
 
 | Code | Meaning | How to fix it |
 | --- | --- | --- |

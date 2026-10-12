@@ -10,7 +10,7 @@ still change the language.
 ### Added
 
 - **A script can call functions its host provides (D35).** The script imports
-  them – `import "host:geo" as geo` – and the host registers them with
+  them - `import "host:geo" as geo` - and the host registers them with
   `ScriptBuilder::pure` or `ScriptBuilder::effect`. A `pure` function is the
   host's promise of determinism and leaves the load hermetic; an `effect` is a
   grant, like `allow_env`. Host functions reach the root module only, unless
