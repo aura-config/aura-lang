@@ -7,14 +7,30 @@ still change the language.
 
 ## [Unreleased]
 
+## [0.3.0] – 2026-10-12
+
+A security and embedding release. `Script` (D33) lets a Rust host call into
+Aura safely; every evaluation – the CLI, the facade, the playground and
+`Script` – now has a budget (D34). The budget closes a hole in 0.2.0, where a
+95-byte manifest that passes `check --hermetic` could run for over a minute and
+hang a CI job that evaluated it.
+
+### Changed – may need an edit
+
+- **Every evaluation has a finite budget by default**: 10 million steps and
+  256 MiB, exhausted as `E0325` / `E0326`. Measured against every example in
+  the repository, the heaviest spends 302 steps and 17 KB. A manifest that
+  legitimately needs more passes `--max-steps` / `--max-memory`; `--stats`
+  shows what it spends.
+
 ### Added
 
 - **Every evaluation has a budget, not only `Script` (D34).** `aura eval`,
   `eval_file` and the browser playground used to evaluate with no limit, and
   `aura eval` runs third-party packages: a 95-byte manifest that passes
   `check --hermetic` ran for over a minute, which in CI is a build that hangs
-  until its job times out. The default is the same everywhere — 10 million steps
-  and 256 MiB, exhausted as `E0325` / `E0326` — and was measured rather than
+  until its job times out. The default is the same everywhere – 10 million steps
+  and 256 MiB, exhausted as `E0325` / `E0326` – and was measured rather than
   guessed: the heaviest example in the repository spends 302 steps and 17 KB.
   `--max-steps` and `--max-memory` change it, and `--stats` prints what an
   evaluation spent; `Evaluated::usage` reports the same to a host. A manifest
@@ -37,7 +53,7 @@ still change the language.
 
   - **Hermetic by default**: with no grants, `load` proves the script reads no
     file, variable or clock (`E0505`). Grants mirror the CLI's flags.
-  - **A budget on every call**, in steps and bytes — never in time, which would
+  - **A budget on every call**, in steps and bytes – never in time, which would
     make the outcome depend on the machine. `E0325` / `E0326`; the default is
     finite.
   - **A checked boundary**: a value Aura cannot hold exactly is `E0005`, and a
@@ -47,14 +63,14 @@ still change the language.
 
   Measured on one core: about 1.2 µs a call, against 3.8 µs on the old route;
   0.9 million events a second called per event, 1.3 million in batches.
-  Tested before it was implemented — `tests/script_api.rs` was written against
-  the designed API — and fuzzed by the new `fuzz_script` target.
+  Tested before it was implemented – `tests/script_api.rs` was written against
+  the designed API – and fuzzed by the new `fuzz_script` target.
 
 ### Changed
 
 - **A function call releases its frames when nothing can refer to them.** Every
   call kept its environment until the whole evaluation ended, so `xs.map(...)`
-  over a long list held a frame per element — measured at gigabytes for one
+  over a long list held a frame per element – measured at gigabytes for one
   ordinary-looking expression. Only a function value refers to an environment,
   so a call that created none releases its frames on return. The evaluator
   benchmarks are unchanged or faster.
@@ -64,6 +80,22 @@ still change the language.
 - **`import "./lib.aura"` resolves from in-memory sources** as it does from
   disk. The in-memory resolver looked the path up verbatim, so the same manifest
   ran from a directory and failed with `E0404` from memory.
+
+### Fixed
+
+- **A lambda parameter declared inside `#{...}` pointed at the wrong text.**
+  Found by the first nightly ClusterFuzzLite run. Declarations made inside an
+  interpolation were recorded relative to the interpolated text rather than the
+  file, and searched for among the file's tokens, where the whole string is one
+  token. The language server clamped the position, so it did not crash – but
+  go-to-definition jumped elsewhere, and a rename would have rewritten unrelated
+  bytes. Plain ASCII hid it; a multibyte character before the interpolation
+  made it visible.
+
+### Security
+
+- `rustls` 0.23.42 → 0.23.45, the TLS stack `aura add` uses to fetch packages –
+  the only place Aura touches the network.
 
 ### Removed
 
