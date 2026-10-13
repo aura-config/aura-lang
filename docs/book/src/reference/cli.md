@@ -22,7 +22,7 @@ Evaluates a manifest with all its imports and prints the result.
 | `--strict` | analysis warnings (from every module) become blocking; extra schema fields are error `E0513` |
 | `--dry-run` | a full evaluation, but neither the output nor `aura.lock` is written; reports `[dry-run] read/would write` |
 | `--frozen` | dependencies strictly per `aura.lock` (`E0403` on a mismatch), and the lock is never rewritten — the CI mode |
-| `--allow-read=<dir>` | permits `read_file()` inside that directory (repeatable) |
+| `--allow-read=<dir>` | permits `read_file()` inside that directory (repeatable). A relative path in `read_file()` is read from the manifest's own folder, so the output does not depend on where `aura` runs (D37) |
 | `--allow-env[=A,B]` | permits `env()`: either a list of names, or all of them |
 | `--allow-imports-io` | extends the root's rights to imported modules |
 | `--hermetic` | no I/O at all: `env()` and `read_file()` are `E0505` wherever they appear. Mutually exclusive with the `--allow-*` flags |
@@ -52,6 +52,19 @@ Reach for it when a manifest's output must depend on nothing but its own text: a
 CI gate on a directory of manifests, or a build whose result you want to be
 reproducible on another machine. `eval --hermetic` enforces the same thing, and is
 the right flag when the manifest is untrusted.
+
+A script written for an application that provides host functions (D35) imports
+them as `import "host:geo" as geo`. The CLI has no host, so `eval` stops with
+`E0007`; `check` lists what the script needs from the application that will run
+it, and exits 0:
+
+```console
+$ aura check routing.aura
+note: provided by the application at run time, this script calls:
+  geo.region (1 argument)
+  flags.enabled (2 arguments)
+ok: routing.aura
+```
 
 ## docs
 
