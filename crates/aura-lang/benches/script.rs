@@ -131,5 +131,35 @@ end
     g.finish();
 }
 
-criterion_group!(benches, bench_script);
+/// D36: what a reload costs. `reload_changed` is a real swap - read, load,
+/// check, install; `reload_unchanged` is the price of asking when nothing
+/// changed, which is a whole load too, since content can only be compared
+/// after reading it. The watcher avoids that cost on a quiet file by looking
+/// at size and modification time first.
+fn bench_reload(c: &mut Criterion) {
+    let dir = std::env::temp_dir().join(format!("aura-bench-reload-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    let path = dir.join("rules.aura");
+    let version = |n: u32| format!("{RULES}\nrevision: {n}\n");
+    std::fs::write(&path, version(0)).expect("write");
+    let rules = Script::builder()
+        .file(&path)
+        .budget(Budget::per_call().steps(u64::MAX).memory_bytes(u64::MAX))
+        .load()
+        .expect("loads");
+
+    c.bench_function("script/reload_unchanged", |b| {
+        b.iter(|| rules.reload().expect("reload"))
+    });
+    let mut n = 0;
+    c.bench_function("script/reload_changed", |b| {
+        b.iter(|| {
+            n += 1;
+            std::fs::write(&path, version(n)).expect("write");
+            rules.reload().expect("reload")
+        })
+    });
+}
+
+criterion_group!(benches, bench_script, bench_reload);
 criterion_main!(benches);

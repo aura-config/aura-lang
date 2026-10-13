@@ -89,6 +89,48 @@ roughly 0.9 million events a second called per event, 1.3 million in batches —
 `cargo bench --bench script`. `cargo run --example embedding` runs the example
 above end to end.
 
+### Reloading rules while the service runs
+
+Rules change more often than the service that runs them. A script loaded from a
+file can be loaded again without a restart (D36):
+
+```rust
+use std::time::Duration;
+
+let rules = Script::builder()
+    .file("routing.aura")
+    .watch(Duration::from_secs(2), |result| match result {
+        Ok(v) => log::info!("rules at generation {} ({})", v.generation, v.hash),
+        Err(e) => log::error!("rules not reloaded, the old ones keep serving: {e}"),
+    })
+    .load()?;
+
+rules.reload()?;     // or reload now, with or without watch
+```
+
+- **A reload is a load.** It runs every check the first load did, with the same
+  grants: it can never make a script less hermetic, reach a host function you
+  did not provide, or pull in a package `aura.lock` did not pin - the lock is
+  read once, and a reload resolves as `--frozen` does.
+- **The exports are a contract.** Each export keeps its kind and number of
+  arguments, or the reload is `E0011` and the old version keeps serving. New
+  exports are fine. A bound `Function` follows its name across versions.
+- **Never half a version.** A call finishes on the version it started on; the
+  old version is freed when the last such call returns.
+- **Content decides.** A `touch` loads nothing. While watching, a change is
+  loaded only when two reads one interval apart agree, so a file still being
+  written is not loaded half done. A writer slower than the interval can still
+  be caught mid-write: deploy by writing a new file and renaming it over the
+  old one, as editors do.
+- **No silent failure.** The handler `watch` requires hears of every automatic
+  reload - the new version, or the error - and of the same broken content once.
+- `version()` names the generation and a hash of every file, for your logs.
+
+`cargo run --example checkout` puts it all together: an online store's risk
+rules, given a GeoIP table, exchange rates and a dispute database by the
+service, reloaded on an edit - and refusing an edit that renames what the
+service calls, or that reaches for a secret it was never given.
+
 ### Advanced: a script that calls its host
 
 Some rules need data only the application has - which region an address is in,

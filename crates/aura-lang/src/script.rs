@@ -17,11 +17,13 @@
 //! interpreter around it, and the conversion of arguments and result. Parsing,
 //! analysis and module evaluation are never repeated.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{mpsc, Arc, Mutex, RwLock};
+use std::time::Duration;
 
 use indexmap::IndexMap;
 use serde::de::DeserializeOwned;
@@ -38,7 +40,7 @@ use crate::source::SourceCache;
 use crate::span::Span;
 use crate::vfs::loader::Loader;
 use crate::vfs::lockfile::Lockfile;
-use crate::vfs::{FileResolver, ImportSpec, LocalFsResolver, MemoryResolver};
+use crate::vfs::{FileResolver, ImportSpec, LocalFsResolver, MemoryResolver, ModuleId};
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -116,6 +118,7 @@ pub struct ScriptBuilder {
     host: Vec<HostFn>,
     host_for_imports: Vec<String>,
     host_call_steps: Option<u64>,
+    watch: Option<(Duration, OnReload)>,
 }
 
 impl ScriptBuilder {
@@ -213,6 +216,22 @@ impl ScriptBuilder {
         self
     }
 
+    /// D36: watch the script's files, and reload when their content changes.
+    /// Every `interval` a thread owned by the script looks at the files; a
+    /// change is loaded once it reads the same twice, one interval apart, and
+    /// passes every check the first load did. `on_reload` is told of every
+    /// automatic reload - the new version, or why it was refused while the old
+    /// one keeps serving - so a failure cannot pass unnoticed. It runs on the
+    /// watcher's thread. Only a script loaded from a file can be watched.
+    pub fn watch(
+        mut self,
+        interval: Duration,
+        on_reload: impl Fn(Result<ScriptVersion, Error>) + Send + 'static,
+    ) -> Self {
+        self.watch = Some((interval, Box::new(on_reload)));
+        self
+    }
+
     pub fn load(self) -> Result<Script, Error> {
         Script::build(self)
     }
@@ -243,11 +262,68 @@ self_cell::self_cell!(
     }
 );
 
+/// Everything a load uses, taken from the builder once and kept, so that a
+/// reload runs with exactly the grants the first load had (D36 §3).
+struct Config {
+    sources: Vec<(String, String)>,
+    entry: Option<String>,
+    file: Option<PathBuf>,
+    read: Vec<PathBuf>,
+    env_cap: EnvCap,
+    granted: bool,
+    strict: bool,
+    budget: Budget,
+    host: Arc<HostTable>,
+}
+
+/// Which version of a script is serving (D36 §8): the generation counts
+/// successful loads from 1, and the hash covers every file the load read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScriptVersion {
+    pub generation: u64,
+    pub hash: String,
+}
+
+/// One loaded version: what calls run against, and the files it came from.
+struct Version {
+    loaded: Loaded,
+    id: ScriptVersion,
+    /// Every local file the load read, with what it read (D36 §5).
+    files: Vec<(PathBuf, String)>,
+}
+
+/// What a version promises the host: each export's name, and the number of
+/// arguments if it is a function (D36 §2).
+type Contract = Vec<(String, Option<usize>)>;
+
+/// The state every handle on a script shares, the watcher included.
+struct Shared {
+    config: Config,
+    /// The lock as the first load left it. Every reload is frozen to it, so a
+    /// reload cannot pull in a package the first load did not pin (D36 §4).
+    lock: Lockfile,
+    /// Fixed at the first load (D36 §2).
+    contract: Contract,
+    current: RwLock<Arc<Version>>,
+    /// One install at a time, so generations follow each other.
+    installing: Mutex<()>,
+}
+
+/// A load that was tried: its outcome, and the files it read on the way - kept
+/// even when it failed, so the watcher can tell a half-written file from a
+/// broken one (D36 §6).
+struct Attempt {
+    result: Result<(Loaded, Lockfile), Error>,
+    files: Vec<(PathBuf, String)>,
+    /// The generation it was loaded against; installed only onto that one.
+    base: u64,
+}
+
 /// A loaded script. `Send + Sync`: one instance serves every thread, and a
 /// call takes `&self`.
 pub struct Script {
-    loaded: Loaded,
-    budget: Budget,
+    shared: Arc<Shared>,
+    watcher: Option<Watcher>,
 }
 
 impl Script {
@@ -269,128 +345,82 @@ impl Script {
             None => EnvCap::Deny,
             Some(names) => EnvCap::Allow(names.clone()),
         };
-        let budget = b.budget;
+        let watch = b.watch.take();
+        if watch.is_some() && b.file.is_none() {
+            return Err(Error::host(
+                "E0001",
+                "only a script loaded from a file can be watched; an in-memory source has no file",
+            ));
+        }
+        let config = Config {
+            sources: std::mem::take(&mut b.sources),
+            entry: b.entry.take(),
+            file: b.file.take(),
+            read: std::mem::take(&mut b.read),
+            env_cap,
+            granted,
+            strict: b.strict,
+            budget: b.budget,
+            host,
+        };
 
-        let loaded = Loaded::try_new(SourceCache::new(), |cache| -> Result<State<'_>, Error> {
-            // Where modules and file reads come from: memory or disk.
-            let (resolver, fs, entry, lock): (
-                Box<dyn FileResolver>,
-                Arc<dyn FileAccess>,
-                String,
-                Lockfile,
-            ) = match &b.file {
-                Some(path) => {
-                    let entry = std::fs::canonicalize(path).map_err(|e| {
-                        Error::host("E0001", format!("cannot open {}: {e}", path.display()))
-                    })?;
-                    let root = entry.parent().unwrap_or(Path::new(".")).to_path_buf();
-                    let lock = match std::fs::read_to_string(root.join("aura.lock")) {
-                        Ok(text) => Lockfile::parse(&text)
-                            .map_err(|e| Error::host("E0001", format!("invalid aura.lock: {e}")))?,
-                        Err(_) => Lockfile::default(),
-                    };
-                    let registry_dir = std::env::var_os("USERPROFILE")
-                        .or_else(|| std::env::var_os("HOME"))
-                        .map(PathBuf::from)
-                        .unwrap_or_default()
-                        .join(".aura")
-                        .join("registry");
-                    let fs: Arc<dyn FileAccess> = if b.read.is_empty() {
-                        Arc::new(DenyFs)
-                    } else {
-                        Arc::new(RealFs {
-                            allowed: b.read.clone(),
-                        })
-                    };
-                    let name = entry
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .to_string();
-                    (
-                        Box::new(LocalFsResolver { root, registry_dir }),
-                        fs,
-                        name,
-                        lock,
-                    )
-                }
-                None => {
-                    let entry = b
-                        .entry
-                        .clone()
-                        .or_else(|| b.sources.first().map(|(n, _)| n.clone()))
-                        .ok_or_else(|| Error::host("E0001", "no source was given"))?;
-                    let files: HashMap<String, String> = b.sources.iter().cloned().collect();
-                    let fs: Arc<dyn FileAccess> = if b.read.is_empty() {
-                        Arc::new(DenyFs)
-                    } else {
-                        Arc::new(MemFs(files.clone()))
-                    };
-                    (
-                        Box::new(MemoryResolver { files }),
-                        fs,
-                        entry,
-                        Lockfile::default(),
-                    )
-                }
-            };
+        let lock = match &config.file {
+            Some(path) => read_lock(path)?,
+            None => Lockfile::default(),
+        };
+        let attempt = load_version(&config, lock, false, 0);
+        let (loaded, lock) = attempt.result?;
+        let contract = contract_of(&loaded);
+        let version = Version {
+            loaded,
+            id: ScriptVersion {
+                generation: 1,
+                hash: hash_files(&attempt.files),
+            },
+            files: attempt.files,
+        };
+        let shared = Arc::new(Shared {
+            config,
+            lock,
+            contract,
+            current: RwLock::new(Arc::new(version)),
+            installing: Mutex::new(()),
+        });
+        let watcher =
+            watch.map(|(interval, on_reload)| Watcher::start(&shared, interval, on_reload));
+        Ok(Script { shared, watcher })
+    }
 
-            let mut loader = Loader::new(cache, resolver.as_ref());
-            // D33 §1: nothing granted, so prove nothing is used.
-            loader.hermetic = !granted;
-            loader.lock = lock;
-            loader.host = host.clone();
+    /// The version serving now.
+    pub fn version(&self) -> ScriptVersion {
+        self.shared.current().id.clone()
+    }
 
-            let registry = Arc::new(MethodRegistry::builtin());
-            let mut interp = Interpreter::with_registry(
-                registry.clone(),
-                Options {
-                    strict: b.strict,
-                    dry_run: false,
-                },
-            );
-            interp.fs = Box::new(SharedFs(fs.clone()));
-            interp.env_cap = env_cap.clone();
-            interp.host_call_steps = host.call_steps;
-            // Loading is held to the call budget: a script that cannot finish
-            // evaluating its own module must not hang the host's startup.
-            let _meter = budget.begin(&mut interp);
-
-            let value = loader.eval_entry(&mut interp, &ImportSpec::File(&entry));
-            let mut reports: Vec<Report> =
-                loader.diags.iter().map(|d| to_report(d, cache)).collect();
-            let value = match value {
-                Ok(v) => v,
-                Err(d) => {
-                    reports.insert(0, to_report(&d, cache));
-                    return Err(reports.into());
-                }
-            };
-            if crate::analysis::has_blocking(&loader.diags, b.strict) {
-                return Err(reports.into());
-            }
-            let Value::Object(exports) = value else {
-                return Err(Error::host("E0001", "a module evaluates to an object"));
-            };
-
-            Ok(State {
-                exports: (*exports).clone(),
-                registry,
-                fs,
-                env_cap,
-                host_call_steps: host.call_steps,
-                strict: b.strict,
-                _closures: interp,
-            })
-        })?;
-
-        Ok(Script { loaded, budget })
+    /// Read the script's files again and, if they changed, load them as a new
+    /// version (D36). The new version passes every check the first load did,
+    /// with the same grants, against the same lock, and keeps every export the
+    /// host may have bound; if anything fails, the old version keeps serving
+    /// and the error says why. Content decides: files rewritten with the same
+    /// bytes are not a new version.
+    pub fn reload(&self) -> Result<ScriptVersion, Error> {
+        if self.shared.config.file.is_none() {
+            return Err(Error::host(
+                "E0001",
+                "a script built from in-memory sources has no files to reload; build a new Script",
+            ));
+        }
+        let attempt = self.shared.attempt();
+        Ok(self
+            .shared
+            .install(attempt)?
+            .unwrap_or_else(|| self.version()))
     }
 
     /// A value the script exports, as any `Deserialize` type.
     pub fn get<T: DeserializeOwned>(&self, name: &str) -> Result<T, Error> {
         refuse_reentry()?;
-        let json = self.loaded.with_dependent(|cache, state| {
+        let current = self.shared.current();
+        let json = current.loaded.with_dependent(|cache, state| {
             let v = state.exports.get(name).ok_or_else(|| no_export(name))?;
             crate::serialize::to_json(v).map_err(|d| Error::from(vec![to_report(&d, cache)]))
         })?;
@@ -403,18 +433,15 @@ impl Script {
         self.function::<A, R>(name)?.call(args)
     }
 
-    /// Bind a function, checking now — not on the first request — that the name
+    /// Bind a function, checking now - not on the first request - that the name
     /// exists (`E0002`), names a function (`E0003`), and takes as many
-    /// arguments as `A` has (`E0004`).
+    /// arguments as `A` has (`E0004`). A reload keeps all three true (D36 §2).
     pub fn function<A: Args, R: DeserializeOwned>(
         &self,
         name: &str,
     ) -> Result<Function<'_, A, R>, Error> {
-        let index = self.loaded.with_dependent(|_, state| {
-            let (index, _, value) = state
-                .exports
-                .get_full(name)
-                .ok_or_else(|| no_export(name))?;
+        self.shared.current().loaded.with_dependent(|_, state| {
+            let value = state.exports.get(name).ok_or_else(|| no_export(name))?;
             let Value::Function(def) = value else {
                 return Err(Error::host(
                     "E0003",
@@ -432,21 +459,25 @@ impl Script {
                     ),
                 ));
             }
-            Ok(index)
+            Ok(())
         })?;
         Ok(Function {
             script: self,
-            index,
+            name: name.to_string(),
             _types: PhantomData,
         })
     }
 
-    /// One call, start to finish, in its own interpreter.
-    fn invoke<A: Args>(&self, index: usize, args: A) -> Result<serde_json::Value, Error> {
+    /// One call, start to finish, in its own interpreter, on the version that
+    /// was current when it started (D36 §9).
+    fn invoke<A: Args>(&self, name: &str, args: A) -> Result<serde_json::Value, Error> {
         refuse_reentry()?;
-        let budget = self.budget;
-        self.loaded.with_dependent(|cache, state| {
-            let f = &state.exports[index];
+        let budget = self.shared.config.budget;
+        let current = self.shared.current();
+        current.loaded.with_dependent(|cache, state| {
+            // Found by name, not by position: a reload may reorder the exports
+            // (D36 §2), and the contract guarantees the name is still there.
+            let f = state.exports.get(name).ok_or_else(|| no_export(name))?;
             let mut it = Interpreter::with_registry(
                 state.registry.clone(),
                 Options {
@@ -472,6 +503,410 @@ impl Script {
                 e
             })
         })
+    }
+}
+
+impl Drop for Script {
+    fn drop(&mut self) {
+        if let Some(w) = self.watcher.take() {
+            w.stop();
+        }
+    }
+}
+
+impl Shared {
+    fn current(&self) -> Arc<Version> {
+        // A poisoned lock means a thread panicked while swapping; the Arc it
+        // holds is always a whole version, so it is safe to keep serving it.
+        self.current
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// Load the files as they are on disk now, frozen to the first lock.
+    fn attempt(&self) -> Attempt {
+        let base = self.current().id.generation;
+        load_version(&self.config, self.lock.clone(), true, base)
+    }
+
+    /// Make an attempt the current version. `Ok(None)` when its content is the
+    /// content already serving, or another reload got there first.
+    fn install(&self, attempt: Attempt) -> Result<Option<ScriptVersion>, Error> {
+        let (loaded, _) = attempt.result?;
+        let _one = self.installing.lock().unwrap_or_else(|e| e.into_inner());
+        let current = self.current();
+        let hash = hash_files(&attempt.files);
+        if hash == current.id.hash || current.id.generation != attempt.base {
+            return Ok(None);
+        }
+        check_contract(&self.contract, &contract_of(&loaded))?;
+        let id = ScriptVersion {
+            generation: current.id.generation + 1,
+            hash,
+        };
+        let version = Arc::new(Version {
+            loaded,
+            id: id.clone(),
+            files: attempt.files,
+        });
+        *self.current.write().unwrap_or_else(|e| e.into_inner()) = version;
+        Ok(Some(id))
+    }
+}
+
+/// `aura.lock` beside the entry file, if there is one.
+fn read_lock(path: &Path) -> Result<Lockfile, Error> {
+    let entry = std::fs::canonicalize(path)
+        .map_err(|e| Error::host("E0001", format!("cannot open {}: {e}", path.display())))?;
+    let root = entry.parent().unwrap_or(Path::new("."));
+    match std::fs::read_to_string(root.join("aura.lock")) {
+        Ok(text) => Lockfile::parse(&text)
+            .map_err(|e| Error::host("E0001", format!("invalid aura.lock: {e}"))),
+        Err(_) => Ok(Lockfile::default()),
+    }
+}
+
+/// One load, start to finish: resolve, analyse, check the host functions,
+/// evaluate under the budget. The same function serves the first load and
+/// every reload, which is what makes a reload no weaker than a load (D36 §3).
+fn load_version(config: &Config, lock: Lockfile, frozen: bool, base: u64) -> Attempt {
+    let mut files = Vec::new();
+    let mut lock_after = None;
+    let result = Loaded::try_new(SourceCache::new(), |cache| -> Result<State<'_>, Error> {
+        // Where modules and file reads come from: memory or disk.
+        let (resolver, fs, entry): (Box<dyn FileResolver>, Arc<dyn FileAccess>, String) =
+            match &config.file {
+                Some(path) => {
+                    let entry = std::fs::canonicalize(path).map_err(|e| {
+                        Error::host("E0001", format!("cannot open {}: {e}", path.display()))
+                    })?;
+                    let root = entry.parent().unwrap_or(Path::new(".")).to_path_buf();
+                    let registry_dir = std::env::var_os("USERPROFILE")
+                        .or_else(|| std::env::var_os("HOME"))
+                        .map(PathBuf::from)
+                        .unwrap_or_default()
+                        .join(".aura")
+                        .join("registry");
+                    let fs: Arc<dyn FileAccess> = if config.read.is_empty() {
+                        Arc::new(DenyFs)
+                    } else {
+                        Arc::new(RealFs {
+                            allowed: config.read.clone(),
+                        })
+                    };
+                    let name = entry
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    (Box::new(LocalFsResolver { root, registry_dir }), fs, name)
+                }
+                None => {
+                    let entry = config
+                        .entry
+                        .clone()
+                        .or_else(|| config.sources.first().map(|(n, _)| n.clone()))
+                        .ok_or_else(|| Error::host("E0001", "no source was given"))?;
+                    let files: HashMap<String, String> = config.sources.iter().cloned().collect();
+                    let fs: Arc<dyn FileAccess> = if config.read.is_empty() {
+                        Arc::new(DenyFs)
+                    } else {
+                        Arc::new(MemFs(files.clone()))
+                    };
+                    (Box::new(MemoryResolver { files }), fs, entry)
+                }
+            };
+        let recording = Recording {
+            inner: resolver.as_ref(),
+            seen: RefCell::new(Vec::new()),
+        };
+
+        let mut loader = Loader::new(cache, &recording);
+        // D33 §1: nothing granted, so prove nothing is used.
+        loader.hermetic = !config.granted;
+        loader.lock = lock;
+        loader.frozen = frozen;
+        loader.host = config.host.clone();
+
+        let registry = Arc::new(MethodRegistry::builtin());
+        let mut interp = Interpreter::with_registry(
+            registry.clone(),
+            Options {
+                strict: config.strict,
+                dry_run: false,
+            },
+        );
+        interp.fs = Box::new(SharedFs(fs.clone()));
+        interp.env_cap = config.env_cap.clone();
+        interp.host_call_steps = config.host.call_steps;
+        // Loading is held to the call budget: a script that cannot finish
+        // evaluating its own module must not hang the host's startup, nor a
+        // reload (D36 §10).
+        let _meter = config.budget.begin(&mut interp);
+
+        let value = loader.eval_entry(&mut interp, &ImportSpec::File(&entry));
+        files = recording.seen.take();
+        let mut reports: Vec<Report> = loader.diags.iter().map(|d| to_report(d, cache)).collect();
+        let value = match value {
+            Ok(v) => v,
+            Err(d) => {
+                reports.insert(0, to_report(&d, cache));
+                return Err(reports.into());
+            }
+        };
+        if crate::analysis::has_blocking(&loader.diags, config.strict) {
+            return Err(reports.into());
+        }
+        let Value::Object(exports) = value else {
+            return Err(Error::host("E0001", "a module evaluates to an object"));
+        };
+        lock_after = Some(std::mem::take(&mut loader.lock));
+
+        Ok(State {
+            exports: (*exports).clone(),
+            registry,
+            fs,
+            env_cap: config.env_cap.clone(),
+            host_call_steps: config.host.call_steps,
+            strict: config.strict,
+            _closures: interp,
+        })
+    });
+    Attempt {
+        result: result.map(|loaded| (loaded, lock_after.unwrap_or_default())),
+        files,
+        base,
+    }
+}
+
+/// Passes resolution through, and remembers every local file it was asked to
+/// load and what it read: the file set of a version (D36 §5).
+struct Recording<'r> {
+    inner: &'r dyn FileResolver,
+    seen: RefCell<Vec<(PathBuf, String)>>,
+}
+
+impl FileResolver for Recording<'_> {
+    fn resolve(
+        &self,
+        spec: &ImportSpec<'_>,
+        importer: Option<&ModuleId>,
+    ) -> Result<ModuleId, String> {
+        self.inner.resolve(spec, importer)
+    }
+
+    fn load(&self, id: &ModuleId) -> Result<String, String> {
+        let text = self.inner.load(id)?;
+        if let ModuleId::Local(path) = id {
+            self.seen.borrow_mut().push((path.clone(), text.clone()));
+        }
+        Ok(text)
+    }
+}
+
+/// SHA-256 over every file's path and content, in path order.
+fn hash_files(files: &[(PathBuf, String)]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut sorted: Vec<_> = files.iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut h = Sha256::new();
+    for (path, text) in sorted {
+        h.update(path.to_string_lossy().as_bytes());
+        h.update([0]);
+        h.update(text.as_bytes());
+        h.update([0]);
+    }
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn contract_of(loaded: &Loaded) -> Contract {
+    loaded.with_dependent(|_, s| {
+        s.exports
+            .iter()
+            .map(|(k, v)| {
+                let arity = match v {
+                    Value::Function(d) => Some(d.params.len()),
+                    _ => None,
+                };
+                (k.clone(), arity)
+            })
+            .collect()
+    })
+}
+
+/// D36 §2: everything the first version exported is still there, of the same
+/// kind and arity. New exports are fine - nothing the host bound can use them.
+fn check_contract(fixed: &Contract, new: &Contract) -> Result<(), Error> {
+    let describe = |k: &Option<usize>| match k {
+        Some(n) => format!(
+            "a function of {n} argument{}",
+            if *n == 1 { "" } else { "s" }
+        ),
+        None => "a value".to_string(),
+    };
+    for (name, kind) in fixed {
+        let msg = match new.iter().find(|(n, _)| n == name) {
+            None => format!("the new version no longer exports '{name}'"),
+            Some((_, k)) if k != kind => format!(
+                "'{name}' was {}, and the new version makes it {}",
+                describe(kind),
+                describe(k)
+            ),
+            Some(_) => continue,
+        };
+        let mut e = Error::host("E0011", msg);
+        e.reports[0].help = Some(
+            "the host may have bound it, so the reload was refused and the old version keeps \
+             serving; restart the application to change what the script exports"
+                .to_string(),
+        );
+        return Err(e);
+    }
+    Ok(())
+}
+
+/// The thread that watches a script's files (D36 §1). It holds the script only
+/// weakly and stops when the `Script` is dropped.
+struct Watcher {
+    stop: mpsc::Sender<()>,
+    thread: std::thread::JoinHandle<()>,
+}
+
+/// The handler `watch` requires (D36 §12).
+type OnReload = Box<dyn Fn(Result<ScriptVersion, Error>) + Send>;
+
+impl Watcher {
+    fn start(shared: &Arc<Shared>, interval: Duration, on_reload: OnReload) -> Watcher {
+        let (stop, stopped) = mpsc::channel();
+        let weak = Arc::downgrade(shared);
+        let thread = std::thread::Builder::new()
+            .name("aura-watch".into())
+            .spawn(move || watch_loop(weak, interval, stopped, on_reload))
+            .expect("spawn the watcher thread");
+        Watcher { stop, thread }
+    }
+
+    fn stop(self) {
+        drop(self.stop);
+        // The handler may own the last handle on the script, and so drop it on
+        // the watcher's own thread: joining there would wait for itself.
+        if self.thread.thread().id() != std::thread::current().id() {
+            let _ = self.thread.join();
+        }
+    }
+}
+
+/// Waits one interval; false when the script is gone and the watcher must end.
+fn tick(stopped: &mpsc::Receiver<()>, interval: Duration) -> bool {
+    matches!(
+        stopped.recv_timeout(interval),
+        Err(mpsc::RecvTimeoutError::Timeout)
+    )
+}
+
+/// What the file system says about the files without reading them: a cheap
+/// reason to look, never a reason to reload (D36 §1).
+type Stats = Vec<Option<(u64, Option<std::time::SystemTime>)>>;
+
+fn stats(files: &[(PathBuf, String)]) -> Stats {
+    files
+        .iter()
+        .map(|(p, _)| {
+            std::fs::metadata(p)
+                .ok()
+                .map(|m| (m.len(), m.modified().ok()))
+        })
+        .collect()
+}
+
+/// Every file read again; `None` if one can no longer be read.
+fn reread(files: &[(PathBuf, String)]) -> Option<Vec<(PathBuf, String)>> {
+    files
+        .iter()
+        .map(|(p, _)| std::fs::read_to_string(p).ok().map(|t| (p.clone(), t)))
+        .collect()
+}
+
+fn watch_loop(
+    shared: std::sync::Weak<Shared>,
+    interval: Duration,
+    stopped: mpsc::Receiver<()>,
+    on_reload: OnReload,
+) {
+    let mut quiet: Option<Stats> = None;
+    let mut failed: Option<String> = None;
+    loop {
+        if !tick(&stopped, interval) {
+            return;
+        }
+        let Some(script) = shared.upgrade() else {
+            return;
+        };
+        let current = script.current();
+        let now = stats(&current.files);
+        if quiet.as_ref() == Some(&now) {
+            continue;
+        }
+        // Something about the files changed. Only content counts: a touch
+        // leaves the hash as it was, and nothing happens.
+        let first = reread(&current.files);
+        let read_hash = first.as_deref().map(hash_files);
+        if read_hash.as_deref() == Some(current.id.hash.as_str()) {
+            quiet = Some(now);
+            continue;
+        }
+        // The same broken content was already reported (D36 §12).
+        if read_hash.is_some() && read_hash == failed {
+            continue;
+        }
+        drop(current);
+        drop(script);
+
+        // D36 §6: nothing is loaded until the files read the same one interval
+        // later. A file being written - truncated, then filled - is caught in
+        // between by a read, and must cost no load, let alone be loaded. Found
+        // on macOS CI, where a plain rewrite of the same bytes was read empty
+        // and loaded once for nothing.
+        if !tick(&stopped, interval) {
+            return;
+        }
+        let Some(script) = shared.upgrade() else {
+            return;
+        };
+        let current = script.current();
+        if first.is_none() || reread(&current.files) != first {
+            continue;
+        }
+        let attempt = script.attempt();
+        drop(current);
+        drop(script);
+
+        // The load reads the files once more, and may read new imports. All of
+        // it must still read the same one interval later; a load that failed
+        // is held to the same test before it is reported, since a
+        // half-written file is not a broken one yet.
+        if !tick(&stopped, interval) {
+            return;
+        }
+        if reread(&attempt.files).as_deref() != Some(attempt.files.as_slice()) {
+            continue;
+        }
+        let Some(script) = shared.upgrade() else {
+            return;
+        };
+        match script.install(attempt) {
+            Ok(Some(v)) => {
+                failed = None;
+                quiet = None;
+                on_reload(Ok(v));
+            }
+            Ok(None) => {}
+            Err(e) => {
+                failed = read_hash;
+                on_reload(Err(e));
+            }
+        }
     }
 }
 
@@ -653,34 +1088,34 @@ fn from_json<T: DeserializeOwned>(json: serde_json::Value) -> Result<T, Error> {
 /// converts back.
 pub struct Function<'s, A, R> {
     script: &'s Script,
-    index: usize,
+    name: String,
     _types: PhantomData<fn(A) -> R>,
 }
 
 impl<A: Args, R: DeserializeOwned> Function<'_, A, R> {
     pub fn call(&self, args: A) -> Result<R, Error> {
-        from_json(self.script.invoke(self.index, args)?)
+        from_json(self.script.invoke(&self.name, args)?)
     }
 }
 
 impl<A, R> fmt::Debug for Function<'_, A, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let name = self
-            .script
-            .loaded
-            .with_dependent(|_, s| s.exports.get_index(self.index).map(|(k, _)| k.clone()));
-        f.debug_struct("Function").field("name", &name).finish()
+        f.debug_struct("Function")
+            .field("name", &self.name)
+            .finish()
     }
 }
 
 impl fmt::Debug for Script {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let exports: Vec<String> = self
+        let current = self.shared.current();
+        let exports: Vec<String> = current
             .loaded
             .with_dependent(|_, s| s.exports.keys().cloned().collect());
         f.debug_struct("Script")
             .field("exports", &exports)
-            .field("budget", &self.budget)
+            .field("version", &current.id)
+            .field("budget", &self.shared.config.budget)
             .finish()
     }
 }

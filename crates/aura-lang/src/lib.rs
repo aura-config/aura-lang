@@ -60,4 +60,4 @@ pub mod vfs;
 
 /// The embedding API (D33). See [`script`].
 pub use eval::budget::{Budget, Usage};
-pub use script::{Args, EffectFn, Error, Function, PureFn, Script, ScriptBuilder};
+pub use script::{Args, EffectFn, Error, Function, PureFn, Script, ScriptBuilder, ScriptVersion};

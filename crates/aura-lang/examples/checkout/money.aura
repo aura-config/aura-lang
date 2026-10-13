@@ -1,0 +1,14 @@
+# Money, shared by every rule file. Exchange rates belong to the service,
+# which refreshes them during the day, so they are asked for, not copied in.
+#
+# This is an imported module, and host functions reach the root module only.
+# The service grants `fx.rate` to imports by name; nothing else crosses (D35).
+
+import "host:fx" as fx
+
+# An amount in EUR, or null when the currency has no rate. Absence is not an
+# error here: the rules decide what an order nobody can price means.
+pub def to_eur(amount, currency)
+  rate = currency == "EUR" ? 1.0 : fx.rate(currency)
+  value: rate == null ? null : amount * rate
+end
