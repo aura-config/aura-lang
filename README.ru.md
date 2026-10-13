@@ -369,7 +369,7 @@ aura eval convert.aura --allow-read=. --format yaml
 
 | Флаг | Что разрешает |
 | --- | --- |
-| `--allow-read=<dir>` | `read_file()` внутри каталога (можно повторять; пути канонизируются, `..` не выводит наружу) |
+| `--allow-read=<dir>` | `read_file()` внутри каталога (можно повторять; пути канонизируются, `..` не выводит наружу). Относительный путь в `read_file()` читается от папки манифеста, как у импорта (D37) |
 | `--allow-env[=A,B]` | `env()` для перечисленных переменных — без списка все |
 | `--allow-imports-io` | распространяет права корня на импортированные модули |
 | `--hermetic` | наоборот: никакого I/O, `E0505` везде; несовместим с флагами `--allow-*` |
@@ -474,14 +474,19 @@ json.Unmarshal(out, &config)
 <br>
 
 ```rust
-use aura_lang::facade::{eval_file, EvalOptions};
+use aura_lang::Script;
 
-let opts = EvalOptions { strict: true, ..Default::default() };
-let out = eval_file("config/app.aura".as_ref(), &opts)?;
-let cfg: MyConfig = serde_json::from_value(out.json)?;
+let cfg: MyConfig = Script::builder()
+    .file("config/app.aura")
+    .allow_read("config")                      // файлы, которые он читает, рядом с ним
+    .env_values([("APP_ENV", "production")])   // ровно эти, и никакие другие
+    .strict()
+    .load()?
+    .output()?;                                // то, что печатает `aura eval`, в виде типа
 ```
 
-Промежуточного файла нет: приложение само читает манифест.
+Промежуточного файла нет: приложение само читает манифест, а
+`aura types --lang rust` пишет структуры для его схем.
 
 `pub def` манифеста — тоже вызываемое значение, поэтому правила могут жить в
 `.aura`-файле, а приложение вызывать их на каждый запрос, меняя поведение без
@@ -495,9 +500,11 @@ let route: Route = rules.call("route", (path, method))?;
 ```
 
 У каждого вызова бюджет в шагах и байтах, память на вызов постоянна, и один
-`Script` обслуживает все потоки. См.
-[руководство по встраиванию](https://aura-config.github.io/aura-lang/book/ru/guides/embedding.html)
-и `cargo run --example embedding`.
+`Script` обслуживает все потоки. Скрипт может вызывать функции, которые даёт ему
+приложение, - `import "host:geo" as geo`, - и перезагружаться при изменении
+файла, проходя все проверки первой загрузки. См.
+[руководство по встраиванию](https://aura-config.github.io/aura-lang/book/ru/guides/embedding.html);
+`cargo run --example checkout` показывает всё это в одном сервисе.
 
 </details>
 
@@ -667,6 +674,9 @@ Claude:
 - [x] `aura fmt` — каноническое форматирование с гарантией неизменности потока токенов
 - [x] `aura types` — Rust, TypeScript и Go из схем манифеста
 - [x] `aura docs --agent` — весь язык для ИИ-ассистента
+- [x] Встраивание в Rust: `Script` с бюджетом на вызов (D33, D34), функции,
+      которые даёт хост (D35), перезагрузка на ходу (D36), чтение всего
+      манифеста в свои типы
 - [x] Детерминированное время; `now()` запрещён по построению
 - [x] Языковой сервер: автодополнение, hover, переход к определению, поиск ссылок,
       символы, переименование, подсказка сигнатуры, форматирование при сохранении

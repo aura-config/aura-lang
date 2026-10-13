@@ -12,7 +12,7 @@ they do not leak.
 
 | Flag | Permits |
 | --- | --- |
-| `--allow-read=<dir>` | `read_file()` inside that directory; paths are canonicalised, and `..` cannot escape (`E0311`) |
+| `--allow-read=<dir>` | `read_file()` inside that directory; paths are canonicalised, and `..` cannot escape (`E0311`). A relative path is read from the manifest's own folder (D37) |
 | `--allow-env[=A,B]` | `env()` for the named variables — with no list, all of them |
 | `--allow-imports-io` | extend the root's rights to imported modules |
 
@@ -71,6 +71,23 @@ $ aura eval main.aura --allow-read=.
 ```
 
 There is a runnable version of this in `examples/security_demo/`.
+
+## Host functions and reload
+
+An application that embeds Aura can give a script its own functions (D35) and
+reload it while running (D36). Both are held to the model above:
+
+- A host function is a grant, named by the application, one function at a time.
+  `pure` ones - the host's promise of determinism - keep a script hermetic;
+  `effect` ones are grants like `--allow-env`.
+- They reach the root module only. An imported package cannot call one unless
+  the application grants that function to imports by name (`E0310`).
+- Every use is checked at load, before anything runs: a function not provided is
+  `E0007`. A host function cannot call back into the script (`E0010`).
+- A reload is a full load with the first load's grants and its `aura.lock`,
+  frozen: an edited script cannot widen its rights, pull in an unpinned package,
+  or drop an export the application bound (`E0011`). A file still being written
+  is not loaded until it has been left alone for the settle period.
 
 ## Supply chain
 

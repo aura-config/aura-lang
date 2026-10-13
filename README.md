@@ -470,14 +470,19 @@ explicit, and `--format yaml|toml` if the consumer prefers another shape.
 <br>
 
 ```rust
-use aura_lang::facade::{eval_file, EvalOptions};
+use aura_lang::Script;
 
-let opts = EvalOptions { strict: true, ..Default::default() };
-let out = eval_file("config/app.aura".as_ref(), &opts)?;
-let cfg: MyConfig = serde_json::from_value(out.json)?;
+let cfg: MyConfig = Script::builder()
+    .file("config/app.aura")
+    .allow_read("config")                      // the files it reads, beside it
+    .env_values([("APP_ENV", "production")])   // exactly these, and no others
+    .strict()
+    .load()?
+    .output()?;                                // what `aura eval` prints, typed
 ```
 
-There is no intermediate file: the application reads the manifest itself.
+There is no intermediate file: the application reads the manifest itself, and
+`aura types --lang rust` writes the structs for its schemas.
 
 A manifest's `pub def` is also a callable value, so rules can live in a `.aura`
 file and the application can call them per request, changing behaviour without a
@@ -491,9 +496,11 @@ let route: Route = rules.call("route", (path, method))?;
 ```
 
 Every call has a budget in steps and bytes, memory per call is constant, and one
-`Script` serves every thread. See the
-[embedding guide](https://aura-config.github.io/aura-lang/book/guides/embedding.html)
-and `cargo run --example embedding`.
+`Script` serves every thread. A script can call functions the application gives
+it - `import "host:geo" as geo` - and be reloaded when its file changes, held to
+every check the first load passed. See the
+[embedding guide](https://aura-config.github.io/aura-lang/book/guides/embedding.html);
+`cargo run --example checkout` shows all of it in one service.
 
 </details>
 
@@ -667,6 +674,9 @@ change, and is frozen at 1.0.
 - [x] `aura fmt` — canonical formatting with a token-stream guarantee
 - [x] `aura types` — Rust, TypeScript and Go from a manifest's schemas
 - [x] `aura docs --agent` — the whole language for a coding assistant
+- [x] Embedding in Rust: `Script` with a budget per call (D33, D34), functions
+      the host provides (D35), reload while the service runs (D36), a whole
+      manifest read into your own types
 - [x] Deterministic time; `now()` forbidden by construction
 - [x] Language server: completion, hover, go-to-definition, references, symbols,
       rename, signature help, format-on-save
