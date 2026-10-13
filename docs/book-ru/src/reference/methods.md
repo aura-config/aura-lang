@@ -39,6 +39,7 @@
 | Метод | Результат |
 | --- | --- |
 | `abs()` | Float |
+| `round(digits)` | Float |
 | `to_str()` | String |
 
 ## Bool

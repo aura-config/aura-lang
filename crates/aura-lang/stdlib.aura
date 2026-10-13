@@ -147,6 +147,11 @@ Float:
     returns: "Float"
     doc:     "Absolute value."
   end
+  round:
+    params:  ["digits"]
+    returns: "Float"
+    doc:     "Nearest Float with that many decimal places (0 to 15); exact ties go to even."
+  end
   to_str:
     params:  []
     returns: "String"

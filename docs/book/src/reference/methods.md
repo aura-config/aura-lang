@@ -39,6 +39,7 @@ against the implementation rather than transcribed.
 | Method | Result |
 | --- | --- |
 | `abs()` | Float |
+| `round(digits)` | Float |
 | `to_str()` | String |
 
 ## Bool

@@ -40,7 +40,7 @@ pub def decide(order)
 
   where = country == null ? "location unknown" : null
   price = total == null ? "no exchange rate for #{order.currency}" : null
-  size  = total != null && total > review_over_eur ? "over the review threshold" : null
+  size  = total != null && total > review_over_eur ? "large order: #{total.round(2)} EUR" : null
   fraud = disputes > max_chargebacks ? "#{disputes} chargebacks" : null
   ban   = country != null && blocked.contains(country) ? "ships to #{country}" : null
 

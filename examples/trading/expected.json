@@ -15,6 +15,6 @@
   "routes_uniq": true,
   "compact": "BTCUSDT",
   "lot": 0.001,
-  "max_lots": "0.7692307692307693",
+  "max_lots": "0.769",
   "declared_instruments": 2
 }

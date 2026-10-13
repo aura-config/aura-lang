@@ -20,6 +20,12 @@ still change the language.
 
 ### Added
 
+- **`Float.round(digits)`.** `(640.0 * 2.0 + 9.5) * 0.92` is
+  `1186.3400000000001`, and there was no way to show it as `1186.34`. Rounding
+  is of the value the Float holds, so `1.005.round(2)` is `1.0` on every
+  machine; an exact binary tie goes to the even digit, as in IEEE 754. The
+  result stays a Float, and `digits` is an Int from 0 to 15 (`E0306`
+  otherwise).
 - **A script can be reloaded while the service runs (D36).** `Script::reload()`
   loads the files again; `ScriptBuilder::watch(interval, on_reload)` does it when
   their content changes - a `touch` loads nothing, and a file still being written

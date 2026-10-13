@@ -76,9 +76,11 @@ routes_uniq: routes.uniq().len() == routes.len()
 assert routes.uniq().len() == routes.len(), "a route may not be listed twice"
 
 # --- Venue-specific spellings and a lot size that arrives as text.
-compact:  inst.compact_symbol("BTC-USDT").value
-lot:      inst.lot_size("0.001").value
-max_lots: (exposure_of(aggressive).value / 65000.0).to_str()
+compact: inst.compact_symbol("BTC-USDT").value
+lot:     inst.lot_size("0.001").value
+# An order size goes to the venue as text, at the venue's precision - not
+# with the sixteen digits a division leaves.
+max_lots: (exposure_of(aggressive).value / 65000.0).round(3).to_str()
 
 # --- Instrument count read from a venue table that reports it as a string.
 declared_instruments: "2".to_int()

@@ -97,5 +97,23 @@ check(
 check("format is idempotent", format(format(messy)) === format(messy));
 check("format leaves unlexable input alone", format('x: "unterm') === 'x: "unterm');
 
+// 8. Floats give the same digits here as natively. The table is the one
+// crates/aura-lang/tests/float_round.rs checks, so the two builds are held to
+// one set of answers: equal shortest round-trip text is equal bits.
+const table = JSON.parse(
+  require("fs").readFileSync(
+    require("path").join(__dirname, "../aura-lang/tests/fixtures/float_cases.json"),
+    "utf8",
+  ),
+);
+check("float table has its cases", table.cases.length > 10, String(table.cases.length));
+for (const c of table.cases) {
+  const out = JSON.parse(
+    evaluate({ "main.aura": `v: (${c.expr}).to_str()\n` }, "main.aura", "json", false, {}),
+  );
+  const got = out.ok ? JSON.parse(out.output).v : JSON.stringify(out.diagnostics);
+  check(`float ${c.expr} is ${c.is}`, got === c.is, got);
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nвсе проверки прошли");
 process.exit(failures ? 1 : 0);

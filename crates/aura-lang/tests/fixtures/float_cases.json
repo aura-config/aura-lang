@@ -1,0 +1,22 @@
+{
+  "about": "Float results that must be identical, digit for digit, wherever Aura runs. Read by tests/float_round.rs (native) and crates/aura-wasm/smoke.cjs (the real wasm32 module under Node). Each expression is evaluated as `v: (expr).to_str()`; the shortest round-trip decimal text is compared, so equal text is equal bits.",
+  "cases": [
+    { "expr": "1186.3400000000001.round(2)", "is": "1186.34" },
+    { "expr": "((640.0 * 2.0 + 9.5) * 0.92).round(2)", "is": "1186.34" },
+    { "expr": "(640.0 * 2.0 + 9.5) * 0.92", "is": "1186.3400000000001" },
+    { "expr": "19.98765.round(3)", "is": "19.988" },
+    { "expr": "2.5.round(0)", "is": "2" },
+    { "expr": "-1.239.round(2)", "is": "-1.24" },
+    { "expr": "7.6.round(0)", "is": "8" },
+    { "expr": "1.005.round(2)", "is": "1" },
+    { "expr": "0.125.round(2)", "is": "0.12" },
+    { "expr": "0.375.round(2)", "is": "0.38" },
+    { "expr": "(-0.001).round(2)", "is": "0" },
+    { "expr": "1.5.round(15)", "is": "1.5" },
+    { "expr": "(50000.0 / 65000.0).round(3)", "is": "0.769" },
+    { "expr": "50000.0 / 65000.0", "is": "0.7692307692307693" },
+    { "expr": "0.1 + 0.2", "is": "0.30000000000000004" },
+    { "expr": "1.0 / 3.0", "is": "0.3333333333333333" },
+    { "expr": "123456789.123456789.round(4)", "is": "123456789.1235" }
+  ]
+}

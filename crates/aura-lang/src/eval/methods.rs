@@ -109,6 +109,7 @@ impl<'a> MethodRegistry<'a> {
         // stdlib extension: numeric + universal to_str
         r.register(TypeTag::Int, "abs", m_num_abs);
         r.register(TypeTag::Float, "abs", m_num_abs);
+        r.register(TypeTag::Float, "round", m_float_round);
         for tag in [TypeTag::Int, TypeTag::Float, TypeTag::Bool, TypeTag::Str] {
             r.register(tag, "to_str", m_to_str);
         }
@@ -1666,6 +1667,38 @@ fn m_int_to_float<'a>(
 }
 
 // ---- stdlib extension: numeric + universal to_str ----
+
+/// `Float.round(digits)` - the nearest Float with that many decimal places.
+/// Rounds the value the Float holds, so `1.005` (stored just below) rounds
+/// down on every machine; an exact binary tie goes to the even digit, as in
+/// IEEE 754. The result stays a Float: Int and Float are kept apart (D6).
+fn m_float_round<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::Float(f) = recv else {
+        unreachable!()
+    };
+    let digits = match args {
+        [Value::Int(d)] if (0..=15).contains(d) => *d as usize,
+        _ => {
+            let mut d = rt(
+                "E0306",
+                "round(digits) expects one Int from 0 to 15: the number of decimal places",
+                sp,
+            );
+            d.help = Some("to round money to cents: total.round(2)".into());
+            return Err(d);
+        }
+    };
+    // Formatting is correctly rounded decimal conversion of the exact binary
+    // value; parsing it back gives the nearest Float to that decimal.
+    let rounded: f64 = format!("{f:.digits$}").parse().unwrap_or(*f);
+    // -0.001 rounds to "-0.00"; a sign on zero means nothing in a config.
+    Ok(Value::Float(if rounded == 0.0 { 0.0 } else { rounded }))
+}
 
 fn m_num_abs<'a>(
     _it: &mut Interpreter<'a>,
