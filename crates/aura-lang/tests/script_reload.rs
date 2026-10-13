@@ -328,15 +328,29 @@ fn an_in_memory_script_is_not_reloaded() {
 
 const TICK: Duration = Duration::from_millis(20);
 
+/// The interval for the tests where a writer races the watcher. A writer that
+/// stalls between truncating a file and filling it, for longer than two
+/// intervals, has left a file that really is empty and unchanged - no watcher
+/// can tell that from one emptied on purpose, which is why D36 tells writers to
+/// publish by rename. With 20 ms, a loaded CI runner stalled the writer that
+/// long and these tests failed for the scheduler's reason, not the watcher's;
+/// reproduced on Linux under load. At 250 ms the stall would have to pass half
+/// a second.
+const WRITING_TICK: Duration = Duration::from_millis(250);
+
 /// Every result the watcher reported, in order.
 type Reports = Arc<Mutex<Vec<Result<ScriptVersion, String>>>>;
 
 fn watched(path: &Path) -> (Script, Reports) {
+    watched_every(path, TICK)
+}
+
+fn watched_every(path: &Path, interval: Duration) -> (Script, Reports) {
     let reports: Reports = Arc::default();
     let sink = reports.clone();
     let s = Script::builder()
         .file(path)
-        .watch(TICK, move |r: Result<ScriptVersion, Error>| {
+        .watch(interval, move |r: Result<ScriptVersion, Error>| {
             sink.lock()
                 .expect("reports")
                 .push(r.map_err(|e| e.code().to_string()));
@@ -482,9 +496,9 @@ fn dropping_a_watched_script_frees_it() {
 fn a_file_still_being_written_is_not_loaded() {
     let d = dir("watch-writing");
     let path = write(&d, "r.aura", &returns(1));
-    let (s, reports) = watched(&path);
+    let (s, reports) = watched_every(&path, WRITING_TICK);
 
-    let end = Instant::now() + TICK * 15;
+    let end = Instant::now() + WRITING_TICK * 6;
     let mut n = 2;
     while Instant::now() < end {
         write(&d, "r.aura", &returns(n));
@@ -514,9 +528,9 @@ fn a_file_still_being_written_is_not_loaded() {
 fn a_file_being_rewritten_is_not_loaded_even_if_it_reads_the_same() {
     let d = dir("watch-rewriting");
     let path = write(&d, "r.aura", &returns(1));
-    let (s, reports) = watched(&path);
+    let (s, reports) = watched_every(&path, WRITING_TICK);
 
-    let end = Instant::now() + TICK * 10;
+    let end = Instant::now() + WRITING_TICK * 6;
     while Instant::now() < end {
         write(&d, "r.aura", &returns(2));
         std::thread::sleep(Duration::from_millis(2));
