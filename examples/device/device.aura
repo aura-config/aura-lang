@@ -80,7 +80,9 @@ average_ma = awake_ma * duty_cycle + board.power.sleep_ma
 # Int / Float promotes to Float (D6). Where there is nothing to divide by,
 # `to_float` widens on its own — there is no `Float.to_int()`, because
 # narrowing would have to choose a rounding nobody asked for.
-battery_days: (board.power.battery_mah / average_ma / 24.0).to_str()
+# A person reads this, so it is rounded to a tenth of a day - the value stays
+# a Float, and the rounding is the one asked for.
+battery_days: (board.power.battery_mah / average_ma / 24.0).round(1).to_str()
 
 # --- Output in the shape each consumer wants. One source of truth, six
 # renderings, and none of them hand-maintained.

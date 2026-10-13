@@ -23,7 +23,7 @@
     "telemetry/climate",
     "telemetry/humidity"
   ],
-  "battery_days": "50.5050505050505",
+  "battery_days": "50.5",
   "provisioning": {
     "argument": "[{\"id\":\"BME280\",\"bus\":\"i2c\",\"poll_ms\":2000,\"topic\":\"telemetry/climate\"},{\"id\":\"SHT41\",\"bus\":\"i2c\",\"poll_ms\":5000,\"topic\":\"telemetry/humidity\"}]",
     "reviewed": "- id: BME280\n  bus: i2c\n  poll_ms: 2000\n  topic: telemetry/climate\n- id: SHT41\n  bus: i2c\n  poll_ms: 5000\n  topic: telemetry/humidity\n",
