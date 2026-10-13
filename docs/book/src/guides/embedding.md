@@ -40,6 +40,30 @@ name to text and resolves imports inside it.
 In an async context, wrap `eval_file` in `spawn_blocking`: it reads files and
 evaluates synchronously.
 
+### Reading a whole manifest into your types
+
+When the manifest *is* the configuration, read all of it at once, straight into
+your own structs - no JSON in between, and the same result `aura eval` prints:
+
+```rust
+#[derive(serde::Deserialize)]
+struct Device { board: Board, sensors: Vec<Sensor>, /* ... */ }
+
+let device: Device = Script::builder()
+    .file("device.aura")
+    .allow_read("config")                      // the files it reads, beside it
+    .env_values([("APP_ENV", "production")])   // exactly these, and no others
+    .load()?
+    .output()?;
+```
+
+`env_values` grants the named variables with the given values; `env()` reads
+them from there and never from the process, so the service's own environment
+cannot leak into the manifest, and a test can give it any environment without
+touching the process's. `aura types --lang rust` writes the structs for the
+schemas a manifest declares. Every example in the repository is read this way
+in a test and compared with the output the CLI is pinned to.
+
 ### Calling into a script: `Script`
 
 `eval_file` returns JSON, and JSON cannot hold a function. But an Aura `pub def`

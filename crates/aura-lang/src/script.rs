@@ -112,6 +112,7 @@ pub struct ScriptBuilder {
     entry: Option<String>,
     file: Option<PathBuf>,
     env: Option<Vec<String>>,
+    env_values: HashMap<String, String>,
     read: Vec<PathBuf>,
     strict: bool,
     budget: Budget,
@@ -150,6 +151,24 @@ impl ScriptBuilder {
         self.env
             .get_or_insert_with(Vec::new)
             .extend(names.into_iter().map(Into::into));
+        self
+    }
+
+    /// Grant these variables with these values. `env()` reads them from here
+    /// and never from the process, so a host's own environment cannot leak
+    /// into a script that was handed other values - and a test can give a
+    /// script any environment without changing the process's.
+    pub fn env_values<I, K, V>(mut self, values: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<String>,
+    {
+        for (k, v) in values {
+            let k = k.into();
+            self.env.get_or_insert_with(Vec::new).push(k.clone());
+            self.env_values.insert(k, v.into());
+        }
         self
     }
 
@@ -261,6 +280,7 @@ struct State<'a> {
     registry: Arc<MethodRegistry<'a>>,
     fs: Arc<dyn FileAccess>,
     env_cap: EnvCap,
+    env_values: Arc<HashMap<String, String>>,
     host_call_steps: u64,
     strict: bool,
     _closures: Interpreter<'a>,
@@ -282,6 +302,7 @@ struct Config {
     file: Option<PathBuf>,
     read: Vec<PathBuf>,
     env_cap: EnvCap,
+    env_values: Arc<HashMap<String, String>>,
     granted: bool,
     strict: bool,
     budget: Budget,
@@ -381,6 +402,7 @@ impl Script {
             file: b.file.take(),
             read: std::mem::take(&mut b.read),
             env_cap,
+            env_values: Arc::new(std::mem::take(&mut b.env_values)),
             granted,
             strict: b.strict,
             budget: b.budget,
@@ -440,6 +462,18 @@ impl Script {
             .shared
             .install(attempt)?
             .unwrap_or_else(|| self.version()))
+    }
+
+    /// The whole manifest, as `aura eval` prints it - properties and blocks,
+    /// not bindings, functions, schemas or enums - as any `Deserialize` type.
+    pub fn output<T: DeserializeOwned>(&self) -> Result<T, Error> {
+        refuse_reentry()?;
+        let current = self.shared.current();
+        let json = current.loaded.with_dependent(|cache, state| {
+            let module = Value::Object(Arc::new(state.exports.clone()));
+            crate::serialize::to_json(&module).map_err(|d| Error::from(vec![to_report(&d, cache)]))
+        })?;
+        from_json(json)
     }
 
     /// A value the script exports, as any `Deserialize` type.
@@ -513,6 +547,7 @@ impl Script {
             );
             it.fs = Box::new(SharedFs(state.fs.clone()));
             it.env_cap = state.env_cap.clone();
+            it.env_overrides = (*state.env_values).clone();
             it.host_call_steps = state.host_call_steps;
             let _meter = budget.begin(&mut it);
 
@@ -665,6 +700,7 @@ fn load_version(config: &Config, lock: Lockfile, frozen: bool, base: u64) -> Att
         );
         interp.fs = Box::new(SharedFs(fs.clone()));
         interp.env_cap = config.env_cap.clone();
+        interp.env_overrides = (*config.env_values).clone();
         interp.host_call_steps = config.host.call_steps;
         // Loading is held to the call budget: a script that cannot finish
         // evaluating its own module must not hang the host's startup, nor a
@@ -694,6 +730,7 @@ fn load_version(config: &Config, lock: Lockfile, frozen: bool, base: u64) -> Att
             registry,
             fs,
             env_cap: config.env_cap.clone(),
+            env_values: config.env_values.clone(),
             host_call_steps: config.host.call_steps,
             strict: config.strict,
             _closures: interp,
