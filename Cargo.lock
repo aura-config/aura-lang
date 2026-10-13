@@ -100,7 +100,7 @@ checksum = "7d902e3d592a523def97af8f317b08ce16b7ab854c1985a0c671e6f15cebc236"
 
 [[package]]
 name = "aura-lang"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "ariadne",
  "clap",
@@ -119,7 +119,7 @@ dependencies = [
 
 [[package]]
 name = "aura-lsp"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "aura-lang",
  "lsp-server",

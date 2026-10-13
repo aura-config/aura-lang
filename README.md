@@ -76,7 +76,7 @@ Resolves the version, verifies the checksum, puts `aura` on `PATH`.
 
 ```toml
 [dependencies]
-aura-lang = { version = "0.3", default-features = false }
+aura-lang = { version = "0.4", default-features = false }
 ```
 
 Without the default `cli` feature the library is 38 packages instead of 96,
