@@ -80,10 +80,58 @@ impl FileAccess for DenyFs {
 pub struct MemFs(pub HashMap<String, String>);
 impl FileAccess for MemFs {
     fn read(&self, path: &str) -> Result<String, FileError> {
+        // Buffer names are compared as paths: `./x` and `sub/../x` are `x`,
+        // which is what a relative read from a buffer's folder produces (D37).
+        let want = mem_key(path);
         self.0
-            .get(path)
-            .cloned()
+            .iter()
+            .find(|(k, _)| mem_key(k) == want)
+            .map(|(_, v)| v.clone())
             .ok_or_else(|| FileError::Io(format!("not found: {path}")))
+    }
+}
+
+/// A buffer name with `.` and `..` resolved and `/` as the separator.
+fn mem_key(path: &str) -> String {
+    use std::path::Component;
+    let mut parts: Vec<String> = Vec::new();
+    for c in std::path::Path::new(path).components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                parts.pop();
+            }
+            other => parts.push(other.as_os_str().to_string_lossy().into_owned()),
+        }
+    }
+    parts.join("/")
+}
+
+/// `dir` as a path from the current directory, for a flag a person can type:
+/// `../app`, not an absolute path; the absolute path when there is no shorter one.
+fn relative_to_cwd(dir: &std::path::Path) -> String {
+    let (Ok(cwd), Ok(dir)) = (
+        std::env::current_dir().and_then(std::fs::canonicalize),
+        std::fs::canonicalize(dir),
+    ) else {
+        return dir.display().to_string();
+    };
+    let a: Vec<_> = cwd.components().collect();
+    let b: Vec<_> = dir.components().collect();
+    let common = a.iter().zip(&b).take_while(|(x, y)| x == y).count();
+    if common == 0 {
+        return dir.display().to_string();
+    }
+    let mut parts: Vec<String> = vec!["..".to_string(); a.len() - common];
+    parts.extend(
+        b[common..]
+            .iter()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned()),
+    );
+    if parts.is_empty() {
+        ".".to_string()
+    } else {
+        parts.join("/")
     }
 }
 
@@ -142,6 +190,9 @@ pub struct Interpreter<'a> {
     pub allow_imports_io: bool,
     /// Set by the VFS loader: false while evaluating an imported module.
     pub current_root: bool,
+    /// D37: the folder of the module being evaluated, which relative
+    /// `read_file` paths are read from. `None` reads them as given.
+    pub current_dir: Option<Arc<std::path::Path>>,
     /// Evaluated modules by alias; populated by the VFS loader (or by tests directly).
     modules: HashMap<String, Value<'a>>,
     call_depth: u32,
@@ -269,6 +320,7 @@ impl<'a> Interpreter<'a> {
             options,
             allow_imports_io: false,
             current_root: true,
+            current_dir: None,
             modules: HashMap::new(),
             call_depth: 0,
             env_arena: Vec::new(),
@@ -395,6 +447,7 @@ impl<'a> Interpreter<'a> {
                     body: FuncBody::Block(body.clone()),
                     closure: Arc::downgrade(env),
                     defined_in_root: self.current_root,
+                    origin_dir: self.current_dir.clone(),
                 }));
                 self.define(env, name, v.clone(), false, *span)?;
                 // D12: pub def is visible to importers via the module object
@@ -722,6 +775,7 @@ impl<'a> Interpreter<'a> {
                     body: FuncBody::Lambda(body.clone()),
                     closure: Arc::downgrade(env),
                     defined_in_root: self.current_root,
+                    origin_dir: self.current_dir.clone(),
                 })))
             }
             Expr::SchemaInstance {
@@ -1115,6 +1169,7 @@ impl<'a> Interpreter<'a> {
         // D1×D12: the body runs with the capabilities of the function's origin module
         let saved_root = self.current_root;
         self.current_root = def.defined_in_root;
+        let saved_dir = std::mem::replace(&mut self.current_dir, def.origin_dir.clone());
         let result = match &def.body {
             FuncBody::Block(body) => self.eval_stmt_body(&env, body),
             FuncBody::Lambda(LambdaBody::Expr(e)) => self.eval_expr(&env, e),
@@ -1122,6 +1177,7 @@ impl<'a> Interpreter<'a> {
             FuncBody::Host(_) => unreachable!("host functions return before a frame is made"),
         };
         self.current_root = saved_root;
+        self.current_dir = saved_dir;
         self.call_depth -= 1;
         // Release the frames this call made, if nothing can refer to them. Only a
         // function value holds a reference to an environment, so a call that
@@ -1269,7 +1325,16 @@ impl<'a> Interpreter<'a> {
                 let Some(Value::Str(path)) = args.first() else {
                     return Err(rt("E0306", "read_file() expects a String path", span));
                 };
-                match self.fs.read(path) {
+                // D37: a relative path is read from the folder of the module
+                // that reads it, as an import is - not from the process's
+                // working directory, which the manifest knows nothing about.
+                let resolved = match &self.current_dir {
+                    Some(dir) if std::path::Path::new(path.as_ref()).is_relative() => {
+                        dir.join(path.as_ref()).to_string_lossy().into_owned()
+                    }
+                    _ => path.to_string(),
+                };
+                match self.fs.read(&resolved) {
                     Ok(s) => Ok(Some(Value::str(s))),
                     Err(FileError::Denied) => {
                         let mut d = rt("E0310", format!("no capability to read '{path}'"), span);
@@ -1287,9 +1352,21 @@ impl<'a> Interpreter<'a> {
                             format!("'{path}' is outside every directory allowed by --allow-read"),
                             span,
                         );
-                        d.help = Some(format!(
-                            "allowed: {list}. Paths are canonicalised before the check, so `..`                              cannot step out of a granted directory."
-                        ));
+                        d.help = Some(match &self.current_dir {
+                            Some(dir) if std::path::Path::new(path.as_ref()).is_relative() => {
+                                format!(
+                                    "relative paths are read from the folder of the manifest that \
+                                     reads them, {}; allowed: {list}. Grant that folder with \
+                                     --allow-read={} (allow_read in a host)",
+                                    dir.display(),
+                                    relative_to_cwd(dir)
+                                )
+                            }
+                            _ => format!(
+                                "allowed: {list}. Paths are canonicalised before the check, so \
+                                 `..` cannot step out of a granted directory."
+                            ),
+                        });
                         Err(d)
                     }
                     Err(FileError::Io(e)) => {

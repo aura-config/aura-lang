@@ -129,6 +129,7 @@ pub fn module_value<'a>(table: &HostTable, module: &str) -> Value<'a> {
                     body: FuncBody::Host(f.clone()),
                     closure: std::sync::Weak::new(),
                     defined_in_root: true,
+                    origin_dir: None,
                 };
                 (func, Value::Function(Arc::new(def)))
             })

@@ -178,8 +178,14 @@ impl<'a, 'r> Loader<'a, 'r> {
         // D1: imported modules have no I/O capabilities (SPEC §4.3).
         let saved_root = interp.current_root;
         interp.current_root = is_root;
+        // D37: its relative reads are from its own folder.
+        let saved_dir = std::mem::replace(
+            &mut interp.current_dir,
+            self.resolver.dir_of(id).map(Arc::from),
+        );
         let result = interp.eval_module(&module);
         interp.current_root = saved_root;
+        interp.current_dir = saved_dir;
         result
     }
 

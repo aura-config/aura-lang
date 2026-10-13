@@ -108,7 +108,7 @@ side to call `.to_str()` on. Joining is bounded at 1,000,000 list elements and
 | --- | --- | --- |
 | `range(n)` | — | `[0, 1, … n-1]` |
 | `env(name, default)` | `--allow-env` | an environment variable; absent → the default |
-| `read_file(path)` | `--allow-read` | the file's contents as a string |
+| `read_file(path)` | `--allow-read` | the file's contents as a string; a relative path is read from the manifest's folder (D37) |
 | `fail(message)` | — | stops with `E0531` and your message |
 
 A method call takes precedence over an object field of the same name that happens

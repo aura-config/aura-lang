@@ -54,6 +54,9 @@ pub struct FunctionDef<'a> {
     /// D1xD12: the function runs with the capabilities of its origin module,
     /// not the caller's - an exported package function does not gain the root's rights.
     pub defined_in_root: bool,
+    /// D37: the folder of the module that defined it. Its relative
+    /// `read_file` paths are read from there, whoever calls it.
+    pub origin_dir: Option<Arc<std::path::Path>>,
 }
 
 #[derive(Clone)]
