@@ -329,13 +329,11 @@ fn an_in_memory_script_is_not_reloaded() {
 const TICK: Duration = Duration::from_millis(20);
 
 /// The interval for the tests where a writer races the watcher. A writer that
-/// stalls between truncating a file and filling it, for longer than two
-/// intervals, has left a file that really is empty and unchanged - no watcher
-/// can tell that from one emptied on purpose, which is why D36 tells writers to
-/// publish by rename. With 20 ms, a loaded CI runner stalled the writer that
-/// long and these tests failed for the scheduler's reason, not the watcher's;
-/// reproduced on Linux under load. At 250 ms the stall would have to pass half
-/// a second.
+/// stalls between truncating a file and filling it for longer than the settle
+/// period has left a file that really is empty and unchanged - no watcher can
+/// tell that from one emptied on purpose, which is why D36 tells writers to
+/// publish by rename. These tests use the default settle period, which for
+/// this interval is a second: the writer would have to stall that long.
 const WRITING_TICK: Duration = Duration::from_millis(250);
 
 /// Every result the watcher reported, in order.
@@ -346,17 +344,31 @@ fn watched(path: &Path) -> (Script, Reports) {
 }
 
 fn watched_every(path: &Path, interval: Duration) -> (Script, Reports) {
+    watched_with(path, interval, None)
+}
+
+/// A settle period short enough that a test can wait out several of them.
+const SHORT_SETTLE: Duration = Duration::from_millis(100);
+
+fn watched_settling(path: &Path, interval: Duration, settle: Duration) -> (Script, Reports) {
+    watched_with(path, interval, Some(settle))
+}
+
+fn watched_with(path: &Path, interval: Duration, settle: Option<Duration>) -> (Script, Reports) {
     let reports: Reports = Arc::default();
     let sink = reports.clone();
-    let s = Script::builder()
-        .file(path)
-        .watch(interval, move |r: Result<ScriptVersion, Error>| {
-            sink.lock()
-                .expect("reports")
-                .push(r.map_err(|e| e.code().to_string()));
-        })
-        .load()
-        .expect("loads");
+    let mut b =
+        Script::builder()
+            .file(path)
+            .watch(interval, move |r: Result<ScriptVersion, Error>| {
+                sink.lock()
+                    .expect("reports")
+                    .push(r.map_err(|e| e.code().to_string()));
+            });
+    if let Some(s) = settle {
+        b = b.settle(s);
+    }
+    let s = b.load().expect("loads");
     (s, reports)
 }
 
@@ -413,6 +425,7 @@ fn a_touch_does_not_load_the_script_again() {
         .file(&path)
         .pure("k.load", move || l.fetch_add(1, Ordering::Relaxed) as i64)
         .watch(TICK, |_| {})
+        .settle(SHORT_SETTLE)
         .load()
         .expect("loads");
     assert_eq!(loads.load(Ordering::Relaxed), 1);
@@ -421,6 +434,9 @@ fn a_touch_does_not_load_the_script_again() {
         write(&d, "r.aura", "import \"host:k\" as k\nn: k.load()\n");
         std::thread::sleep(TICK * 3);
     }
+    // Long enough for the touched file to settle several times over: the
+    // watcher reads it, finds the same content, and still loads nothing.
+    std::thread::sleep(SHORT_SETTLE * 5);
     assert_eq!(
         loads.load(Ordering::Relaxed),
         1,
@@ -430,8 +446,8 @@ fn a_touch_does_not_load_the_script_again() {
 
 /// D36 §6. Content that does not hold still costs no load. The file is changed
 /// for a quarter of an interval and put back, again and again, each time to
-/// different text: two reads one interval apart never see the same change, so
-/// none is loaded - not even tried. Found on macOS CI, where a rewrite of the
+/// different text: no change is left alone for the settle period, so none is
+/// loaded - not even tried. Found on macOS CI, where a rewrite of the
 /// same bytes was read half done and loaded once for nothing; Windows never
 /// showed it, which is why this test makes the brief change itself instead of
 /// hoping to catch one. Each change is unique because the first version of
@@ -489,9 +505,9 @@ fn dropping_a_watched_script_frees_it() {
 }
 
 /// D36 §6. A file that is still being written is not loaded. A writer rewrites
-/// the file every few milliseconds, far faster than the interval, so no two
-/// reads one interval apart agree until it stops - and only then is anything
-/// loaded: the final content, once.
+/// the file every few milliseconds, so it is never left alone for the settle
+/// period until the writer stops - and only then is anything loaded: the final
+/// content, once.
 #[test]
 fn a_file_still_being_written_is_not_loaded() {
     let d = dir("watch-writing");
@@ -544,17 +560,77 @@ fn a_file_being_rewritten_is_not_loaded_even_if_it_reads_the_same() {
     assert_eq!(reports.lock().expect("reports").len(), 1);
 }
 
+/// D36 §6. The case CI found: a writer truncates the file and stalls before
+/// filling it, far longer than two intervals. Two reads that agree would have
+/// loaded the empty file; the settle period does not, because the file is not
+/// left alone long enough.
+#[test]
+fn a_writer_that_stalls_mid_write_is_not_loaded() {
+    let d = dir("watch-stall");
+    let path = write(&d, "r.aura", &returns(1));
+    let (s, reports) = watched(&path);
+
+    write(&d, "r.aura", "");
+    std::thread::sleep(Duration::from_millis(300));
+    write(&d, "r.aura", &returns(2));
+    assert!(eventually(|| f(&s) == 2), "the finished file never loaded");
+    let r = reports.lock().expect("reports");
+    assert_eq!(r.len(), 1, "the half-written file was loaded: {r:?}");
+}
+
+/// D36 §5, §6. An edit that adds an import brings a new file into the script,
+/// and that file has to settle too before the edit is loaded.
+#[test]
+fn a_new_import_is_watched_and_loaded() {
+    let d = dir("watch-new-import");
+    let path = write(&d, "r.aura", &returns(1));
+    let (s, reports) = watched(&path);
+
+    write(&d, "lib.aura", "n: 7\n");
+    write(
+        &d,
+        "r.aura",
+        "import \"./lib.aura\" as lib\npub def f()\n  v: lib.n\nend\n",
+    );
+    assert!(
+        eventually(|| f(&s) == 7),
+        "the edit with its import never loaded"
+    );
+    write(&d, "lib.aura", "n: 8\n");
+    assert!(
+        eventually(|| f(&s) == 8),
+        "a change in the new import was not seen"
+    );
+    assert_eq!(reports.lock().expect("reports").len(), 2);
+}
+
+/// D36 §6. A settle period shorter than the interval would read files nobody
+/// had looked at twice.
+#[test]
+fn a_settle_period_shorter_than_the_interval_is_refused() {
+    let d = dir("watch-settle");
+    let path = write(&d, "r.aura", &returns(1));
+    let err = Script::builder()
+        .file(&path)
+        .watch(Duration::from_secs(1), |_| {})
+        .settle(Duration::from_millis(100))
+        .load()
+        .unwrap_err();
+    assert_eq!(code(&err), "E0001", "{err}");
+}
+
 /// D36 §12. A failed automatic reload is reported - once for the same content,
 /// not on every tick - and the old version keeps serving.
 #[test]
 fn a_failed_watch_reload_is_reported_once() {
     let d = dir("watch-fail");
     let path = write(&d, "r.aura", &returns(1));
-    let (s, reports) = watched(&path);
+    let (s, reports) = watched_settling(&path, TICK, SHORT_SETTLE);
 
     write(&d, "r.aura", "pub def f(\n");
     assert!(eventually(|| !reports.lock().expect("reports").is_empty()));
-    std::thread::sleep(TICK * 10);
+    // Several settle periods: each would be a chance to report again.
+    std::thread::sleep(SHORT_SETTLE * 5);
     let r = reports.lock().expect("reports");
     assert_eq!(r.len(), 1, "reported more than once: {r:?}");
     assert!(r[0].is_err());
