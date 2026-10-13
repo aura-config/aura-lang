@@ -23,7 +23,8 @@ still change the language.
 - **A script can be reloaded while the service runs (D36).** `Script::reload()`
   loads the files again; `ScriptBuilder::watch(interval, on_reload)` does it when
   their content changes - a `touch` loads nothing, and a file still being written
-  is not loaded until two reads one interval apart agree. A reload is a full load
+  is not loaded until it has been left alone for the settle period (two
+  intervals and at least a second, or `.settle(d)`). A reload is a full load
   with the first load's grants and its `aura.lock`, frozen: it can never get more
   than the first load was given. Every export keeps its kind and number of
   arguments, or the reload is `E0011` and the old version keeps serving; a bound

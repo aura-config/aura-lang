@@ -118,10 +118,12 @@ rules.reload()?;     // or reload now, with or without watch
 - **Never half a version.** A call finishes on the version it started on; the
   old version is freed when the last such call returns.
 - **Content decides.** A `touch` loads nothing. While watching, a change is
-  loaded only when two reads one interval apart agree, so a file still being
-  written is not loaded half done. A writer slower than the interval can still
-  be caught mid-write: deploy by writing a new file and renaming it over the
-  old one, as editors do.
+  loaded only once the files have been left alone for the settle period - two
+  intervals and at least a second, or `.settle(d)` - so a file still being
+  written is not loaded half done. A writer that pauses mid-write for longer
+  than that can still be caught: deploy by writing a new file and renaming it
+  over the old one, as editors do, and raise `.settle` for a slow network
+  share.
 - **No silent failure.** The handler `watch` requires hears of every automatic
   reload - the new version, or the error - and of the same broken content once.
 - `version()` names the generation and a hash of every file, for your logs.

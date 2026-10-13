@@ -23,7 +23,7 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Mutex, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use indexmap::IndexMap;
 use serde::de::DeserializeOwned;
@@ -119,6 +119,7 @@ pub struct ScriptBuilder {
     host_for_imports: Vec<String>,
     host_call_steps: Option<u64>,
     watch: Option<(Duration, OnReload)>,
+    settle: Option<Duration>,
 }
 
 impl ScriptBuilder {
@@ -218,8 +219,8 @@ impl ScriptBuilder {
 
     /// D36: watch the script's files, and reload when their content changes.
     /// Every `interval` a thread owned by the script looks at the files; a
-    /// change is loaded once it reads the same twice, one interval apart, with no
-    /// write to the files in between, and
+    /// change is loaded once the files have been left alone for the settle
+    /// period ([`ScriptBuilder::settle`]), and
     /// passes every check the first load did. `on_reload` is told of every
     /// automatic reload - the new version, or why it was refused while the old
     /// one keeps serving - so a failure cannot pass unnoticed. It runs on the
@@ -230,6 +231,16 @@ impl ScriptBuilder {
         on_reload: impl Fn(Result<ScriptVersion, Error>) + Send + 'static,
     ) -> Self {
         self.watch = Some((interval, Box::new(on_reload)));
+        self
+    }
+
+    /// D36 §6: how long the files must stay unchanged before a watched script
+    /// reloads them - no write, no change of size or modification time. A
+    /// file being written is never at rest that long, so it is never loaded
+    /// half done. The default is two intervals and at least a second; raise it
+    /// for a slow network share. It may not be shorter than the interval.
+    pub fn settle(mut self, settle: Duration) -> Self {
+        self.settle = Some(settle);
         self
     }
 
@@ -347,6 +358,17 @@ impl Script {
             Some(names) => EnvCap::Allow(names.clone()),
         };
         let watch = b.watch.take();
+        if let (Some((interval, _)), Some(settle)) = (&watch, b.settle) {
+            if settle < *interval {
+                return Err(Error::host(
+                    "E0001",
+                    format!(
+                        "settle ({settle:?}) is shorter than the watch interval ({interval:?}): \
+                         the files would be read before anyone looked at them twice"
+                    ),
+                ));
+            }
+        }
         if watch.is_some() && b.file.is_none() {
             return Err(Error::host(
                 "E0001",
@@ -387,8 +409,11 @@ impl Script {
             current: RwLock::new(Arc::new(version)),
             installing: Mutex::new(()),
         });
-        let watcher =
-            watch.map(|(interval, on_reload)| Watcher::start(&shared, interval, on_reload));
+        let settle = b.settle;
+        let watcher = watch.map(|(interval, on_reload)| {
+            let settle = settle.unwrap_or_else(|| default_settle(interval));
+            Watcher::start(&shared, interval, settle, on_reload)
+        });
         Ok(Script { shared, watcher })
     }
 
@@ -782,12 +807,17 @@ struct Watcher {
 type OnReload = Box<dyn Fn(Result<ScriptVersion, Error>) + Send>;
 
 impl Watcher {
-    fn start(shared: &Arc<Shared>, interval: Duration, on_reload: OnReload) -> Watcher {
+    fn start(
+        shared: &Arc<Shared>,
+        interval: Duration,
+        settle: Duration,
+        on_reload: OnReload,
+    ) -> Watcher {
         let (stop, stopped) = mpsc::channel();
         let weak = Arc::downgrade(shared);
         let thread = std::thread::Builder::new()
             .name("aura-watch".into())
-            .spawn(move || watch_loop(weak, interval, stopped, on_reload))
+            .spawn(move || watch_loop(weak, interval, settle, stopped, on_reload))
             .expect("spawn the watcher thread");
         Watcher { stop, thread }
     }
@@ -842,14 +872,81 @@ fn reread(files: &[(PathBuf, String)]) -> Option<Vec<(PathBuf, String)>> {
         .collect()
 }
 
+/// D36 §6: when the files may be read for a reload. Pure - no clock, no file
+/// system - so the rule is tested with made-up times, not with the luck of a
+/// scheduler.
+///
+/// The rule is a quiet period: the file system has reported the same size and
+/// modification time for every file for `settle`. Two reads that agree are not
+/// enough - a writer that stalls between truncating a file and filling it
+/// leaves one that reads the same, empty, for as long as it stalls; a writer
+/// cut off at the end of a rule leaves one that is valid and loads. A quiet
+/// period longer than any such stall is what keeps a half-written file out.
+#[derive(Debug)]
+struct Settle {
+    settle: Duration,
+    /// What the files looked like, and since when.
+    seen: Option<(Stats, Instant)>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum Step {
+    /// Something changed, or has not been still for long enough.
+    Wait,
+    /// Still for `settle`: read the files.
+    Look,
+}
+
+impl Settle {
+    fn new(settle: Duration) -> Self {
+        Settle { settle, seen: None }
+    }
+
+    fn observe(&mut self, now: Instant, stats: &Stats) -> Step {
+        match &self.seen {
+            Some((s, since)) if s == stats => {
+                if now.saturating_duration_since(*since) >= self.settle {
+                    Step::Look
+                } else {
+                    Step::Wait
+                }
+            }
+            _ => {
+                self.seen = Some((stats.clone(), now));
+                Step::Wait
+            }
+        }
+    }
+
+    /// Start counting again, from the next observation.
+    fn reset(&mut self) {
+        self.seen = None;
+    }
+}
+
+/// The settle period when the host does not set one: two intervals, and never
+/// less than a second - longer than any pause a writer takes between two
+/// writes on a busy machine, and short beside how often rules are edited.
+fn default_settle(interval: Duration) -> Duration {
+    (interval * 2).max(Duration::from_secs(1))
+}
+
 fn watch_loop(
     shared: std::sync::Weak<Shared>,
     interval: Duration,
+    settle: Duration,
     stopped: mpsc::Receiver<()>,
     on_reload: OnReload,
 ) {
+    let mut gate = Settle::new(settle);
+    // The files and the state the serving version was read from: nothing to do
+    // while they look like this.
     let mut quiet: Option<Stats> = None;
-    let mut failed: Option<String> = None;
+    // Content already reported as failing, by the state it was read in.
+    let mut failed: Option<Stats> = None;
+    // The files to watch: the serving version's, or - once a load found new
+    // imports - the set that load read, so they settle too.
+    let mut tracked: Option<Vec<(PathBuf, String)>> = None;
     loop {
         if !tick(&stopped, interval) {
             return;
@@ -858,73 +955,62 @@ fn watch_loop(
             return;
         };
         let current = script.current();
-        let now = stats(&current.files);
-        if quiet.as_ref() == Some(&now) {
+        let files = tracked.clone().unwrap_or_else(|| current.files.clone());
+        let now = stats(&files);
+        if quiet.as_ref() == Some(&now) || failed.as_ref() == Some(&now) {
+            gate.reset();
             continue;
         }
-        // Something about the files changed. Only content counts: a touch
+        if gate.observe(Instant::now(), &now) == Step::Wait {
+            continue;
+        }
+        // Still for the whole settle period. Only content counts now: a touch
         // leaves the hash as it was, and nothing happens.
-        let first = read_still(&current.files);
-        let read_hash = first.as_ref().map(|(_, f)| hash_files(f));
-        if read_hash.as_deref() == Some(current.id.hash.as_str()) {
-            quiet = Some(now);
+        let Some((read_stats, read)) = read_still(&files) else {
+            gate.reset();
             continue;
-        }
-        // The same broken content was already reported (D36 §12).
-        if read_hash.is_some() && read_hash == failed {
-            continue;
-        }
-        drop(current);
-        drop(script);
-
-        // D36 §6: nothing is loaded until the files read the same one interval
-        // later, and the file system says nothing wrote to them in between. A
-        // file being written - truncated, then filled - is caught in between by
-        // a read, and must cost no load, let alone be loaded. Content alone is
-        // not enough: on Ubuntu CI, a writer rewriting a file every 2 ms was
-        // read empty twice, an interval apart - the same bytes, so "stable" -
-        // and an empty script was loaded. The modification time had moved.
-        if !tick(&stopped, interval) {
-            return;
-        }
-        let Some(script) = shared.upgrade() else {
-            return;
         };
-        let current = script.current();
-        if first.is_none() || read_still(&current.files) != first {
+        if read_stats != now {
+            gate.reset();
+            continue;
+        }
+        if tracked.is_none() && hash_files(&read) == current.id.hash {
+            quiet = Some(now);
+            gate.reset();
             continue;
         }
         let attempt = script.attempt();
-        let loaded_from = stats(&attempt.files);
         drop(current);
-        drop(script);
 
-        // The load reads the files once more, and may read new imports. All of
-        // it must still read the same one interval later; a load that failed
-        // is held to the same test before it is reported, since a
-        // half-written file is not a broken one yet.
-        if !tick(&stopped, interval) {
-            return;
+        // The load read the files once more. If it found a different set -
+        // a new import - those files have not settled yet: watch the new set
+        // and try again once it has.
+        let same_set = attempt.files.len() == files.len()
+            && attempt.files.iter().zip(&files).all(|(a, b)| a.0 == b.0);
+        if !same_set {
+            tracked = Some(attempt.files.clone());
+            gate.reset();
+            continue;
         }
-        match read_still(&attempt.files) {
-            Some((s, read)) if s == loaded_from && read == attempt.files => {}
-            _ => continue,
+        // And it must have read what was still - nothing written meanwhile.
+        if attempt.files != read || stats(&attempt.files) != now {
+            gate.reset();
+            continue;
         }
-        let Some(script) = shared.upgrade() else {
-            return;
-        };
+        tracked = None;
         match script.install(attempt) {
             Ok(Some(v)) => {
                 failed = None;
                 quiet = None;
                 on_reload(Ok(v));
             }
-            Ok(None) => {}
+            Ok(None) => quiet = Some(now),
             Err(e) => {
-                failed = read_hash;
+                failed = Some(now);
                 on_reload(Err(e));
             }
         }
+        gate.reset();
     }
 }
 
@@ -1486,6 +1572,124 @@ impl<'a> serde::ser::SerializeStructVariant for VariantToValue<MapToValue<'a>> {
 
 #[cfg(test)]
 mod tests {
+    // D36 §6, decided without a clock or a file system: each case is a story
+    // of what the file system reported and when, and what the watcher may do.
+    mod settle {
+        use super::super::{Settle, Stats, Step};
+        use std::time::{Duration, Instant, SystemTime};
+
+        fn file(len: u64, mtime_ms: u64) -> Stats {
+            vec![Some((
+                len,
+                Some(SystemTime::UNIX_EPOCH + Duration::from_millis(mtime_ms)),
+            ))]
+        }
+
+        /// Feeds `(ms, stats)` observations and returns the steps.
+        fn run(settle_ms: u64, story: &[(u64, Stats)]) -> Vec<Step> {
+            let t0 = Instant::now();
+            let mut g = Settle::new(Duration::from_millis(settle_ms));
+            story
+                .iter()
+                .map(|(ms, s)| g.observe(t0 + Duration::from_millis(*ms), s))
+                .collect()
+        }
+
+        #[test]
+        fn files_left_alone_for_the_settle_period_are_read() {
+            let s = file(100, 5);
+            let steps = run(1000, &[(0, s.clone()), (500, s.clone()), (1000, s)]);
+            assert_eq!(steps, [Step::Wait, Step::Wait, Step::Look]);
+        }
+
+        /// The CI case: a writer stalls between truncating and filling for
+        /// longer than two short intervals. The file reads empty and still -
+        /// but not for the settle period, so it is never read.
+        #[test]
+        fn a_writer_stalled_mid_write_is_not_read() {
+            let empty = file(0, 40);
+            let full = file(100, 90);
+            let steps = run(
+                1000,
+                &[
+                    (40, empty.clone()),
+                    (60, empty.clone()),
+                    (80, empty),
+                    (100, full),
+                ],
+            );
+            assert!(!steps.contains(&Step::Look), "{steps:?}");
+        }
+
+        /// A writer cut off at the end of a rule leaves a valid file. Still
+        /// for 600 ms of a 1 s settle, then the rest arrives: never read.
+        #[test]
+        fn a_valid_prefix_that_does_not_last_is_not_read() {
+            let prefix = file(60, 10);
+            let whole = file(100, 610);
+            let mut story: Vec<(u64, Stats)> =
+                (0..=6).map(|i| (10 + i * 100, prefix.clone())).collect();
+            story.push((610, whole.clone()));
+            story.push((1600, whole.clone()));
+            story.push((1610, whole));
+            let steps = run(1000, &story);
+            let looks: Vec<_> = steps
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| **s == Step::Look)
+                .collect();
+            assert_eq!(looks.len(), 1, "{steps:?}");
+            assert_eq!(
+                looks[0].0,
+                story.len() - 1,
+                "read before the whole file settled"
+            );
+        }
+
+        /// Any change - size or modification time - starts the count again.
+        #[test]
+        fn every_change_restarts_the_count() {
+            let steps = run(
+                1000,
+                &[
+                    (0, file(10, 0)),
+                    (900, file(10, 900)),  // touched: mtime moved
+                    (1800, file(11, 900)), // grew
+                    (2700, file(11, 900)),
+                    (2800, file(11, 900)),
+                ],
+            );
+            assert_eq!(
+                steps,
+                [Step::Wait, Step::Wait, Step::Wait, Step::Wait, Step::Look]
+            );
+        }
+
+        #[test]
+        fn reset_starts_over() {
+            let s = file(1, 1);
+            let t0 = Instant::now();
+            let mut g = Settle::new(Duration::from_millis(100));
+            g.observe(t0, &s);
+            g.reset();
+            assert_eq!(g.observe(t0 + Duration::from_millis(200), &s), Step::Wait);
+            assert_eq!(g.observe(t0 + Duration::from_millis(300), &s), Step::Look);
+        }
+
+        #[test]
+        fn the_default_is_two_intervals_and_at_least_a_second() {
+            use super::super::default_settle;
+            assert_eq!(
+                default_settle(Duration::from_millis(20)),
+                Duration::from_secs(1)
+            );
+            assert_eq!(
+                default_settle(Duration::from_secs(2)),
+                Duration::from_secs(4)
+            );
+        }
+    }
+
     use super::*;
 
     #[test]
