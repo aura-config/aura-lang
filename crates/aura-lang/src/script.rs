@@ -218,7 +218,8 @@ impl ScriptBuilder {
 
     /// D36: watch the script's files, and reload when their content changes.
     /// Every `interval` a thread owned by the script looks at the files; a
-    /// change is loaded once it reads the same twice, one interval apart, and
+    /// change is loaded once it reads the same twice, one interval apart, with no
+    /// write to the files in between, and
     /// passes every check the first load did. `on_reload` is told of every
     /// automatic reload - the new version, or why it was refused while the old
     /// one keeps serving - so a failure cannot pass unnoticed. It runs on the
@@ -820,6 +821,15 @@ fn stats(files: &[(PathBuf, String)]) -> Stats {
         .collect()
 }
 
+/// Every file read again, with the file system's word that nothing wrote to
+/// them while they were read: size and modification time the same before and
+/// after. `None` if one can no longer be read, or something wrote meanwhile.
+fn read_still(files: &[(PathBuf, String)]) -> Option<(Stats, Vec<(PathBuf, String)>)> {
+    let before = stats(files);
+    let read = reread(files)?;
+    (stats(files) == before).then_some((before, read))
+}
+
 /// Every file read again; `None` if one can no longer be read.
 fn reread(files: &[(PathBuf, String)]) -> Option<Vec<(PathBuf, String)>> {
     files
@@ -850,8 +860,8 @@ fn watch_loop(
         }
         // Something about the files changed. Only content counts: a touch
         // leaves the hash as it was, and nothing happens.
-        let first = reread(&current.files);
-        let read_hash = first.as_deref().map(hash_files);
+        let first = read_still(&current.files);
+        let read_hash = first.as_ref().map(|(_, f)| hash_files(f));
         if read_hash.as_deref() == Some(current.id.hash.as_str()) {
             quiet = Some(now);
             continue;
@@ -864,10 +874,12 @@ fn watch_loop(
         drop(script);
 
         // D36 §6: nothing is loaded until the files read the same one interval
-        // later. A file being written - truncated, then filled - is caught in
-        // between by a read, and must cost no load, let alone be loaded. Found
-        // on macOS CI, where a plain rewrite of the same bytes was read empty
-        // and loaded once for nothing.
+        // later, and the file system says nothing wrote to them in between. A
+        // file being written - truncated, then filled - is caught in between by
+        // a read, and must cost no load, let alone be loaded. Content alone is
+        // not enough: on Ubuntu CI, a writer rewriting a file every 2 ms was
+        // read empty twice, an interval apart - the same bytes, so "stable" -
+        // and an empty script was loaded. The modification time had moved.
         if !tick(&stopped, interval) {
             return;
         }
@@ -875,10 +887,11 @@ fn watch_loop(
             return;
         };
         let current = script.current();
-        if first.is_none() || reread(&current.files) != first {
+        if first.is_none() || read_still(&current.files) != first {
             continue;
         }
         let attempt = script.attempt();
+        let loaded_from = stats(&attempt.files);
         drop(current);
         drop(script);
 
@@ -889,8 +902,9 @@ fn watch_loop(
         if !tick(&stopped, interval) {
             return;
         }
-        if reread(&attempt.files).as_deref() != Some(attempt.files.as_slice()) {
-            continue;
+        match read_still(&attempt.files) {
+            Some((s, read)) if s == loaded_from && read == attempt.files => {}
+            _ => continue,
         }
         let Some(script) = shared.upgrade() else {
             return;

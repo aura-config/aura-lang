@@ -504,6 +504,32 @@ fn a_file_still_being_written_is_not_loaded() {
     );
 }
 
+/// D36 §6. Same bytes are not enough: a file someone is still writing is not
+/// stable even when two reads agree. A writer here rewrites the file with the
+/// same new text every 2 ms, so every read sees the same bytes - and the file
+/// is never at rest. Nothing may load until the writer stops. Found on Ubuntu
+/// CI, where a writer's truncations were read empty twice, an interval apart,
+/// and an empty script was loaded (E0011: `f` gone).
+#[test]
+fn a_file_being_rewritten_is_not_loaded_even_if_it_reads_the_same() {
+    let d = dir("watch-rewriting");
+    let path = write(&d, "r.aura", &returns(1));
+    let (s, reports) = watched(&path);
+
+    let end = Instant::now() + TICK * 10;
+    while Instant::now() < end {
+        write(&d, "r.aura", &returns(2));
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(
+        reports.lock().expect("reports").is_empty(),
+        "loaded while the file was still being written: {:?}",
+        reports.lock().expect("reports")
+    );
+    assert!(eventually(|| f(&s) == 2), "the final content never loaded");
+    assert_eq!(reports.lock().expect("reports").len(), 1);
+}
+
 /// D36 §12. A failed automatic reload is reported - once for the same content,
 /// not on every tick - and the old version keeps serving.
 #[test]
