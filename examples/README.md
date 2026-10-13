@@ -1,7 +1,9 @@
 # Aura examples
 
 Each directory is a self-contained example with its expected output (`expected.*`).
-Every command is run **from the example's own directory**; build the binary with
+The commands below are written to run from the example's own directory, but a
+manifest reads its files from its own folder (D37), so it gives the same output
+from anywhere as long as `--allow-read` covers that folder. Build the binary with
 `cargo build -p aura-lang`.
 
 | Example | What it shows | Command |
@@ -20,6 +22,19 @@ Every command is run **from the example's own directory**; build the binary with
 | [trading/](trading/) | **Three modules in a chain** (`portfolio` → `risk` → `instruments`) where showcase 1 has one flat import: a trading system's run profile, where numbers have to be exact – routing keys derived rather than typed, `sha256` digests, risk limits held by schema invariants | `aura eval portfolio.aura` |
 | [pipeline/](pipeline/) | **Everything is a collection**: a data and model pipeline in one self-contained manifest, a `domain` per environment, stages kept in order, settings merged, sources arriving with holes in them – `compact`, `merge`, `reduce`, `any` / `all` / `find`, `index_of`, `entries` / `to_object`, and an `enum` | `aura eval pipeline.aura` |
 | [device/](device/) | **Reading what other people wrote**: a device provisioning profile built from a vendor's `board.toml` and a hand-maintained `sensors.yaml`, both held to a schema, then emitted for each consumer in both spellings – `to_json` / `to_yaml` / `to_toml` and their `_pretty` forms (D32) – plus a shell script as a block string | `aura eval device.aura --allow-read=.` |
+
+## Reading them from Rust
+
+Every example above is also read through `Script` in a test and compared with
+the same `expected.*` (`crates/aura-lang/tests/script_output.rs`). Three are
+written out as programs to copy from, with the structs `aura types --lang rust`
+generates for their schemas:
+
+| Example | Program |
+| --- | --- |
+| device | `cargo run --example read_device` - board and sensors as typed values for a firmware build |
+| k8s_deploy | `cargo run --example read_k8s_deploy` - a Deployment for an operator to apply |
+| service_catalog | `cargo run --example read_service_catalog` - a manifest with no schema, described by hand |
 
 The one at the root, [production_deploy.aura](production_deploy.aura), is the
 reference manifest from [SPEC.md](../SPEC.md): it demonstrates every construct at

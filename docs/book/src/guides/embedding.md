@@ -62,7 +62,8 @@ them from there and never from the process, so the service's own environment
 cannot leak into the manifest, and a test can give it any environment without
 touching the process's. `aura types --lang rust` writes the structs for the
 schemas a manifest declares. Every example in the repository is read this way
-in a test and compared with the output the CLI is pinned to.
+in a test and compared with the output the CLI is pinned to; `cargo run --example
+read_device` (and `read_k8s_deploy`, `read_service_catalog`) shows it whole.
 
 ### Calling into a script: `Script`
 
