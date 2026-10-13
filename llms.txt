@@ -364,6 +364,7 @@ Methods are called on a value (`"a".upper()`, `xs.map(f)`); builtins are global 
 | Signature | |
 | --- | --- |
 | `abs() -> Float` | Absolute value. |
+| `round(digits) -> Float` | Nearest Float with that many decimal places (0 to 15); exact ties go to even. |
 | `to_str() -> String` | Decimal string form. |
 
 ### Bool

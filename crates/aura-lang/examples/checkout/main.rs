@@ -187,11 +187,15 @@ pub fn main() {
         ["approve", "review", "decline", "decline", "review", "review"]
     );
     let bob = &orders[1];
-    let total = decide.call((bob,)).expect("bob").decision.total_eur;
+    let bob_decision = decide.call((bob,)).expect("bob").decision;
+    let total = bob_decision.total_eur;
     assert!(
         total.is_some_and(|t| (t - 1186.34).abs() < 0.01),
         "{total:?}"
     );
+    // The reason a person reads is rounded to cents; the number the service
+    // computes with is not.
+    assert_eq!(bob_decision.reasons, ["large order: 1186.34 EUR"]);
 
     // 1. The risk team raises the review threshold. No release: the watcher
     //    sees the new content and the next order runs on it.
