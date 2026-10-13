@@ -7,6 +7,13 @@ still change the language.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-13
+
+An embedding release. A script can call functions its host provides (D35),
+be reloaded while the service runs (D36), and be read whole into a host's own
+types. One behaviour change: `read_file` now reads a relative path from the
+manifest's folder (D37) - a run from the manifest's own folder is unaffected.
+
 ### Changed
 
 - **`read_file` reads a relative path from the manifest's folder (D37)**, as an
@@ -26,6 +33,10 @@ still change the language.
   variables with exactly those values; `env()` never falls back to the process,
   so a host's environment cannot leak in. Every example in the repository is
   read this way in a test and compared with the output the CLI is pinned to.
+- **Three examples read from Rust**, as programs to copy from:
+  `cargo run --example read_device`, `read_k8s_deploy` and
+  `read_service_catalog`, with the structs `aura types --lang rust` writes for
+  their schemas - checked in a test to be what the generator writes today.
 - **`Float.round(digits)`.** `(640.0 * 2.0 + 9.5) * 0.92` is
   `1186.3400000000001`, and there was no way to show it as `1186.34`. Rounding
   is of the value the Float holds, so `1.005.round(2)` is `1.0` on every

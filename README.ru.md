@@ -77,7 +77,7 @@ cargo install aura-lang
 
 ```toml
 [dependencies]
-aura-lang = { version = "0.3", default-features = false }
+aura-lang = { version = "0.4", default-features = false }
 ```
 
 Без фичи `cli` библиотека тянет 38 пакетов вместо 96 и ни одной C-зависимости.
