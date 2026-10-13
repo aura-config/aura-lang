@@ -47,6 +47,15 @@ pub trait FileResolver {
         importer: Option<&ModuleId>,
     ) -> Result<ModuleId, String>;
     fn load(&self, id: &ModuleId) -> Result<String, String>;
+
+    /// D37: the folder a module's relative `read_file` paths are read from -
+    /// the folder of its own file, as for its imports.
+    fn dir_of(&self, id: &ModuleId) -> Option<PathBuf> {
+        match id {
+            ModuleId::Local(p) => p.parent().map(Path::to_path_buf),
+            _ => None,
+        }
+    }
 }
 
 /// A version as a sequence of numeric components; a range is a prefix match
@@ -156,6 +165,15 @@ impl FileResolver for LocalFsResolver {
             ModuleId::Url(u) => Err(format!("url imports are not supported yet: {u}")),
         }
     }
+
+    fn dir_of(&self, id: &ModuleId) -> Option<PathBuf> {
+        match id {
+            ModuleId::Local(p) => p.parent().map(Path::to_path_buf),
+            // The folder of the cached file: a package reads beside itself too.
+            ModuleId::Registry { path, .. } => Some(self.registry_dir.join(path)),
+            ModuleId::Url(_) => None,
+        }
+    }
 }
 
 /// Dry-run wrapper (SPEC §6.3): module loads are performed but recorded into a report.
@@ -181,6 +199,9 @@ impl FileResolver for RecordingResolver<'_> {
                 .push(id.to_string());
         }
         result
+    }
+    fn dir_of(&self, id: &ModuleId) -> Option<PathBuf> {
+        self.inner.dir_of(id)
     }
 }
 

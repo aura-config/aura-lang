@@ -7,6 +7,17 @@ still change the language.
 
 ## [Unreleased]
 
+### Changed
+
+- **`read_file` reads a relative path from the manifest's folder (D37)**, as an
+  import does - not from wherever the process was started. The same manifest
+  now gives the same result from any directory, and a service embedding it
+  through `Script` finds the files beside it. A function reads from the folder
+  of the module that defined it. What may be read is unchanged: the granted
+  roots stay relative to the current directory, and a manifest outside them is
+  `E0311`, with a help line naming the folder and the flag that grants it. A
+  run from the manifest's own folder behaves as before.
+
 ### Added
 
 - **A script can be reloaded while the service runs (D36).** `Script::reload()`

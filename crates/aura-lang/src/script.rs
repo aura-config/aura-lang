@@ -704,6 +704,10 @@ impl FileResolver for Recording<'_> {
         }
         Ok(text)
     }
+
+    fn dir_of(&self, id: &ModuleId) -> Option<PathBuf> {
+        self.inner.dir_of(id)
+    }
 }
 
 /// SHA-256 over every file's path and content, in path order.

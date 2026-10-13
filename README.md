@@ -366,7 +366,7 @@ Rights are granted per run, and they do not propagate.
 
 | Flag | What it allows |
 | --- | --- |
-| `--allow-read=<dir>` | `read_file()` inside that directory (repeatable; paths are canonicalised, `..` cannot escape) |
+| `--allow-read=<dir>` | `read_file()` inside that directory (repeatable; paths are canonicalised, `..` cannot escape). A relative path in `read_file()` is read from the manifest's folder, as an import is (D37) |
 | `--allow-env[=A,B]` | `env()` for the listed variables — with no list, all of them |
 | `--allow-imports-io` | extends the root's rights to imported modules |
 | `--hermetic` | the opposite: no I/O at all, `E0505` everywhere; excludes the `--allow-*` flags |

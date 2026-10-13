@@ -260,7 +260,8 @@ A manifest can do nothing by default. Two calls touch the outside world, and bot
 are granted per run on the command line:
 
 - `env("NAME", "default")` needs `--allow-env` or `--allow-env=NAME,OTHER`
-- `read_file("path")` needs `--allow-read=<dir>`
+- `read_file("path")` needs `--allow-read=<dir>`; a relative path is read from
+  the manifest's folder, as an import is - not from where `aura` was run
 
 Without the grant the call is E0310. With a grant that does not cover the path,
 E0311.
