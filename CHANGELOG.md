@@ -20,6 +20,12 @@ still change the language.
 
 ### Added
 
+- **`Script::output` and `ScriptBuilder::env_values`: a whole manifest, read
+  into your own types.** `output()` returns what `aura eval` prints, as any
+  `Deserialize` type. `env_values([(name, value)])` grants exactly those
+  variables with exactly those values; `env()` never falls back to the process,
+  so a host's environment cannot leak in. Every example in the repository is
+  read this way in a test and compared with the output the CLI is pinned to.
 - **`Float.round(digits)`.** `(640.0 * 2.0 + 9.5) * 0.92` is
   `1186.3400000000001`, and there was no way to show it as `1186.34`. Rounding
   is of the value the Float holds, so `1.005.round(2)` is `1.0` on every
