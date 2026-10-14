@@ -139,8 +139,13 @@ pub fn format_source(src: &str) -> Result<String, Diagnostic> {
         // newline after it, which it does only for a block; and a `:` or `=`
         // followed by `key:` starts an object on one line, closed by an `end`
         // on the same line. Both are openers, or their `end` pops the wrong one.
-        let assign_opens_block =
-            matches!(t.kind, TokenKind::Assign) && matches!(next(1), Some(TokenKind::Newline));
+        // The lexer's own test is repeated in full: inside an unclosed `[` it
+        // keeps every newline, including one after `=` that opens nothing, and
+        // whether a file ends in a newline must not decide what is a block.
+        let assign_opens_block = matches!(t.kind, TokenKind::Assign)
+            && matches!(next(1), Some(TokenKind::Newline))
+            && matches!(next(2), Some(TokenKind::Ident(_) | TokenKind::Str(_)))
+            && matches!(next(3), Some(TokenKind::Colon | TokenKind::Assign));
         let opens_object_on_line = matches!(t.kind, TokenKind::Colon | TokenKind::Assign)
             && matches!(next(1), Some(TokenKind::Ident(_) | TokenKind::Str(_)))
             && matches!(next(2), Some(TokenKind::Colon));
@@ -679,5 +684,15 @@ mod tests {
         let once = format_source(MANIFEST).unwrap();
         let twice = format_source(&once).unwrap();
         assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn a_trailing_equals_in_an_unclosed_list_opens_no_block() {
+        // Found by fuzz_fmt. Inside an unclosed `[` the lexer keeps the newline
+        // after a final `=`, and only the first pass has no such newline - so
+        // treating it as a D38 block opener moved the alignment on the second.
+        let src = "[,\n-\n=c>\nd?=?=";
+        let once = format_source(src).unwrap();
+        assert_eq!(format_source(&once).unwrap(), once);
     }
 }
