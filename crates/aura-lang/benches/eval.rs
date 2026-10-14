@@ -41,5 +41,36 @@ fn bench_eval(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_eval);
+/// D39 on 10 000 elements, each a lambda call. Guards against an accidentally
+/// quadratic `group_by` (a key lookup that scans) or `sort_by` (keys recomputed
+/// per comparison): either would show here long before it showed in a test.
+fn bench_list_methods(c: &mut Criterion) {
+    for (name, call) in [
+        (
+            "eval/group_by_10k",
+            "group_by (x, i) -> (x % 100).to_str() end",
+        ),
+        (
+            "eval/sort_by_10k",
+            "sort_by (x, i) -> (x * 7919) % 10007 end",
+        ),
+    ] {
+        let src = format!("out: range(10000).{call}.len()\n");
+        c.bench_function(name, |b| {
+            b.iter(|| {
+                let toks = aura_lang::lexer::Lexer::new(black_box(&src), 0)
+                    .tokenize()
+                    .unwrap();
+                let module = aura_lang::parser::Parser::new(toks).parse_module().unwrap();
+                black_box(
+                    Interpreter::new(Options::default())
+                        .eval_module(&module)
+                        .unwrap(),
+                );
+            })
+        });
+    }
+}
+
+criterion_group!(benches, bench_eval, bench_list_methods);
 criterion_main!(benches);

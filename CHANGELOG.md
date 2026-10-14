@@ -9,6 +9,14 @@ still change the language.
 
 ### Added
 
+- **`group_by`, `sort_by`, `flat_map` and `zip` on lists (D39).** `group_by`
+  gives an Object from each String key to its elements, keys in the order they
+  first appear; `sort_by` sorts ascending and stably by a key; `flat_map` joins
+  the lambda's lists one level; `zip` pairs two lists of one length as
+  `{ left, right }`. A key that is not a String, a null sort key and a
+  non-List from `flat_map` are `E0306`; lists of different lengths are the new
+  `E0327`. Each help line names a remedy that runs.
+
 - **Objects on one line, and objects bound with `=` (D38).** A short object is
   its block with commas in place of the newlines: `new Endpoint path: "/",
   method: "POST" end` in a list or anywhere an expression goes, and without a
