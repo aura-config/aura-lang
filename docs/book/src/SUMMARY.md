@@ -21,5 +21,6 @@
 # Reference
 
 - [CLI](reference/cli.md)
+- [Keywords](reference/keywords.md)
 - [Built-in methods](reference/methods.md)
 - [Error and warning codes](reference/error-codes.md)
