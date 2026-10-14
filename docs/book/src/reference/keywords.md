@@ -11,7 +11,7 @@ of these words is written as a string, and read the same way (D11):
 | `as` | Names what `import` brought in; only after an import | `import org/net@v1.2 as net` | D12 |
 | `type` | Declares a schema: fields with types, defaults and invariants | `type Port` … `end` | D15, D26, D27, D28 |
 | `enum` | Declares a closed set of strings for a schema field | `enum Tier` … `end` | D18 |
-| `def` | Declares a named function | `def labels(team)` … `end` | D17 |
+| `def` | Declares a named function. It returns the object of its properties, or its last expression when it ends in one | `def labels(team)` … `end` | D17, D40 |
 | `end` | Closes every block: objects, `def`, `type`, `enum`, `domain`, `cond`, `new`, a multi-line lambda and a `text` string | `tls: enabled: true end` | D3, D38 |
 | `domain` | A named section with its own scope: its label becomes the key, and its body may compute | `domain "production"` … `end` | D17 |
 | `new` | Builds a schema instance and checks it | `new Port number: 443 end` | D4, D38 |
