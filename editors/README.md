@@ -14,6 +14,11 @@ formatting (`aura fmt`), go-to-definition, find references and rename (F2).
 Hovering an `import "host:..."` line explains that the module comes from the
 application that embeds the script, and lists what the file calls from it.
 
+Hovering a name bound with `=` says it is not part of the output - write
+`name:` to output it (D10). Two mistakes in a one-line object (D38) have a quick
+fix (`Ctrl+.`): a missing comma between fields is inserted, and a comma before
+`end` is removed.
+
 Completion inside `new` offers **exactly the members of the enum** for a field
 of enum type - also when the schema is imported from another file
 (`new lib.Endpoint`): the declarations are read from the module's file.
