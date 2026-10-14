@@ -53,6 +53,7 @@ that fail if a second copy appears and disagrees.
 | Objects on one line, and bound with `=` | D38 in `SPEC.md` | `tests/one_line_objects.rs` (written before the implementation, one test per clause), and the quick fixes in `crates/aura-lsp/src/fixes.rs` run the real parser |
 | Float results, native and wasm | `tests/fixtures/float_cases.json` | `tests/float_round.rs` natively, and `crates/aura-wasm/smoke.cjs` on the real wasm32 module in CI's wasm-runtime job - digit for digit |
 | The examples' outputs | `examples/*/expected.*` | `tests/conformance.rs` through the binary, and `tests/script_output.rs` through `Script` - one set of answers for both, and a test that fails if an example is left out |
+| The Russian READMEs | `README.md`, `editors/README.md` | `tests/readme_parity.rs` - sections, code (comments and string text aside), every flag, error code and decision named, and the tables' shape |
 | Line-ending independence | — | `tests/line_endings.rs` writes CRLF at run time, because `.gitattributes` hides it from every checkout CI makes |
 
 If you are about to write down a fact that already exists somewhere, do not.

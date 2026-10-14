@@ -1,64 +1,67 @@
-# Поддержка редакторов для Aura
+# Editor support for Aura
+
+[Русская версия](README.ru.md)
 
 ## VS Code
 
-Расширение даёт подсветку синтаксиса, автоотступы (`end` дедентится сам),
-автозакрытие скобок, переключение комментариев (`Ctrl+/`) **и живую диагностику
-через language server** (`aura-lsp`): ошибки `E0xxx` и предупреждения `W0xxx`
-подсвечиваются прямо в редакторе по мере набора, без запуска `aura eval`.
+The extension gives syntax highlighting, auto-indentation (`end` dedents by
+itself), bracket auto-closing, comment toggling (`Ctrl+/`) **and live diagnostics
+through the language server** (`aura-lsp`): `E0xxx` errors and `W0xxx` warnings
+are shown in the editor as you type, without running `aura eval`.
 
-Сервер также даёт автодополнение, hover, подсказку сигнатур, оглавление файла,
-форматирование (`aura fmt`), переход к определению, поиск использований
-и переименование (F2).
+The server also gives completion, hover, signature help, a document outline,
+formatting (`aura fmt`), go-to-definition, find references and rename (F2).
+Hovering an `import "host:..."` line explains that the module comes from the
+application that embeds the script, and lists what the file calls from it.
 
-Автодополнение внутри `new` подставляет **ровно члены enum** для поля с
-enum-типом — в том числе когда схема импортирована из другого файла
-(`new lib.Endpoint`): объявления читаются из файла модуля.
+Completion inside `new` offers **exactly the members of the enum** for a field
+of enum type - also when the schema is imported from another file
+(`new lib.Endpoint`): the declarations are read from the module's file.
 
-Переход к определению работает и на импортах: файловый импорт открывает файл,
-а импорт из registry (`org/pkg@v1.2`) — закешированный пакет. Подбор версии
-делает тот же резолвер, что и интерпретатор, так что `@v1.2` выбирает ровно тот
-файл, который реально загрузится. Каталог кеша задаётся настройкой
-`aura.registryDir` (по умолчанию `~/.aura/registry`).
+Go-to-definition works on imports too: a file import opens the file, and a
+registry import (`org/pkg@v1.2`) opens the cached package. The version is chosen
+by the same resolver as the interpreter's, so `@v1.2` picks exactly the file
+that will really be loaded. The cache directory is set by `aura.registryDir`
+(default `~/.aura/registry`).
 
-### Переименование
+### Rename
 
-Переход к определению, поиск использований и переименование **учитывают области
-видимости**: `x` внутри лямбды и `x` на верхнем уровне — разные привязки, а
-использования внутри `#{...}` тоже находятся.
+Go-to-definition, find references and rename **respect scopes**: `x` inside a
+lambda and `x` at the top level are different bindings, and uses inside `#{...}`
+are found as well.
 
-Переименование намеренно осторожно — правка конфига меняет то, что уезжает в
-продакшн, поэтому вместо догадки сервер отказывает и объясняет причину:
+Rename is deliberately careful - editing a config changes what goes to
+production - so instead of guessing, the server refuses and says why:
 
-| Отказ | Почему |
+| Refusal | Why |
 |---|---|
-| в файле есть синтаксическая ошибка | области видимости неизвестны |
-| курсор не на привязке | имя метода, ключ схемы, литерал — переименовывать нечего |
-| новое имя — ключевое слово или не идентификатор | результат не скомпилируется |
-| новое имя уже занято в пересекающейся области | переименование сменило бы, на что ссылается какое-то вхождение |
-| имя объявлено с `pub` | это API модуля, импортёров из этого файла не видно |
+| the file has a syntax error | the scopes are unknown |
+| the cursor is not on a binding | a method name, a schema key, a literal - there is nothing to rename |
+| the new name is a keyword or not an identifier | the result would not compile |
+| the new name is already taken in an overlapping scope | the rename would change what some occurrence refers to |
+| the name is declared `pub` | it is the module's API, and its importers are not visible from this file |
 
-Проверка на захват сознательно консервативна: она отказывает и тогда, когда
-конкретных вхождений под захват не нашлось. Один отказ стоит одной ручной
-правки — неверное переименование стоит инцидента.
+The capture check is conservative on purpose: it refuses even when no specific
+occurrence would actually be captured. A refusal costs one manual edit - a wrong
+rename costs an incident.
 
-### Быстрый способ (только подсветка)
+### The quick way (highlighting only)
 
 ```console
 cp -r editors/vscode ~/.vscode/extensions/aura-lang
 ```
 
-### С language server (диагностика на лету)
+### With the language server (diagnostics as you type)
 
-1. Собрать и поставить сервер на PATH:
+1. Install the server, which puts the `aura-lsp` binary on `PATH`:
 
    ```console
-   cargo install --path crates/aura-lsp     # ставит бинарник `aura-lsp`
+   cargo install aura-lsp
    ```
 
-   Либо указать путь в настройках: `"aura.server.path": "/путь/к/aura-lsp"`.
+   Or set its path in the settings: `"aura.server.path": "/path/to/aura-lsp"`.
 
-2. Собрать `.vsix` и установить (нужны Node.js + `@vscode/vsce`):
+2. Build the `.vsix` and install it (needs Node.js and `@vscode/vsce`):
 
    ```console
    cd editors/vscode
@@ -67,9 +70,9 @@ cp -r editors/vscode ~/.vscode/extensions/aura-lang
    code --install-extension aura-lang-0.1.0.vsix
    ```
 
-Клиент (`extension.js`) запускает `aura-lsp` по stdio для `.aura`-файлов.
-Отключить сервер: `"aura.server.enable": false`. Публикация в Marketplace —
-после открытия репозитория (см. роадмап).
+The client (`extension.js`) starts `aura-lsp` over stdio for `.aura` files.
+To turn the server off: `"aura.server.enable": false`. Publishing to the
+Marketplace comes after the repository is opened.
 
 ## Vim / Neovim
 
@@ -80,14 +83,14 @@ cp -r editors/vim/* ~/.config/nvim/   # Neovim
 
 ## nano
 
-Добавьте в `~/.nanorc`:
+Add to `~/.nanorc`:
 
 ```text
-include "/путь/до/aura-lang/editors/nano/aura.nanorc"
+include "/path/to/aura-lang/editors/nano/aura.nanorc"
 ```
 
-## Планы
+## Plans
 
-- tree-sitter-грамматика (Helix, Zed, современный Neovim, подсветка на GitHub) —
-  см. роадмап в корневом README; TextMate-грамматика из `vscode/syntaxes/`
-  переиспользуется для mdBook-документации и GitHub Linguist.
+- A tree-sitter grammar (Helix, Zed, modern Neovim, highlighting on GitHub) -
+  see "Status" in the root README; the TextMate grammar in `vscode/syntaxes/` is
+  reused for the mdBook documentation and GitHub Linguist.

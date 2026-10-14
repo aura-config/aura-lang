@@ -690,7 +690,7 @@ Claude:
       на настоящем компиляторе, собранном в WebAssembly
 - [x] [Книга документации](https://aura-config.github.io/aura-lang/book/ru/), с
       [полной английской версией](https://aura-config.github.io/aura-lang/book/)
-- [x] Подсветка синтаксиса для VS Code, Vim/Neovim и nano — [editors/](editors/README.md)
+- [x] Подсветка синтаксиса для VS Code, Vim/Neovim и nano — [editors/](editors/README.ru.md)
 - [ ] tree-sitter-грамматика (Helix, Zed, GitHub Linguist)
 - [ ] npm, PyO3 и C ABI — по спросу, а не заранее
 
