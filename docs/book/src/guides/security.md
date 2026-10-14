@@ -14,6 +14,7 @@ they do not leak.
 | --- | --- |
 | `--allow-read=<dir>` | `read_file()` inside that directory; paths are canonicalised, and `..` cannot escape (`E0311`). A relative path is read from the manifest's own folder (D37) |
 | `--allow-env[=A,B]` | `env()` for the named variables — with no list, all of them |
+| `--hermetic` | no I/O at all: `env()` and `read_file()` are `E0505` in every module; refused together with `--allow-*` |
 | `--allow-imports-io` | extend the root's rights to imported modules |
 
 A call without the right is `E0310`, with a hint naming the flag to add.
