@@ -155,13 +155,15 @@ domain "checkout-eu"
     min_version: "1.3"
   end
 
-  quota: new Quota
-    cpu: 4
-  end
-
-  endpoint: new lib.Endpoint
-    host: "checkout.internal"
-  end
+  # D38: a short instance fits on one line - the same block, with commas
+  # between fields. The schema checks it exactly as it checks a block, and
+  # the block form below is just as valid:
+  #
+  #   quota: new Quota
+  #     cpu: 4
+  #   end
+  quota:    new Quota cpu: 4 end
+  endpoint: new lib.Endpoint host: "checkout.internal" end
 
   # D18: an enum-typed field rejects anything outside the set.
   api: new Service
