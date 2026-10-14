@@ -382,8 +382,9 @@ impl<'a> Parser<'a> {
                 let start = self.span();
                 self.bump();
                 let (name, _) = self.expect_ident("variable name after `shadow`")?;
+                let opened = self.span();
                 self.expect(&TokenKind::Assign, "`=` in shadow assignment")?;
-                let value = self.parse_expr(0)?;
+                let value = self.parse_binding_value(opened)?;
                 Ok(Stmt::Assign {
                     name,
                     shadow: true,
@@ -408,8 +409,9 @@ impl<'a> Parser<'a> {
                 match (self.peek_at(1), self.peek_at(2)) {
                     (TokenKind::Assign, _) => {
                         let (name, _) = self.expect_ident("name")?;
+                        let opened = self.span();
                         self.bump(); // =
-                        let value = self.parse_expr(0)?;
+                        let value = self.parse_binding_value(opened)?;
                         Ok(Stmt::Assign {
                             name,
                             shadow: false,
@@ -448,13 +450,119 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Property value: an expr on the same line, or Newline → nested object block (SPEC §3.2).
+    /// Property value: an expr on the same line, or Newline → nested object block (SPEC §3.2),
+    /// or an object on one line (D38).
     fn parse_property_value(&mut self) -> Result<Expr<'a>, Diagnostic> {
         if matches!(self.peek(), TokenKind::Newline) {
             self.bump();
             Ok(Expr::ObjectLiteral(self.parse_object_body()?))
+        } else if self.object_on_line_ahead() {
+            let opened = self.span();
+            Ok(Expr::ObjectLiteral(self.parse_object_on_line(opened)?))
         } else {
             self.parse_expr(0)
+        }
+    }
+
+    /// The value of `x =` (D38). The lexer keeps the newline after `=` only
+    /// when the next line is a property, so a newline here opens an object
+    /// block; anywhere else `=` at the end of a line continues the expression.
+    /// The block is the one `x:` would open - the two differ only in whether
+    /// the value is output (D10).
+    fn parse_binding_value(&mut self, opened: Span) -> Result<Expr<'a>, Diagnostic> {
+        if self.eat(&TokenKind::Newline) {
+            Ok(Expr::ObjectLiteral(
+                self.parse_object_body_opened_at(Some(opened))?,
+            ))
+        } else if self.object_on_line_ahead() {
+            Ok(Expr::ObjectLiteral(self.parse_object_on_line(opened)?))
+        } else {
+            self.parse_expr(0)
+        }
+    }
+
+    /// `key:` next - an object on one line starts here (D38).
+    fn object_on_line_ahead(&self) -> bool {
+        matches!(self.peek(), TokenKind::Ident(_) | TokenKind::Str(_))
+            && matches!(self.peek_at(1), TokenKind::Colon)
+    }
+
+    /// D38: the fields of an object on one line - `a: 1, b: 2 end`. It is a
+    /// block with its newlines replaced by commas, so it holds what a block
+    /// holds; only a value that would open a block of its own is out, since
+    /// that needs the line break this form has none of. `opened` is where the
+    /// object began, which is what an unclosed one is reported at: by the time
+    /// the line runs out, the parser is past the place worth pointing to.
+    fn parse_object_on_line(&mut self, opened: Span) -> Result<ObjectBody<'a>, Diagnostic> {
+        self.enter()?;
+        let r = self.parse_object_on_line_impl(opened);
+        self.leave();
+        r
+    }
+
+    fn parse_object_on_line_impl(&mut self, opened: Span) -> Result<ObjectBody<'a>, Diagnostic> {
+        let mut props = Vec::new();
+        loop {
+            let (key, kspan) = self.expect_key()?;
+            self.expect(&TokenKind::Colon, "`:` after property key")?;
+            let value = if self.object_on_line_ahead() {
+                let at = self.span();
+                Expr::ObjectLiteral(self.parse_object_on_line(at)?)
+            } else {
+                self.parse_expr(0)?
+            };
+            props.push((key, value, kspan));
+            match self.peek() {
+                TokenKind::End => {
+                    self.bump();
+                    return Ok(ObjectBody { props });
+                }
+                TokenKind::Comma => {
+                    self.bump();
+                    if matches!(self.peek(), TokenKind::End) {
+                        let mut d = self.err(
+                            "E0205",
+                            "a comma before `end`",
+                            "nothing follows this comma",
+                        );
+                        d.help = Some(
+                            "remove the comma: on one line, a comma separates two fields".into(),
+                        );
+                        return Err(d);
+                    }
+                }
+                TokenKind::Newline | TokenKind::Eof => {
+                    let mut d = Diagnostic::error(
+                        "E0203",
+                        "missing `end`",
+                        opened,
+                        "the object that starts here is not closed",
+                    );
+                    d.help = Some(
+                        "an object on one line ends with `end` on the same line: `a: 1, b: 2 end`"
+                            .into(),
+                    );
+                    return Err(d);
+                }
+                _ if self.object_on_line_ahead() => {
+                    let mut d = self.err(
+                        "E0205",
+                        "expected a comma between fields",
+                        "a new field starts here",
+                    );
+                    d.help = Some(
+                        "fields on one line are separated by a comma: `a: 1, b: 2 end`".into(),
+                    );
+                    return Err(d);
+                }
+                _ => {
+                    return Err(self.err(
+                        "E0205",
+                        "expected `,` or `end`",
+                        "fields on one line are separated by commas and closed by `end`",
+                    ))
+                }
+            }
         }
     }
 
@@ -494,13 +602,26 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_object_body(&mut self) -> Result<ObjectBody<'a>, Diagnostic> {
+        self.parse_object_body_opened_at(None)
+    }
+
+    /// `opened`: report an unclosed block at the line that opened it rather than
+    /// at the end of the file (D38, for `x =`, whose block a forgotten value
+    /// opens by accident).
+    fn parse_object_body_opened_at(
+        &mut self,
+        opened: Option<Span>,
+    ) -> Result<ObjectBody<'a>, Diagnostic> {
         self.enter()?;
-        let r = self.parse_object_body_impl();
+        let r = self.parse_object_body_impl(opened);
         self.leave();
         r
     }
 
-    fn parse_object_body_impl(&mut self) -> Result<ObjectBody<'a>, Diagnostic> {
+    fn parse_object_body_impl(
+        &mut self,
+        opened: Option<Span>,
+    ) -> Result<ObjectBody<'a>, Diagnostic> {
         let mut props = Vec::new();
         loop {
             self.skip_newlines();
@@ -508,12 +629,32 @@ impl<'a> Parser<'a> {
                 return Ok(ObjectBody { props });
             }
             if matches!(self.peek(), TokenKind::Eof) {
-                return Err(self.err("E0203", "missing `end`", "object block is not closed"));
+                return Err(match opened {
+                    None => self.err("E0203", "missing `end`", "object block is not closed"),
+                    Some(at) => {
+                        let mut d = Diagnostic::error(
+                            "E0203",
+                            "missing `end`",
+                            at,
+                            "this opens an object block that is not closed",
+                        );
+                        d.help = Some(
+                            "close the block with `end`; if the value was meant to follow \
+                             `=`, write it on the same line"
+                                .into(),
+                        );
+                        d
+                    }
+                });
             }
             let (key, kspan) = self.expect_key()?;
             self.expect(&TokenKind::Colon, "`:` after property key")?;
             let value = self.parse_property_value()?;
             props.push((key, value, kspan));
+            // The file ran out after a field: the same unclosed block as above.
+            if opened.is_some() && matches!(self.peek(), TokenKind::Eof) {
+                continue;
+            }
             if !matches!(self.peek(), TokenKind::Newline | TokenKind::End) {
                 return Err(self.err(
                     "E0205",
@@ -882,8 +1023,12 @@ impl<'a> Parser<'a> {
                 } else {
                     (first, None)
                 };
-                self.expect(&TokenKind::Newline, "newline after `new SchemaName`")?;
-                let body = self.parse_object_body()?;
+                // A block, or (D38) the same fields on one line.
+                let body = if self.eat(&TokenKind::Newline) {
+                    self.parse_object_body()?
+                } else {
+                    self.parse_object_on_line(sp)?
+                };
                 Ok(Expr::SchemaInstance {
                     schema,
                     schema_alias,
@@ -975,6 +1120,20 @@ impl<'a> Parser<'a> {
             }
             if matches!(self.peek(), TokenKind::Eof) {
                 return Err(self.err("E0203", "missing `]`", "list is not closed"));
+            }
+            // D38: an object without a schema has no one-line form in a list,
+            // where a comma would separate both its fields and the elements.
+            if self.object_on_line_ahead() {
+                let mut d = self.err(
+                    "E0205",
+                    "an object without a schema cannot be a list element on one line",
+                    "a field starts here",
+                );
+                d.help = Some(
+                    "write `new Schema field: value end`, which also checks the fields,                      or bind the object with `=` and list its name"
+                        .into(),
+                );
+                return Err(d);
             }
             items.push(self.parse_expr(0)?);
             if !matches!(

@@ -36,6 +36,27 @@ end
 There is no `{}` object literal. An object comes from a block, a `def`, or `new`.
 Lists use `[]`.
 
+A short block may be written on one line, with commas between the fields and
+`end` on the same line. `=` takes a block too: it binds the object without
+outputting it.
+
+```aura
+defaults =
+  port:    8080
+  timeout: "30s"
+end
+
+limits = cpu: "500m", memory: "1Gi" end
+
+api:
+  port: defaults.port
+  tls:  enabled: true, min_version: "1.3" end
+end
+```
+
+A one-line object without a schema is not allowed inside `[]`: write
+`new Schema a: 1, b: 2 end` there.
+
 ## Values
 
 The built-in type names a schema field may use are listed under **Keywords and
@@ -219,6 +240,8 @@ api: new Service
 end
 ```
 
+A short instance fits on one line: `new Service name: "web", port: 80, tier: "frontend" end`.
+
 A missing required field is E0511, a type mismatch E0512, a value outside an
 `enum` E0514. An unknown field is a warning, or E0513 under `--strict`. A default
 is evaluated at instantiation and cannot reference sibling fields — derive those
@@ -284,6 +307,8 @@ Key order in the output is declaration order, not sorted.
 - Using `=` for something that should appear in the output. It will silently not
   be there. This is the single most common error.
 - Expecting `{}` to build an object, or `if`/`elif` to exist. Neither does.
+- Leaving out the commas in a one-line object (`a: 1 b: 2 end`), or adding one
+  before `end`. Both are E0205.
 - Omitting the `else` arm of a `cond`.
 - Assuming an imported package can read a file because the root was granted it.
 - Reaching for a loop. Use `.map`, `.filter` and the other list methods.

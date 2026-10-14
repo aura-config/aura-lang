@@ -7,6 +7,19 @@ still change the language.
 
 ## [Unreleased]
 
+### Added
+
+- **Objects on one line, and objects bound with `=` (D38).** A short object is
+  its block with commas in place of the newlines: `new Endpoint path: "/",
+  method: "POST" end` in a list or anywhere an expression goes, and without a
+  schema after `=` or `key:` - `limits = cpu: "500m", memory: "1Gi" end`. A
+  schema checks it exactly as the block. `defaults =` followed by a block binds
+  the object without outputting it, as `=` does for any value (D10). A missing
+  comma and a comma before `end` are `E0205`, an unclosed object is `E0203` at
+  the line that opened it, and a one-line object without a schema inside a list
+  is `E0205` naming `new Schema ... end`. `aura fmt` keeps whichever form was
+  written. Nothing that parsed before changes meaning.
+
 ## [0.4.0] - 2026-10-13
 
 An embedding release. A script can call functions its host provides (D35),

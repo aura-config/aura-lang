@@ -8,6 +8,9 @@ pub fn hover_markdown(text: &str, line: u32, character: u32, stdlib: &Stdlib) ->
     if let Some(md) = host_import_markdown(text, line) {
         return Some(md);
     }
+    if let Some(md) = binding_markdown(text, line, character) {
+        return Some(md);
+    }
     let word = word_at(text, line, character)?;
     let matches: Vec<_> = stdlib.entries.iter().filter(|e| e.name == word).collect();
     if matches.is_empty() {
@@ -23,6 +26,25 @@ pub fn hover_markdown(text: &str, line: u32, character: u32, stdlib: &Stdlib) ->
         md.push_str(&format!("```aura\n{sig}\n```\n{}\n\n", e.doc));
     }
     Some(md.trim_end().to_string())
+}
+
+/// A name bound with `=`: say that it is not in the output (D10). `=` and
+/// `:` read alike, and since D38 they take the same blocks, so the one thing
+/// that tells them apart is worth stating where the name is used.
+fn binding_markdown(text: &str, line: u32, character: u32) -> Option<String> {
+    let def = crate::goto::definition_range(text, line, character)?;
+    let index = crate::diagnostics::LineIndex::new(text);
+    let start = index.offset(text, def.start.line, def.start.character);
+    let end = index.offset(text, def.end.line, def.end.character);
+    let rest = text[end..].trim_start_matches([' ', '\t']);
+    if !rest.starts_with('=') || rest.starts_with("==") {
+        return None;
+    }
+    let name = &text[start..end];
+    Some(format!(
+        "`{name}` is bound with `=`: usable in this file, not part of the output. \
+         Write `{name}:` to output it (D10)."
+    ))
 }
 
 /// D35 §7: on an `import "host:..."` line, say where the module comes from -
@@ -132,6 +154,18 @@ r: geo.region(\"x\")
         assert!(md.contains("`geo.region`"), "{md}");
         // Only the import line explains the module.
         assert!(hover_markdown(src, 1, 0, &sl()).is_none());
+    }
+
+    #[test]
+    fn hover_on_a_name_bound_with_equals_says_it_is_not_output() {
+        let src = "defaults =\n  port: 1\nend\nlimits = cpu: 1 end\nout: defaults.port\n";
+        // At a use, and at the binding itself.
+        for (line, ch, name) in [(4, 6, "defaults"), (0, 2, "defaults"), (3, 1, "limits")] {
+            let md = hover_markdown(src, line, ch, &sl()).expect("hover");
+            assert!(md.contains(&format!("`{name}` is bound with `=`")), "{md}");
+        }
+        // A property is output, so it gets no such note.
+        assert!(hover_markdown("out: 1\ny: out\n", 1, 4, &sl()).is_none());
     }
 
     #[test]

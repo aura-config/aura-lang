@@ -35,10 +35,15 @@ bot:
   admins: admin_ids
 
   # A ready payload for setMyCommands; the schema catches a typo in a field
-  menu_button: new Command
-    command:     "help"
-    description: "List of commands"
-  end
+  # One line is enough for two fields (D38); a missing comma is E0205.
+  # The block form says the same:
+  #
+  #   menu_button: new Command
+  #     command:     "help"
+  #     description: "List of commands"
+  #   end
+  menu_button: new Command command: "help", description: "List of commands" end
+
   commands: [
     cmd("start", "Start working with the bot")
     cmd("help", "List of commands")

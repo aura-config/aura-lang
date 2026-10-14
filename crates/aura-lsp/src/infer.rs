@@ -285,10 +285,25 @@ fn enclosing_new_field<'a>(
             | TokenKind::Type
             | TokenKind::Enum
             | TokenKind::Cond => depth = depth.saturating_sub(1),
+            // An object block opened by `key:` or `x =` (D38), or an object on
+            // one line: each has an `end` but no keyword, so without this its
+            // `end` would be charged to the `new` around it.
+            TokenKind::Colon | TokenKind::Assign if opens_object(toks, i) => {
+                depth = depth.saturating_sub(1)
+            }
             _ => {}
         }
         i = i.checked_sub(1)?;
     }
+}
+
+/// Whether the `:` or `=` at `i` opens an object that an `end` will close:
+/// a block (a newline follows) or an object on one line (`key:` follows).
+fn opens_object(toks: &[Token<'_>], i: usize) -> bool {
+    let next = |k: usize| toks.get(i + k).map(|t| &t.kind);
+    matches!(next(1), Some(TokenKind::Newline))
+        || (matches!(next(1), Some(TokenKind::Ident(_) | TokenKind::Str(_)))
+            && matches!(next(2), Some(TokenKind::Colon)))
 }
 
 /// Members of the enum expected at `offset`: the cursor is in the value position
@@ -483,6 +498,45 @@ e: new lib.Endpoint
             expected_enum_members(reg, reg.len(), |_| panic!("must not be loaded")),
             None
         );
+    }
+
+    #[test]
+    fn enum_members_inside_a_one_line_new() {
+        let decls = "enum Tier
+  \"a\"
+  \"b\"
+end
+type S
+  name: String
+  tier: Tier
+end
+";
+        let want = Some(vec!["a".to_string(), "b".to_string()]);
+        // D38: the field's value on the same line as the `new`.
+        let one_line = format!("{decls}x: new S name: \"n\", tier: ");
+        assert_eq!(
+            expected_enum_members(&one_line, one_line.len(), |_| None),
+            want
+        );
+        // A closed object before the field - on one line, or a block - is not
+        // mistaken for the end of the `new` around it.
+        for inner in [
+            "meta: a: 1, b: 2 end",
+            "meta:
+    a: 1
+  end",
+        ] {
+            let src = format!(
+                "{decls}x: new S
+  {inner}
+  tier: "
+            );
+            assert_eq!(
+                expected_enum_members(&src, src.len(), |_| None),
+                want,
+                "after {inner:?}"
+            );
+        }
     }
 
     #[test]

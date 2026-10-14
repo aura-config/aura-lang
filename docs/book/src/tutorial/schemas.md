@@ -18,6 +18,13 @@ main: new Container
 end
 ```
 
+A short instance fits on one line, with commas between the fields (D38). It
+is checked exactly as the block form:
+
+```ruby
+sidecar: new Container name: "proxy", image: "envoy:1.30", port: 9901 end
+```
+
 What is checked at instantiation:
 
 | Situation | Code | When |
