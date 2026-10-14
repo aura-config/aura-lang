@@ -453,7 +453,9 @@ impl<'a> SemanticAnalyzer<'a> {
             }
             Stmt::TypeDecl(schema) => {
                 for f in &schema.fields {
-                    if let Some(name) = f.ty.custom_name() {
+                    // D41: a schema may hold itself (`children: [Node]`); its
+                    // own name is declared just below, so it is not looked up.
+                    if let Some(name) = f.ty.custom_name().filter(|n| *n != schema.name) {
                         self.mark_used_as_type(name, f.ty_span);
                     }
                     // a default expression may reference variables (e.g. `= base_port`)
