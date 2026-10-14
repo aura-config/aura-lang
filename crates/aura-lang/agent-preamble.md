@@ -307,6 +307,9 @@ Key order in the output is declaration order, not sorted.
 - Using `=` for something that should appear in the output. It will silently not
   be there. This is the single most common error.
 - Expecting `{}` to build an object, or `if`/`elif` to exist. Neither does.
+- Leaving a bare expression on a line of its own. It is E0214 unless it is the
+  last line of a `def` or lambda, where it is the return value - and then the
+  body cannot also have `key:` properties (E0215).
 - Leaving out the commas in a one-line object (`a: 1 b: 2 end`), or adding one
   before `end`. Both are E0205.
 - Omitting the `else` arm of a `cond`.

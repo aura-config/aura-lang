@@ -52,6 +52,8 @@ Raised at the boundary between a manifest and the application that embeds it.
 | E0211 | an `enum` member is not a quoted string | members are listed as strings, one per line (D18) |
 | E0212 | a duplicate `enum` member | list each member once |
 | E0213 | an `enum` with no members | an empty set cannot be satisfied |
+| E0214 | a value is computed and thrown away | a bare expression outside the end of a function goes nowhere; write `key:`, `name =` or `assert` (D40) |
+| E0215 | a body has properties and also ends in a value | a function returns one or the other; make the value a property, or drop the properties (D40) |
 
 ## Evaluation (E03xx)
 

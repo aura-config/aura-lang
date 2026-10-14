@@ -868,6 +868,24 @@ impl<'a> Interpreter<'a> {
         Ok(Value::object(exports))
     }
 
+    /// D40: a function's value is its last expression when it ends in one -
+    /// the parser has already refused one that also has properties - and the
+    /// object of its properties otherwise.
+    fn eval_function_body(
+        &mut self,
+        env: &Env<'a>,
+        body: &[Stmt<'a>],
+    ) -> Result<Value<'a>, Diagnostic> {
+        let Some((Stmt::Expr(value), init)) = body.split_last() else {
+            return self.eval_stmt_body(env, body);
+        };
+        let mut exports: IndexMap<String, Value<'a>> = IndexMap::new();
+        for stmt in init {
+            self.exec_stmt(env, stmt, &mut exports)?;
+        }
+        self.eval_expr(env, value)
+    }
+
     fn eval_object_body(
         &mut self,
         env: &Env<'a>,
@@ -1171,9 +1189,10 @@ impl<'a> Interpreter<'a> {
         self.current_root = def.defined_in_root;
         let saved_dir = std::mem::replace(&mut self.current_dir, def.origin_dir.clone());
         let result = match &def.body {
-            FuncBody::Block(body) => self.eval_stmt_body(&env, body),
+            FuncBody::Block(body) | FuncBody::Lambda(LambdaBody::Block(body)) => {
+                self.eval_function_body(&env, body)
+            }
             FuncBody::Lambda(LambdaBody::Expr(e)) => self.eval_expr(&env, e),
-            FuncBody::Lambda(LambdaBody::Block(body)) => self.eval_stmt_body(&env, body),
             FuncBody::Host(_) => unreachable!("host functions return before a frame is made"),
         };
         self.current_root = saved_root;
