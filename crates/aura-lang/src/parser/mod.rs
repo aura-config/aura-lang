@@ -10,6 +10,54 @@ use ast::*;
 /// The prefix of an import path naming a host module (D35).
 pub const HOST_PREFIX: &str = "host:";
 
+/// D40: no value is computed only to be thrown away. A bare expression is
+/// the value of a function or a multi-line lambda when it comes last
+/// (`returns_value`), and anywhere else - a module, a `domain`, the middle of
+/// a body - it would be evaluated and dropped, which in a language without
+/// side effects can only be a mistake. And a body that ends in a value cannot
+/// also have properties: it would have to return one and drop the other.
+fn check_values(body: &[Stmt<'_>], returns_value: bool) -> Result<(), Diagnostic> {
+    let last = body.len().saturating_sub(1);
+    for (i, stmt) in body.iter().enumerate() {
+        let Stmt::Expr(e) = stmt else {
+            continue;
+        };
+        let Some(at) = e.span() else {
+            continue;
+        };
+        if returns_value && i == last {
+            if body.iter().any(|s| matches!(s, Stmt::Property { .. })) {
+                let mut d = Diagnostic::error(
+                    "E0215",
+                    "a body with properties cannot also end in a value",
+                    at,
+                    "this value would be returned instead of the properties above",
+                );
+                d.help = Some(
+                    "a function returns its properties or its last value, not both: make \
+                     the value a property too, `value: ...`, or drop the properties"
+                        .into(),
+                );
+                return Err(d);
+            }
+            continue;
+        }
+        let mut d = Diagnostic::error(
+            "E0214",
+            "this value is computed and thrown away",
+            at,
+            "nothing uses this value",
+        );
+        d.help = Some(
+            "to output it, give it a key: `key: ...`; to use it later, bind it: \
+             `name = ...`; to check it, make it an `assert`"
+                .into(),
+        );
+        return Err(d);
+    }
+    Ok(())
+}
+
 /// lbp of the ternary `? :`; right associativity — the else branch parses with min_bp = TERNARY_LBP - 1.
 const TERNARY_LBP: u8 = 2;
 const UNARY_RBP: u8 = 15;
@@ -289,6 +337,11 @@ impl<'a> Parser<'a> {
                         self.bump();
                     }
                 }
+            }
+        }
+        if self.diags.is_empty() {
+            if let Err(d) = check_values(&stmts, false) {
+                self.diags.push(d);
             }
         }
         if self.diags.is_empty() {
@@ -582,6 +635,8 @@ impl<'a> Parser<'a> {
         loop {
             self.skip_newlines();
             if self.eat(&TokenKind::End) {
+                let returns_value = matches!(what, "function" | "lambda");
+                check_values(&body, returns_value)?;
                 return Ok(body);
             }
             if matches!(self.peek(), TokenKind::Eof) {
@@ -1270,11 +1325,8 @@ mod tests {
     }
 
     fn expr(src: &str) -> Expr<'_> {
-        let m = module(src);
-        match m.stmts.into_iter().next().expect("one stmt") {
-            Stmt::Expr(e) => e,
-            other => panic!("expected expr stmt, got {other:?}"),
-        }
+        let toks = Lexer::new(src, 0).tokenize().expect("lex ok");
+        Parser::new(toks).parse_expression().expect("parse ok")
     }
 
     fn first_err(src: &str) -> &'static str {

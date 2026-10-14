@@ -7,6 +7,17 @@ still change the language.
 
 ## [Unreleased]
 
+### Changed
+
+- **A function's value is its last expression, and no value is thrown away
+  (D40).** A `def` or multi-line lambda ending in an expression returned `{}`
+  and now returns the expression, so a function can return a list, a number or
+  a string. A bare expression anywhere else - the top of a module, a `domain`,
+  before the last line of a body - was evaluated and dropped without a word,
+  and is now `E0214`; a body with properties that also ends in a value is
+  `E0215`. Both are reported by `aura check`. A manifest that relied on either
+  silence changes: almost certainly it was a mistake.
+
 ### Added
 
 - **`group_by`, `sort_by`, `flat_map` and `zip` on lists (D39).** `group_by`

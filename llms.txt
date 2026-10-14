@@ -311,6 +311,9 @@ Key order in the output is declaration order, not sorted.
 - Using `=` for something that should appear in the output. It will silently not
   be there. This is the single most common error.
 - Expecting `{}` to build an object, or `if`/`elif` to exist. Neither does.
+- Leaving a bare expression on a line of its own. It is E0214 unless it is the
+  last line of a `def` or lambda, where it is the return value - and then the
+  body cannot also have `key:` properties (E0215).
 - Leaving out the commas in a one-line object (`a: 1 b: 2 end`), or adding one
   before `end`. Both are E0205.
 - Omitting the `else` arm of a `cond`.
@@ -516,6 +519,8 @@ Raised at the boundary between a manifest and the application that embeds it.
 | E0211 | an `enum` member is not a quoted string | members are listed as strings, one per line (D18) |
 | E0212 | a duplicate `enum` member | list each member once |
 | E0213 | an `enum` with no members | an empty set cannot be satisfied |
+| E0214 | a value is computed and thrown away | a bare expression outside the end of a function goes nowhere; write `key:`, `name =` or `assert` (D40) |
+| E0215 | a body has properties and also ends in a value | a function returns one or the other; make the value a property, or drop the properties (D40) |
 
 ### Evaluation (E03xx)
 

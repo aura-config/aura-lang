@@ -2,7 +2,8 @@
 
 ## def — constructor functions
 
-`def` returns an object; its body is properties:
+`def` returns an object when its body is properties (and a value when it ends
+in one - below):
 
 ```ruby
 def make_env(name, replicas, debug)
@@ -19,6 +20,43 @@ end
 
 One `def` instead of three copy-pasted YAML files: this is the language's main
 anti-duplication tool.
+
+## A function that returns a value
+
+A function whose body ends in an expression returns that expression (D40).
+Bindings and `assert` may come before it, so a step can be named:
+
+```ruby
+def ports_of(services)
+  all = services.map (s, i) -> s.port end
+  assert all.len() > 0, "no services"
+  all.uniq().sort()
+end
+
+ports: ports_of(catalogue)
+```
+
+A multi-line lambda follows the same rule; a one-line lambda,
+`(x) -> x * 2 end`, already was an expression.
+
+### Three cases, and why each is as it is
+
+- **Properties, or a last value - not both.** A body with `key:` properties
+  that also ends in an expression is `E0215`. Returning the value would drop the
+  properties, returning the properties would drop the value, and either loses
+  something without a trace. Make the value a property (`value: ...`) or remove
+  the properties.
+- **A value nobody uses is an error.** A bare expression anywhere else - at
+  the top of a file, in a `domain`, before the last line of a function - is
+  `E0214`. Aura has no side effects, so a value that goes nowhere did nothing:
+  the author almost always meant `key:` (output it), `name =` (use it later)
+  or `assert` (check it), and the help names all three. Before D40 such a line
+  was evaluated and silently dropped.
+- **Only bindings and checks is still an empty object.** A body of `=` and
+  `assert` alone returns `{}`, as before: nothing in it was meant to be the
+  result, so nothing is thrown away.
+
+Both errors come from `aura check`, so the editor shows them as you type.
 
 ## Lambdas
 
