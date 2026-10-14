@@ -83,6 +83,7 @@ Raised at the boundary between a manifest and the application that embeds it.
 | E0324 | `null` rendered as text | interpolation and `to_str()` must agree; say what the empty case prints (D31) |
 | E0325 | an evaluation ran out of its step budget | `--max-steps` raises it, `--stats` shows what is spent (D34); in `Script`, the budget is per call (D33) |
 | E0326 | an evaluation ran out of its memory budget | `--max-memory` raises it; every value and frame created counts (D34) |
+| E0327 | `zip()` got lists of different lengths | a dropped tail would drop configuration silently; cut the longer one with `slice` first (D39) |
 | E0398 | internal: a closure's environment was dropped | a bug in Aura — please report it with the manifest |
 | E0399 | call depth exceeded (256) | recursion in a function? |
 | E0533 | `now()` and `timestamp()` do not exist | the host passes time in: `env("BUILD_TIME", ...)` (D13) |

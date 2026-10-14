@@ -72,6 +72,10 @@
 | `all (e, i) -> Bool end` | Bool | подходят все; для пустого списка — `true` |
 | `find(default) (e, i) -> Bool end` | Any | первое совпадение или default |
 | `index_of(value, default)` | Int | индекс первого равного элемента или default; default обязан быть `Int` |
+| `group_by (e, i) -> key end` | Object | элементы по ключу-строке, ключи в порядке первого появления (D39) |
+| `sort_by (e, i) -> key end` | List | по возрастанию и устойчиво; ключи как у `sort()` (D39) |
+| `flat_map (e, i) -> [...] end` | List | `map`, затем списки склеиваются на один уровень; не-список из лямбды - `E0306` (D39) |
+| `zip(other)` | List | пары `{ left, right }`; списки разной длины - `E0327` (D39) |
 | `slice(start, end)` | List | `end` не включается: `[1, 2, 3].slice(1, 3)` → `[2, 3]` |
 | `to_json()` / `to_yaml()` / `to_toml()` | String | компактная форма, для встраивания; `to_toml` на списке — `E0603` |
 | `to_json_pretty()` / `to_yaml_pretty()` / `to_toml_pretty()` | String | форма для человека, для файла, который попадает в diff |

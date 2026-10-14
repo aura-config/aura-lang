@@ -69,6 +69,11 @@ impl<'a> MethodRegistry<'a> {
         r.register(TypeTag::List, "all", m_list_all);
         r.register(TypeTag::List, "find", m_list_find);
         r.register(TypeTag::List, "index_of", m_list_index_of);
+        // D39
+        r.register(TypeTag::List, "group_by", m_list_group_by);
+        r.register(TypeTag::List, "sort_by", m_list_sort_by);
+        r.register(TypeTag::List, "flat_map", m_list_flat_map);
+        r.register(TypeTag::List, "zip", m_list_zip);
         r.register(TypeTag::Object, "entries", m_obj_entries);
         r.register(TypeTag::List, "to_object", m_list_to_object);
         r.register(TypeTag::Object, "merge", m_obj_merge);
@@ -404,6 +409,221 @@ fn m_list_find<'a>(
         }
     }
     Ok(default)
+}
+
+/// `.group_by (elem, i) -> key end` — an Object from each key to the elements
+/// that produced it (D39).
+///
+/// The keys keep the order in which they first appear, as every Object does,
+/// so the output follows the data rather than an alphabet. A key must be a
+/// String, the type of every Object key: `1` and `"1"` would otherwise land in
+/// one group with nothing in the source to say so.
+fn m_list_group_by<'a>(
+    it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    let f = expect_lambda(args, "group_by", sp)?.clone();
+    let mut groups: IndexMap<String, Vec<Value<'a>>> = IndexMap::new();
+    for (i, v) in xs.iter().enumerate() {
+        let key = it.call_value(&f, &[v.clone(), Value::Int(i as i64)], sp)?;
+        let Value::Str(k) = &key else {
+            let mut d = rt(
+                "E0306",
+                format!(
+                    "a group_by key must be a String, but element {i} gave {}",
+                    key.type_name()
+                ),
+                sp,
+            );
+            // Below, `key` stands for the lambda's body.
+            d.help = Some(match key {
+                Value::Int(_) | Value::Float(_) | Value::Bool(_) => {
+                    "turn the key into text inside the lambda: `key.to_str()`".into()
+                }
+                Value::Null => {
+                    "name the group for a missing key: `key == null ? \"none\" : key`".into()
+                }
+                _ => "group by one of its fields instead, which is a String".into(),
+            });
+            return Err(d);
+        };
+        groups.entry(k.to_string()).or_default().push(v.clone());
+    }
+    Ok(Value::object(
+        groups
+            .into_iter()
+            .map(|(k, vs)| (k, Value::list(vs)))
+            .collect(),
+    ))
+}
+
+/// `.sort_by (elem, i) -> key end` — ascending by key, stable (D39).
+///
+/// Keys follow `sort`'s rule: mutually comparable scalars, checked before
+/// sorting so the comparison never meets a pair it cannot order. Stable, so
+/// elements with equal keys keep the order they had - which a reader of the
+/// output can see, and would otherwise have to guess.
+fn m_list_sort_by<'a>(
+    it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    let f = expect_lambda(args, "sort_by", sp)?.clone();
+    let mut keyed: Vec<(Value<'a>, Value<'a>)> = Vec::with_capacity(xs.len());
+    for (i, v) in xs.iter().enumerate() {
+        let key = it.call_value(&f, &[v.clone(), Value::Int(i as i64)], sp)?;
+        keyed.push((key, v.clone()));
+    }
+    let null_at = keyed.iter().position(|(k, _)| matches!(k, Value::Null));
+    if let Some(i) = null_at {
+        let mut d = rt(
+            "E0306",
+            format!("sort_by() got a null key for element {i}"),
+            sp,
+        );
+        // A default of the same type as the other keys, so the remedy sorts.
+        let default = match keyed
+            .iter()
+            .map(|(k, _)| k)
+            .find(|k| !matches!(k, Value::Null))
+        {
+            Some(Value::Int(_)) => "0",
+            Some(Value::Float(_)) => "0.0",
+            Some(Value::Bool(_)) => "false",
+            _ => "\"\"",
+        };
+        d.help = Some(format!(
+            "a missing value has no place in an order; give it one inside the lambda: \
+             `key == null ? {default} : key`"
+        ));
+        return Err(d);
+    }
+    if let Some((first, _)) = keyed.first() {
+        for (k, _) in keyed.iter() {
+            if scalar_cmp(first, k).is_none() {
+                let mut d = rt(
+                    "E0306",
+                    format!(
+                        "sort_by() cannot compare keys of type {} and {}",
+                        first.type_name(),
+                        k.type_name()
+                    ),
+                    sp,
+                );
+                d.help = Some(
+                    "every key must be of one comparable type: all Strings, all numbers, \
+                     or all Bools"
+                        .into(),
+                );
+                return Err(d);
+            }
+        }
+    }
+    // `sort_by` on a Vec is stable.
+    keyed.sort_by(|a, b| scalar_cmp(&a.0, &b.0).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(Value::list(keyed.into_iter().map(|(_, v)| v).collect()))
+}
+
+/// `.flat_map (elem, i) -> [...] end` — map, then join the lists: one level (D39).
+///
+/// The lambda must return a List. Wrapping anything else silently would hide
+/// the commonest mistake here - a body that forgot its brackets - and unlike
+/// `flatten`, which takes the list as it finds it, this lambda is new code.
+fn m_list_flat_map<'a>(
+    it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    let f = expect_lambda(args, "flat_map", sp)?.clone();
+    let mut out = Vec::new();
+    for (i, v) in xs.iter().enumerate() {
+        match it.call_value(&f, &[v.clone(), Value::Int(i as i64)], sp)? {
+            Value::List(inner) => out.extend(inner.iter().cloned()),
+            other => {
+                let mut d = rt(
+                    "E0306",
+                    format!(
+                        "flat_map lambda must return a List, but element {i} gave {}",
+                        other.type_name()
+                    ),
+                    sp,
+                );
+                d.help = Some(
+                    "return a list - one element is `[value]`, none is `[]`; \
+                     for one value per element, `map` is the method"
+                        .into(),
+                );
+                return Err(d);
+            }
+        }
+    }
+    Ok(Value::list(out))
+}
+
+/// `.zip(other)` — the two lists side by side, as `{ left, right }` pairs (D39).
+///
+/// A pair is an object, as in D24's `{ key, value }`, so it is read by name.
+/// Lists of different lengths are `E0327`: dropping the tail of the longer one
+/// silently would drop configuration with it.
+fn m_list_zip<'a>(
+    _it: &mut Interpreter<'a>,
+    recv: &Value<'a>,
+    args: &[Value<'a>],
+    sp: Span,
+) -> Result<Value<'a>, Diagnostic> {
+    let Value::List(xs) = recv else {
+        unreachable!()
+    };
+    let [Value::List(ys)] = args else {
+        let mut d = rt("E0306", "zip() takes one List", sp);
+        d.help = Some("write it as: xs.zip(ys)".into());
+        return Err(d);
+    };
+    if xs.len() != ys.len() {
+        let mut d = rt(
+            "E0327",
+            format!(
+                "zip() needs lists of one length, got {} and {}",
+                xs.len(),
+                ys.len()
+            ),
+            sp,
+        );
+        d.help = Some(if xs.len() > ys.len() {
+            "to pair only as many as the shorter has, cut the longer one first: \
+             `xs.slice(0, ys.len()).zip(ys)`"
+                .into()
+        } else {
+            "to pair only as many as the shorter has, cut the longer one first: \
+             `xs.zip(ys.slice(0, xs.len()))`"
+                .into()
+        });
+        return Err(d);
+    }
+    let pairs = xs
+        .iter()
+        .zip(ys.iter())
+        .map(|(l, r)| {
+            let mut pair = IndexMap::with_capacity(2);
+            pair.insert("left".to_string(), l.clone());
+            pair.insert("right".to_string(), r.clone());
+            Value::object(pair)
+        })
+        .collect();
+    Ok(Value::list(pairs))
 }
 
 /// `.index_of(value, default)` — the first index equal to `value`, or the default.

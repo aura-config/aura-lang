@@ -18,6 +18,43 @@
   "all_bounded": true,
   "longest": 9600,
   "trains_models": true,
+  "by_device": {
+    "cpu": [
+      "extract",
+      "transform",
+      "features",
+      "evaluate"
+    ],
+    "gpu": [
+      "train"
+    ]
+  },
+  "slowest_first": [
+    "train",
+    "extract",
+    "transform",
+    "features",
+    "evaluate"
+  ],
+  "checkpoints": [
+    "extract:start",
+    "extract:done",
+    "transform:start",
+    "transform:done",
+    "features:start",
+    "features:done",
+    "train:start",
+    "train:done",
+    "evaluate:start",
+    "evaluate:done"
+  ],
+  "schedule": [
+    "extract: 600s",
+    "transform: 600s",
+    "features: 600s",
+    "train: 7200s",
+    "evaluate: 600s"
+  ],
   "slow_step": "train",
   "sources": [
     "events",

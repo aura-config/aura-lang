@@ -72,6 +72,10 @@ against the implementation rather than transcribed.
 | `all (e, i) -> Bool end` | Bool | every element matches; `true` for an empty list |
 | `find(default) (e, i) -> Bool end` | Any | first match, or the default |
 | `index_of(value, default)` | Int | index of the first equal element, or the default; the default must be an `Int` |
+| `group_by (e, i) -> key end` | Object | elements by a String key, keys in the order they first appear (D39) |
+| `sort_by (e, i) -> key end` | List | ascending and stable; keys follow `sort()` (D39) |
+| `flat_map (e, i) -> [...] end` | List | `map`, then the lists joined one level; a non-List from the lambda is `E0306` (D39) |
+| `zip(other)` | List | `{ left, right }` pairs; lists of different lengths are `E0327` (D39) |
 | `slice(start, end)` | List | `end` exclusive: `[1, 2, 3].slice(1, 3)` → `[2, 3]` |
 | `to_json()` / `to_yaml()` / `to_toml()` | String | the compact form, for embedding; `to_toml` on a list is `E0603` |
 | `to_json_pretty()` / `to_yaml_pretty()` / `to_toml_pretty()` | String | the form a person reads, for a file that gets diffed |

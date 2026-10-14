@@ -67,6 +67,25 @@ all_bounded:   nightly.steps.all (st, i) -> st.timeout_s > 0 end
 longest:       nightly.steps.reduce(0) (acc, st) -> acc + st.timeout_s end
 trains_models: order.contains("train")
 
+# --- Grouped, ordered, expanded and paired (D39). Each lambda gets the element
+# and its index, as `map` does, and each result is plain data.
+#
+# Groups keep the order their keys first appear in: "cpu" comes first because
+# `extract` does, not because it sorts first.
+by_device: order.group_by (s, i) -> step_of(s).gpu ? "gpu" : "cpu" end
+
+# Longest first. The sort is stable, so the four 600s steps that tie keep the
+# pipeline's own order; there is no descending sort, so the key is negated.
+slowest_first: nightly.steps.sort_by (st, i) -> 0 - st.timeout_s end.map (st, i) -> st.stage end
+
+# Two markers per stage, joined into one list. The lambda must return a list:
+# `[s]` for one element, `[]` for none.
+checkpoints: order.flat_map (s, i) -> [s + ":start", s + ":done"] end
+
+# Stage beside its timeout. Lists of different lengths would be E0327, never a
+# silently shorter schedule.
+schedule: order.zip(nightly.steps.map (st, i) -> st.timeout_s end).map (p, i) -> "#{p.left}: #{p.right}s" end
+
 # --- The first step that costs real time, or a named stand-in when none does.
 slow_step: nightly.steps.find("none") (st, i) -> st.timeout_s > 3600 end.stage
 
