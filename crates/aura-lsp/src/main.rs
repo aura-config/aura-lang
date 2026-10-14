@@ -5,6 +5,7 @@
 //! smart lives in `aura-lang`; this binary is only the protocol layer.
 
 mod diagnostics;
+mod fixes;
 mod goto;
 mod hover;
 mod infer;
@@ -20,20 +21,21 @@ use lsp_types::notification::{
     PublishDiagnostics,
 };
 use lsp_types::request::{
-    Completion, DocumentSymbolRequest, Formatting, GotoDefinition, HoverRequest,
+    CodeActionRequest, Completion, DocumentSymbolRequest, Formatting, GotoDefinition, HoverRequest,
     PrepareRenameRequest, References, Rename, Request as _, SignatureHelpRequest,
 };
 use lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentFormattingParams, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
-    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
-    HoverProviderCapability, Location, MarkupContent, MarkupKind, OneOf, ParameterInformation,
-    ParameterLabel, Position, PrepareRenameResponse, PublishDiagnosticsParams, Range,
-    ReferenceParams, RenameOptions, RenameParams, ServerCapabilities, SignatureHelp,
-    SignatureHelpOptions, SignatureHelpParams, SignatureInformation, TextDocumentPositionParams,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, WorkDoneProgressOptions,
-    WorkspaceEdit,
+    CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams,
+    CodeActionProviderCapability, CompletionItem, CompletionItemKind, CompletionOptions,
+    CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentFormattingParams, DocumentSymbolParams,
+    DocumentSymbolResponse, Documentation, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+    HoverContents, HoverParams, HoverProviderCapability, Location, MarkupContent, MarkupKind,
+    OneOf, ParameterInformation, ParameterLabel, Position, PrepareRenameResponse,
+    PublishDiagnosticsParams, Range, ReferenceParams, RenameOptions, RenameParams,
+    ServerCapabilities, SignatureHelp, SignatureHelpOptions, SignatureHelpParams,
+    SignatureInformation, TextDocumentPositionParams, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextEdit, WorkDoneProgressOptions, WorkspaceEdit,
 };
 
 use stdlib::Stdlib;
@@ -50,6 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Sync + Send>> {
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         completion_provider: Some(CompletionOptions::default()),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
+        code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
         // Enables format-on-save (when the editor's formatOnSave is on) and the
         // explicit "Format Document" command, reusing `aura fmt`.
         document_formatting_provider: Some(OneOf::Left(true)),
@@ -334,6 +337,34 @@ fn main_loop(
                             DocumentSymbolResponse::Nested(goto::document_symbols(text))
                         });
                         respond(connection, req.id, serde_json::to_value(symbols)?)?;
+                    }
+                    CodeActionRequest::METHOD => {
+                        let p: CodeActionParams = serde_json::from_value(req.params)?;
+                        let uri = p.text_document.uri;
+                        let (from, to) = (p.range.start.line, p.range.end.line);
+                        let actions: Vec<CodeActionOrCommand> = docs
+                            .get(&uri.to_string())
+                            .map(|text| fixes::quick_fixes(text))
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter(|f| (from..=to).contains(&f.line))
+                            .map(|f| {
+                                #[allow(clippy::mutable_key_type)]
+                                let mut changes = HashMap::new();
+                                changes.insert(uri.clone(), vec![f.edit]);
+                                CodeActionOrCommand::CodeAction(CodeAction {
+                                    title: f.title.to_string(),
+                                    kind: Some(CodeActionKind::QUICKFIX),
+                                    edit: Some(WorkspaceEdit {
+                                        changes: Some(changes),
+                                        ..Default::default()
+                                    }),
+                                    is_preferred: Some(true),
+                                    ..Default::default()
+                                })
+                            })
+                            .collect();
+                        respond(connection, req.id, serde_json::to_value(actions)?)?;
                     }
                     HoverRequest::METHOD => {
                         let p: HoverParams = serde_json::from_value(req.params)?;

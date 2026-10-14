@@ -647,7 +647,20 @@ fn normalize(raw: Vec<Token<'_>>) -> Vec<Token<'_>> {
                         )
                     );
                     let before = !matches!(next, None | Some(TokenKind::Dot | TokenKind::Eof));
-                    after && before
+                    // D38: after `=`, a line that starts with `key:` is not the
+                    // rest of an expression - no expression begins that way - but
+                    // the first field of an object block, as after `key:`. So is
+                    // one that starts with `name =`, which no expression continues
+                    // into either: kept, it reaches the block and gets the error
+                    // a `key:` block gives for a binding inside it.
+                    // `skip_trivia` has already collapsed blank lines into this one.
+                    let opens_object = matches!(prev, Some(TokenKind::Assign))
+                        && matches!(next, Some(TokenKind::Ident(_) | TokenKind::Str(_)))
+                        && matches!(
+                            raw.get(i + 2).map(|t| &t.kind),
+                            Some(TokenKind::Colon | TokenKind::Assign)
+                        );
+                    (after || opens_object) && before
                 }
             };
             if keep {

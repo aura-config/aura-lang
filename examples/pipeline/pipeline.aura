@@ -78,43 +78,37 @@ source_count: raw_sources.compact().len()
 
 # --- Settings as a map, rewritten through pairs and put back (D24). Doubling a
 # timeout for a rerun is a map in and a map out, which had no expression before.
-def base_timeouts()
+# A plain object bound with `=` (D38): an input, so not part of the output.
+base_timeouts =
   extract:   600
   transform: 600
   train:     7200
 end
 
-timeouts_doubled: base_timeouts().entries().map (e, i) ->
+timeouts_doubled: base_timeouts.entries().map (e, i) ->
   key:   e.key
   value: e.value * 2
 end.to_object()
 
-stage_names:  base_timeouts().keys()
-stage_values: base_timeouts().values()
+stage_names:  base_timeouts.keys()
+stage_values: base_timeouts.values()
 
-# --- Per-environment overrides on top of a shared base.
-def base_resources()
-  cpu:      4
-  memory_g: 16
-  spot:     true
-end
+# --- Per-environment overrides on top of a shared base. Short enough for one
+# line each (D38): the same objects, with commas where the newlines were.
+base_resources = cpu: 4, memory_g: 16, spot: true end
 
-# Only what production differs in. Declared before use: execution is top-down,
-# so a `def` below its caller is an undefined name, not a forward reference.
-def production_overrides()
-  cpu:      16
-  memory_g: 64
-  spot:     false
-end
+# Only what production differs in. Bound before use: execution is top-down,
+# so a name used above its binding is undefined, not a forward reference.
+production_overrides = cpu: 16, memory_g: 64, spot: false end
 
 domain "staging"
-  resources: base_resources()
+  resources: base_resources
   replicas:  1
 end
 
 domain "production"
   # merge: the right side wins, so an override is written once and only once.
-  resources: base_resources().merge(production_overrides())
+  resources: base_resources.merge(production_overrides)
   replicas:  4
 end
 

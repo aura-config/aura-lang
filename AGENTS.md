@@ -50,6 +50,7 @@ that fail if a second copy appears and disagrees.
 | Reading foreign formats | the three readers in `eval/methods.rs` | `tests/format_bridge.rs` and the `fuzz_bridge` target |
 | Reloading a script | D36 in `SPEC.md` | `tests/script_reload.rs` (written before the implementation, one test per clause) and `tests/script_reload_memory.rs` (a counting allocator) |
 | Host functions | D35 in `SPEC.md` | `tests/host_functions_api.rs` (written before the implementation, one test per clause) and `tests/host_functions_cli.rs` |
+| Objects on one line, and bound with `=` | D38 in `SPEC.md` | `tests/one_line_objects.rs` (written before the implementation, one test per clause), and the quick fixes in `crates/aura-lsp/src/fixes.rs` run the real parser |
 | Float results, native and wasm | `tests/fixtures/float_cases.json` | `tests/float_round.rs` natively, and `crates/aura-wasm/smoke.cjs` on the real wasm32 module in CI's wasm-runtime job - digit for digit |
 | The examples' outputs | `examples/*/expected.*` | `tests/conformance.rs` through the binary, and `tests/script_output.rs` through `Script` - one set of answers for both, and a test that fails if an example is left out |
 | Line-ending independence | — | `tests/line_endings.rs` writes CRLF at run time, because `.gitattributes` hides it from every checkout CI makes |

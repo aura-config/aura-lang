@@ -23,6 +23,54 @@ end
 
 Only properties are allowed inside. If you need computations, use `domain`.
 
+### On one line
+
+A short object fits on one line: the same block, with commas where the
+newlines were (D38).
+
+```ruby
+resources:
+  requests: cpu: "250m", memory: "512Mi" end
+  limits:   cpu: "500m", memory: "1Gi" end
+end
+```
+
+A comma separates two fields and nothing else - one missing, or one before
+`end`, is `E0205`, and the message says which. `aura fmt` keeps whichever form
+you wrote. Two `end`s on a line (`a: b: 1 end end`) are legal and hard to read:
+write the outer level as a block.
+
+Inside a list the one-line form needs a schema, `new Port name: "http", port: 80
+end` - there the comma also separates the elements, and the schema checks the
+fields besides.
+
+### Bound with `=`
+
+`=` binds an object exactly as `:` outputs one (D10): the block is the same, and
+it stays out of the result.
+
+```ruby
+defaults =
+  port:    8080
+  timeout: "30s"
+end
+
+limits = cpu: "500m", memory: "1Gi" end
+
+server:
+  port:    defaults.port
+  timeout: defaults.timeout
+end
+```
+
+```json
+{ "server": { "port": 8080, "timeout": "30s" } }
+```
+
+Change `defaults =` to `defaults:` and the object is output as well; nothing
+else about it changes. If an `=` block is left without its `end`, the error
+points at the line with `=`.
+
 ## `domain` — a section with its own scope
 
 The label becomes the key, and the body is a full scope: `=`, `shadow` and

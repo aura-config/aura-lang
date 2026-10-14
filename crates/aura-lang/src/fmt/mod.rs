@@ -128,12 +128,22 @@ pub fn format_source(src: &str) -> Result<String, Diagnostic> {
     // lambda credited two and closed one.
     let mut open: Vec<Opener> = Vec::new();
     let mut arrow_seen_on_line: Vec<bool> = vec![false; n];
-    for t in &tokens {
+    for (ti, t) in tokens.iter().enumerate() {
         if matches!(t.kind, TokenKind::Newline | TokenKind::Eof) {
             continue;
         }
         let line = line_of(t.span.start);
         toks_on[line].push(t);
+        let next = |k: usize| tokens.get(ti + k).map(|t| &t.kind);
+        // D38: `x =` opens an object block exactly when the lexer kept the
+        // newline after it, which it does only for a block; and a `:` or `=`
+        // followed by `key:` starts an object on one line, closed by an `end`
+        // on the same line. Both are openers, or their `end` pops the wrong one.
+        let assign_opens_block =
+            matches!(t.kind, TokenKind::Assign) && matches!(next(1), Some(TokenKind::Newline));
+        let opens_object_on_line = matches!(t.kind, TokenKind::Colon | TokenKind::Assign)
+            && matches!(next(1), Some(TokenKind::Ident(_) | TokenKind::Str(_)))
+            && matches!(next(2), Some(TokenKind::Colon));
         // An arrow separates a `cond` arm only when a `cond` is the innermost
         // thing open *and* it is the first arrow on the line: arms are
         // newline-separated, so any later arrow on the same line belongs to a
@@ -181,16 +191,26 @@ pub fn format_source(src: &str) -> Result<String, Diagnostic> {
                 open.push(Opener::Block);
                 0
             }
+            // Like a trailing `key:`, its level is added below.
+            TokenKind::Assign if assign_opens_block => {
+                open.push(Opener::Block);
+                0
+            }
+            TokenKind::Colon | TokenKind::Assign if opens_object_on_line => {
+                open.push(Opener::Block);
+                1
+            }
             _ => 0,
         };
         let info = &mut infos[line];
         info.delta += d;
         info.min_prefix = info.min_prefix.min(info.delta);
-        info.ends_with_colon = matches!(t.kind, TokenKind::Colon);
+        info.ends_with_colon = matches!(t.kind, TokenKind::Colon) || assign_opens_block;
         info.ends_with_arrow = matches!(t.kind, TokenKind::Arrow) && !arrow_is_arm;
-        info.continues = matches!(
-            t.kind,
-            TokenKind::Comma
+        info.continues = !assign_opens_block
+            && matches!(
+                t.kind,
+                TokenKind::Comma
                 | TokenKind::Assign
                 | TokenKind::Dot
                 // `?` is not a continuation: since D27 a line may end with it as
@@ -211,7 +231,7 @@ pub fn format_source(src: &str) -> Result<String, Diagnostic> {
                 | TokenKind::GtEq
                 | TokenKind::And
                 | TokenKind::Or
-        );
+            );
     }
 
     // Pass 0: classify and canonically render each physical line.
