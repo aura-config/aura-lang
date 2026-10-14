@@ -38,6 +38,7 @@ that fail if a second copy appears and disagrees.
 | Fact | Source | Kept honest by |
 | --- | --- | --- |
 | Standard library surface | `crates/aura-lang/stdlib.aura` | `manifest_matches_registry` (in `crates/aura-lsp/src/stdlib.rs`) compares it with the real method registry |
+| The keyword page in both books | `KEYWORDS` in `crates/aura-lang/src/lexer/token.rs` | `tests/keyword_reference.rs` - every keyword has one row, nothing else does, and the translations list them in one order |
 | The method reference in both books | the same manifest | `tests/method_reference.rs` — every book documents every method, and the translations agree |
 | Diagnostic codes | the `"E0xxx"` literals in `src/` | `tests/diagnostic_catalogue.rs` compares them with both books |
 | Design decisions | the decision log in `SPEC.md` and `SPEC.ru.md` | `tests/decision_log.rs` — every `Dn` cited anywhere has a row, in both translations |

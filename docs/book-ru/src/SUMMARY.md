@@ -21,5 +21,6 @@
 # Справочник
 
 - [CLI](reference/cli.md)
+- [Ключевые слова](reference/keywords.md)
 - [Встроенные методы](reference/methods.md)
 - [Коды ошибок и предупреждений](reference/error-codes.md)
