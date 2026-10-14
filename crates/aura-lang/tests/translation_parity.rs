@@ -1,10 +1,12 @@
-//! Each README and its Russian translation say the same thing.
+//! Each README and book chapter and its Russian translation say the same thing.
 //!
 //! Before 0.4.0 the English README was brought up to date and the Russian one
 //! was not: it still showed the old way to embed, had no word of embedding in
 //! its status list, and missed the `--allow-read` line D37 changed. Only the
 //! version test noticed, and only because the dependency line happened to sit
-//! in the same file.
+//! in the same file. The books had the same gap and nothing to find it: the
+//! Russian schemas chapter lacked five of the English one's twelve sections -
+//! nullable fields, typed lists, invariants - for as long as they existed.
 //!
 //! What a translation legitimately changes - prose, comments, the text of
 //! string literals, diagram labels - is not compared. What it must not change
@@ -14,20 +16,60 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-/// Every README with a translation, English first.
-const PAIRS: &[(&str, &str)] = &[
-    ("README.md", "README.ru.md"),
-    ("editors/README.md", "editors/README.ru.md"),
-];
+fn root() -> &'static Path {
+    Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
+}
 
 fn read(name: &str) -> String {
-    std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join(name),
-    )
-    .expect("readable")
-    .replace("\r\n", "\n")
+    std::fs::read_to_string(root().join(name))
+        .unwrap_or_else(|e| panic!("{name}: {e}"))
+        .replace("\r\n", "\n")
+}
+
+/// Every translated document, English first: the READMEs, and each chapter of
+/// the book beside its Russian chapter. A chapter that is only an `{{#include}}`
+/// of a generated file is left to the test that owns that file.
+fn pairs() -> Vec<(String, String)> {
+    let mut out = vec![
+        ("README.md".to_string(), "README.ru.md".to_string()),
+        (
+            "editors/README.md".to_string(),
+            "editors/README.ru.md".to_string(),
+        ),
+    ];
+    let book = root().join("docs/book/src");
+    let mut chapters = Vec::new();
+    collect(&book, &mut chapters);
+    chapters.sort();
+    for en in chapters {
+        let rel = en
+            .strip_prefix(&book)
+            .expect("inside the book")
+            .to_string_lossy()
+            .replace('\\', "/");
+        let en_name = format!("docs/book/src/{rel}");
+        if read(&en_name).trim_start().starts_with("{{#include") {
+            continue;
+        }
+        let ru_name = format!("docs/book-ru/src/{rel}");
+        assert!(
+            root().join(&ru_name).exists(),
+            "{en_name} has no Russian chapter at {ru_name}"
+        );
+        out.push((en_name, ru_name));
+    }
+    out
+}
+
+fn collect(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+    for entry in std::fs::read_dir(dir).expect("readable directory") {
+        let path = entry.expect("entry").path();
+        if path.is_dir() {
+            collect(&path, out);
+        } else if path.extension().is_some_and(|e| e == "md") {
+            out.push(path);
+        }
+    }
 }
 
 /// Fenced blocks as `(language, body)`, in order.
@@ -123,7 +165,7 @@ fn the_sections_match() {
             .collect::<Vec<_>>()
             .join("\n")
     };
-    for (en, ru) in PAIRS {
+    for (en, ru) in &pairs() {
         assert_eq!(
             levels(&outside(&read(en))),
             levels(&outside(&read(ru))),
@@ -134,7 +176,7 @@ fn the_sections_match() {
 
 #[test]
 fn the_code_matches() {
-    for (en_name, ru_name) in PAIRS {
+    for (en_name, ru_name) in &pairs() {
         let (en, ru) = (blocks(&read(en_name)), blocks(&read(ru_name)));
         assert_eq!(
             en.len(),
@@ -170,7 +212,7 @@ fn the_same_flags_codes_and_decisions_are_named() {
                     && w[1..].chars().all(|c| c.is_ascii_digit()))
         })
     };
-    for (en, ru) in PAIRS {
+    for (en, ru) in &pairs() {
         let (a, b) = (named(&read(en)), named(&read(ru)));
         let only_en: Vec<_> = a.difference(&b).collect();
         let only_ru: Vec<_> = b.difference(&a).collect();
@@ -196,7 +238,7 @@ fn the_tables_have_the_same_shape() {
         }
         rows
     };
-    for (en, ru) in PAIRS {
+    for (en, ru) in &pairs() {
         assert_eq!(
             shape(&read(en)),
             shape(&read(ru)),
