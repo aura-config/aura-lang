@@ -72,5 +72,35 @@ fn bench_list_methods(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, bench_eval, bench_list_methods);
+/// D41 on 10 000 elements read as data: each is held to `Port` - its type, its
+/// default and its invariant - as `new Port` would hold it. Run against a tree
+/// without D41, the same manifest measures the shape-only check it replaced.
+fn bench_schema_fields(c: &mut Criterion) {
+    let ports: Vec<String> = (1..=10_000)
+        .map(|n| format!("{{\\\"number\\\": {n}}}"))
+        .collect();
+    let src = format!(
+        "type Port\n  number: Int\n  protocol: String = \"tcp\"\n\n  \
+         assert number > 0, \"positive\"\nend\n\
+         type Svc\n  ports: [Port]\nend\n\
+         raw = \"[{}]\".parse_json()\n\
+         out: new Svc ports: raw end.ports.len()\n",
+        ports.join(", ")
+    );
+    c.bench_function("eval/schema_list_10k", |b| {
+        b.iter(|| {
+            let toks = aura_lang::lexer::Lexer::new(black_box(&src), 0)
+                .tokenize()
+                .unwrap();
+            let module = aura_lang::parser::Parser::new(toks).parse_module().unwrap();
+            black_box(
+                Interpreter::new(Options::default())
+                    .eval_module(&module)
+                    .unwrap(),
+            );
+        })
+    });
+}
+
+criterion_group!(benches, bench_eval, bench_list_methods, bench_schema_fields);
 criterion_main!(benches);

@@ -246,6 +246,10 @@ end
 
 A short instance fits on one line: `new Service name: "web", port: 80, tier: "frontend" end`.
 
+A field typed by a schema - `Port`, `[Port]`, `[[Port]]` - holds only what
+`new Port` would accept, including values parsed from JSON or YAML; their
+errors name the path, `ports[2].number`.
+
 A missing required field is E0511, a type mismatch E0512, a value outside an
 `enum` E0514. An unknown field is a warning, or E0513 under `--strict`. A default
 is evaluated at instantiation and cannot reference sibling fields — derive those

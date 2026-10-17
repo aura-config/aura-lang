@@ -43,6 +43,12 @@ pub struct SchemaDef<'a> {
     /// imported schema validates by the same rules in every manifest that uses
     /// it — which is the point of moving them off the construction site.
     pub invariants: Vec<crate::parser::ast::SchemaInvariant<'a>>,
+    /// D41: for each field typed by a schema - itself, or as the element of a
+    /// list at any depth - that schema, resolved at declaration time like
+    /// `field_enums`, so an imported schema checks its fields by the schemas of
+    /// its own module. `None` is the schema itself (`children: [Node]`), which
+    /// does not exist yet while it is being declared.
+    pub field_schemas: std::collections::HashMap<&'a str, Option<Arc<SchemaDef<'a>>>>,
 }
 
 pub struct FunctionDef<'a> {

@@ -18,6 +18,14 @@ still change the language.
   `E0215`. Both are reported by `aura check`. A manifest that relied on either
   silence changes: almost certainly it was a mistake.
 
+- **A field typed by a schema holds what `new` would accept (D41).** `[Port]`
+  took any object - one missing `number`, or one breaking Port's invariant -
+  and so did a field typed `Port`; inside `[[Port]]` nothing was checked. Now
+  such a value is checked as `new Port` checks it, recursively, with Port's
+  defaults filled in and its field order, and an error names the path to it:
+  `routes[1].target`. Data that was silently accepted from `parse_json`,
+  `read_file` or a host now stops with an error naming the element.
+
 ### Added
 
 - **`group_by`, `sort_by`, `flat_map` and `zip` on lists (D39).** `group_by`
