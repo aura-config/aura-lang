@@ -479,7 +479,7 @@ impl Script {
         refuse_reentry()?;
         let current = self.shared.current();
         let json = current.loaded.with_dependent(|cache, state| {
-            let module = Value::Object(Arc::new(state.exports.clone()));
+            let module = Value::object(state.exports.clone());
             crate::serialize::to_json(&module).map_err(|d| Error::from(vec![to_report(&d, cache)]))
         })?;
         from_json(json)
@@ -735,7 +735,7 @@ fn load_version(config: &Config, lock: Lockfile, frozen: bool, base: u64) -> Att
         lock_after = Some(std::mem::take(&mut loader.lock));
 
         Ok(State {
-            exports: (*exports).clone(),
+            exports: exports.to_map(),
             registry,
             fs,
             env_cap: config.env_cap.clone(),
@@ -1335,6 +1335,26 @@ impl serde::ser::Error for BoundaryError {
 /// precision is lost on the way and no NaN quietly becomes `null`.
 struct ToValue<'a>(PhantomData<Value<'a>>);
 
+/// A host value one level down (D43). The serializer recurses once per level
+/// of the host's data, so the depth is bounded here, at the boundary, by the
+/// same limit as any Aura value - an error, not a stack overflow.
+fn nested<'a, T: ?Sized + Serialize>(v: &T) -> Result<Value<'a>, BoundaryError> {
+    thread_local! {
+        static DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
+    let depth = DEPTH.with(|d| d.get()) + 1;
+    if depth > crate::eval::value::MAX_VALUE_DEPTH {
+        return Err(BoundaryError(format!(
+            "a value nested more than {} levels deep",
+            crate::eval::value::MAX_VALUE_DEPTH
+        )));
+    }
+    DEPTH.with(|d| d.set(depth));
+    let r = v.serialize(ToValue(PhantomData));
+    DEPTH.with(|d| d.set(depth - 1));
+    r
+}
+
 fn refuse<T>(what: impl fmt::Display) -> Result<T, BoundaryError> {
     Err(BoundaryError(format!("{what} has no exact Aura value")))
 }
@@ -1436,7 +1456,7 @@ impl<'a> serde::Serializer for ToValue<'a> {
         variant: &'static str,
         v: &T,
     ) -> Result<Value<'a>, BoundaryError> {
-        let inner = v.serialize(ToValue(PhantomData))?;
+        let inner = nested(v)?;
         Ok(Value::object(IndexMap::from([(
             variant.to_string(),
             inner,
@@ -1492,7 +1512,7 @@ struct SeqToValue<'a>(Vec<Value<'a>>);
 
 impl<'a> SeqToValue<'a> {
     fn push<T: ?Sized + Serialize>(&mut self, v: &T) -> Result<(), BoundaryError> {
-        self.0.push(v.serialize(ToValue(PhantomData))?);
+        self.0.push(nested(v)?);
         Ok(())
     }
 }
@@ -1555,7 +1575,7 @@ impl<'a> serde::ser::SerializeMap for MapToValue<'a> {
     }
     fn serialize_value<T: ?Sized + Serialize>(&mut self, v: &T) -> Result<(), BoundaryError> {
         let key = self.key.take().expect("serde calls serialize_key first");
-        self.map.insert(key, v.serialize(ToValue(PhantomData))?);
+        self.map.insert(key, nested(v)?);
         Ok(())
     }
     fn end(self) -> Result<Value<'a>, BoundaryError> {
@@ -1571,8 +1591,7 @@ impl<'a> serde::ser::SerializeStruct for MapToValue<'a> {
         key: &'static str,
         v: &T,
     ) -> Result<(), BoundaryError> {
-        self.map
-            .insert(key.to_string(), v.serialize(ToValue(PhantomData))?);
+        self.map.insert(key.to_string(), nested(v)?);
         Ok(())
     }
     fn end(self) -> Result<Value<'a>, BoundaryError> {

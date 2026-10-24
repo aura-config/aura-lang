@@ -557,6 +557,7 @@ Raised at the boundary between a manifest and the application that embeds it.
 | E0325 | an evaluation ran out of its step budget | `--max-steps` raises it, `--stats` shows what is spent (D34); in `Script`, the budget is per call (D33) |
 | E0326 | an evaluation ran out of its memory budget | `--max-memory` raises it; every value and frame created counts (D34) |
 | E0327 | `zip()` got lists of different lengths | a dropped tail would drop configuration silently; cut the longer one with `slice` first (D39) |
+| E0328 | a value nested more than 256 lists and objects deep | almost always a loop that wraps its result each turn; build the levels side by side instead (D43) |
 | E0398 | internal: a closure's environment was dropped | a bug in Aura — please report it with the manifest |
 | E0399 | evaluation nested more than 256 levels | almost always a recursive function without the case that stops it; `map`, `filter` and `reduce` walk a list without nesting (D42) |
 | E0533 | `now()` and `timestamp()` do not exist | the host passes time in: `env("BUILD_TIME", ...)` (D13) |

@@ -15,13 +15,90 @@ pub enum Value<'a> {
     Int(i64),
     Float(f64),
     Str(Arc<str>),
-    List(Arc<Vec<Value<'a>>>),
+    List(Arc<Items<'a>>),
     /// IndexMap: key order = declaration order (deterministic JSON).
-    Object(Arc<IndexMap<String, Value<'a>>>),
+    Object(Arc<Fields<'a>>),
     Schema(Arc<SchemaDef<'a>>),
     /// D18: a declared enum — a closed set of allowed string values.
     Enum(Arc<EnumDef<'a>>),
     Function(Arc<FunctionDef<'a>>),
+}
+
+/// D43: how deeply values may nest. Every walk over a value - freeing it,
+/// writing it out, comparing it, checking it against a schema - recurses once
+/// per level, so a value deeper than the stack is a crash wherever it is next
+/// touched. A loop can build one (`reduce` wrapping its accumulator) without any
+/// expression nesting at all, which D42 cannot see. So the depth is bounded
+/// where a container is made, once, and every walk inherits the bound. The
+/// same number as D42's limits: one rule for how deep anything goes.
+pub const MAX_VALUE_DEPTH: u32 = 256;
+
+/// A list's elements and how deep it nests (D43). Reads as the `Vec`.
+#[derive(Debug, Clone, Default)]
+pub struct Items<'a> {
+    depth: u32,
+    items: Vec<Value<'a>>,
+}
+
+/// An object's fields and how deep it nests (D43). Reads as the `IndexMap`.
+#[derive(Debug, Clone, Default)]
+pub struct Fields<'a> {
+    depth: u32,
+    map: IndexMap<String, Value<'a>>,
+}
+
+impl<'a> std::ops::Deref for Items<'a> {
+    type Target = Vec<Value<'a>>;
+    fn deref(&self) -> &Self::Target {
+        &self.items
+    }
+}
+
+impl<'a> std::ops::Deref for Fields<'a> {
+    type Target = IndexMap<String, Value<'a>>;
+    fn deref(&self) -> &Self::Target {
+        &self.map
+    }
+}
+
+impl PartialEq for Items<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.items == other.items
+    }
+}
+
+impl PartialEq for Fields<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.map == other.map
+    }
+}
+
+impl<'a> Items<'a> {
+    pub fn into_vec(self) -> Vec<Value<'a>> {
+        self.items
+    }
+}
+
+impl<'a> Fields<'a> {
+    pub fn into_map(self) -> IndexMap<String, Value<'a>> {
+        self.map
+    }
+
+    /// A copy of the fields, to build a new object from.
+    pub fn to_map(&self) -> IndexMap<String, Value<'a>> {
+        self.map.clone()
+    }
+}
+
+/// The depth of a container whose deepest child is `deepest` levels deep. Past
+/// `MAX_VALUE_DEPTH` the evaluation is told to stop (D43).
+#[inline]
+fn bounded(deepest: u32) -> u32 {
+    let depth = deepest + 1;
+    if depth > MAX_VALUE_DEPTH {
+        super::budget::value_too_deep();
+    }
+    depth.min(MAX_VALUE_DEPTH + 1)
 }
 
 /// D18. Members keep declaration order so diagnostics list them predictably.
@@ -127,16 +204,33 @@ impl<'a> Value<'a> {
     }
 
     pub fn object(map: IndexMap<String, Value<'a>>) -> Self {
-        super::budget::charge(
-            map.len() * std::mem::size_of::<(String, Value<'a>)>()
-                + map.keys().map(String::len).sum::<usize>(),
-        );
-        Value::Object(Arc::new(map))
+        // One pass over the fields for both the bytes they cost and how deep
+        // they go (D43).
+        let mut key_bytes = 0;
+        let mut deepest = 0;
+        for (k, v) in &map {
+            key_bytes += k.len();
+            deepest = deepest.max(v.depth());
+        }
+        super::budget::charge(map.len() * std::mem::size_of::<(String, Value<'a>)>() + key_bytes);
+        let depth = bounded(deepest);
+        Value::Object(Arc::new(Fields { depth, map }))
+    }
+
+    /// How many containers deep this value is: 0 for a scalar (D43).
+    #[inline]
+    fn depth(&self) -> u32 {
+        match self {
+            Value::List(xs) => xs.depth,
+            Value::Object(m) => m.depth,
+            _ => 0,
+        }
     }
 
     pub fn list(items: Vec<Value<'a>>) -> Self {
         super::budget::charge_list(items.len());
-        Value::List(Arc::new(items))
+        let depth = bounded(items.iter().map(Value::depth).max().unwrap_or(0));
+        Value::List(Arc::new(Items { depth, items }))
     }
 
     pub fn str(s: impl AsRef<str>) -> Self {

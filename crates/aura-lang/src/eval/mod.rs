@@ -334,6 +334,27 @@ pub(crate) fn with_debug_stack<T>(f: impl FnOnce() -> T) -> T {
     f()
 }
 
+/// D43: a value was built more than `MAX_VALUE_DEPTH` containers deep.
+#[cold]
+#[inline(never)]
+fn value_too_deep(e: &Expr<'_>) -> Diagnostic {
+    let mut d = rt(
+        "E0328",
+        format!(
+            "a value nested too deep: more than {} levels of lists and objects",
+            value::MAX_VALUE_DEPTH
+        ),
+        e.span().unwrap_or(Span::new(0, 0, 0)),
+    );
+    d.help = Some(
+        "a loop that wraps its result in a new list or object adds a level each turn; \
+         build the levels side by side instead - a list of items rather than items \
+         inside items"
+            .into(),
+    );
+    d
+}
+
 /// D42: evaluation nested past `MAX_NESTING`.
 #[cold]
 #[inline(never)]
@@ -683,6 +704,9 @@ impl<'a> Interpreter<'a> {
         }
         self.steps_left -= 1;
         if budget::bytes_exhausted() {
+            if budget::take_too_deep() {
+                return Err(value_too_deep(e));
+            }
             return Err(self.budget_error(
                 "E0326",
                 "the evaluation ran out of its memory budget",
@@ -1011,7 +1035,7 @@ impl<'a> Interpreter<'a> {
         let Value::Object(pmap) = &provided else {
             unreachable!()
         };
-        self.instantiate(&def, (**pmap).clone(), env, *span)
+        self.instantiate(&def, pmap.to_map(), env, *span)
     }
 
     /// `new Schema` with these fields: defaults, then the checks, then the
@@ -1095,7 +1119,7 @@ impl<'a> Interpreter<'a> {
         let Value::Object(map) = &obj else {
             unreachable!()
         };
-        let mut out = (**map).clone();
+        let mut out = map.to_map();
         for f in &def.fields {
             let Some(target) = def.field_schemas.get(f.name) else {
                 continue;
@@ -1154,7 +1178,7 @@ impl<'a> Interpreter<'a> {
                     d.help = Some("a value this deep is almost always built by mistake".into());
                     return Err(d);
                 }
-                let r = self.instantiate(target, (**m).clone(), env, span);
+                let r = self.instantiate(target, m.to_map(), env, span);
                 self.schema_depth -= 1;
                 r
             }
