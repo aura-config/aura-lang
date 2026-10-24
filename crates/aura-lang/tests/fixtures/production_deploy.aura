@@ -1,4 +1,4 @@
-import github/actions/rust-cache@v1.2 as rust
+import github/actions/rust-cache@v1.2 as rust # unused on purpose: analysis must report W0502 (SPEC §8)
 import "templates/k8s_defaults.aura" as defaults
 
 global_file_path = "/etc/aura/global.config"
@@ -12,7 +12,7 @@ type ServiceMeta
   port: Int
 end
 
-unused_config_version = "v1.2.0"
+unused_config_version = "v1.2.0" # unused on purpose: analysis must report W0501 (SPEC §8)
 
 def build_labels(app_name, tier)
   name:       app_name

@@ -61,3 +61,22 @@ fn the_page_states_the_count_it_has() {
     // checked rather than trusted.
     assert_eq!(KEYWORDS.len(), 16, "update both keyword pages' first line");
 }
+
+#[test]
+fn both_readmes_name_the_count_there_is() {
+    // The README's header quotes the number of keywords; it is checked against
+    // the lexer, not trusted.
+    let n = KEYWORDS.len();
+    for (name, phrase) in [
+        ("README.md", format!("{n} keywords")),
+        ("README.ru.md", format!("{n} ключевых слов")),
+    ] {
+        let text = std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join(name),
+        )
+        .expect("readme");
+        assert!(text.contains(&phrase), "{name} does not say \"{phrase}\"");
+    }
+}
