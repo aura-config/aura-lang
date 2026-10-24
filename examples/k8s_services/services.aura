@@ -1,0 +1,93 @@
+# =============================================================================
+# Five services, two environments, one file: a Kubernetes layout.
+#
+# Every name, label, port and limit is derived, so nothing is written twice.
+# Adding a service is one line, and it appears in both environments with its
+# Deployment, its Service if it is `web`, and its limits.
+#
+# Run: aura eval services.aura --format yaml
+# =============================================================================
+enum Tier
+  "web"
+  "worker"
+end
+
+# A schema: types, defaults, and a rule checked on every `new`
+type Service
+  name:  String
+  image: String
+  tier:  Tier
+
+  port: Int     = 8080
+  replicas: Int = 2
+
+  assert replicas > 0, "a service needs at least one replica"
+end
+
+# `=` binds a value for use below; it never reaches the output
+registry = "ghcr.io/acme"
+
+services = [
+  new Service name: "api", image: "api:2.4.1", tier: "web", replicas: 3 end
+  new Service name: "web", image: "web:1.9.0", tier: "web", port: 3000 end
+  new Service name: "auth", image: "auth:3.0.2", tier: "web" end
+  new Service name: "mailer", image: "mailer:0.7.2", tier: "worker", replicas: 1 end
+  new Service name: "billing", image: "billing:1.2.0", tier: "worker" end
+]
+
+def limits(tier)
+  cpu:    tier == "web" ? "500m" : "250m"
+  memory: tier == "web" ? "512Mi" : "256Mi"
+end
+
+def container_port(p)
+  containerPort: p
+end
+
+def service_port(p)
+  port:       80
+  targetPort: p
+end
+
+def container(s)
+  name:      s.name
+  image:     "#{registry}/#{s.image}"
+  ports:     [container_port(s.port)]
+  resources: limits: limits(s.tier) end
+end
+
+def deployment(s, env)
+  labels = app: s.name, tier: s.tier end
+
+  apiVersion: "apps/v1"
+  kind:       "Deployment"
+  metadata:   name: s.name, namespace: env, labels: labels end
+  spec:
+    replicas: env == "production" ? s.replicas * 2 : s.replicas
+    selector: matchLabels: labels end
+    template:
+      metadata: labels: labels end
+      spec:     containers: [container(s)] end
+    end
+  end
+end
+
+def service(s, env)
+  apiVersion: "v1"
+  kind:       "Service"
+  metadata:   name: s.name, namespace: env end
+  spec:
+    selector: app: s.name end
+    ports:    [service_port(s.port)]
+  end
+end
+
+# A function returns its last expression
+def manifests(env)
+  web = services.filter (s, i) -> s.tier == "web" end
+  services.map((s, i) -> deployment(s, env) end) + web.map (s, i) -> service(s, env) end
+end
+
+# `:` outputs - these two keys are the whole result
+staging:    manifests("staging")
+production: manifests("production")

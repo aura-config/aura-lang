@@ -9,7 +9,7 @@ of these words is written as a string, and read the same way (D11):
 | --- | --- | --- | --- |
 | `import` | Brings in another module, a registry package with a pinned version, or a module the host provides | `import "./lib.aura" as lib` | D8, D12, D35 |
 | `as` | Names what `import` brought in; only after an import | `import org/net@v1.2 as net` | D12 |
-| `type` | Declares a schema: fields with types, defaults and invariants | `type Port` … `end` | D15, D26, D27, D28 |
+| `type` | Declares a schema: fields with types, defaults and invariants. A field typed by a schema holds only what `new` of it would accept | `type Port` … `end` | D15, D26, D27, D28, D41 |
 | `enum` | Declares a closed set of strings for a schema field | `enum Tier` … `end` | D18 |
 | `def` | Declares a named function. It returns the object of its properties, or its last expression when it ends in one | `def labels(team)` … `end` | D17, D40 |
 | `end` | Closes every block: objects, `def`, `type`, `enum`, `domain`, `cond`, `new`, a multi-line lambda and a `text` string | `tls: enabled: true end` | D3, D38 |

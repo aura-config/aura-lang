@@ -2,12 +2,14 @@
 
 # Aura
 
-**Конфигурационный язык, который читает свои входные данные — и не даёт делать то же самое ничему, что импортирует.**
+**Пишите конфигурацию как небольшую программу - и получайте обычный JSON, YAML или TOML.**
 
-Манифесты компилируются в JSON, YAML или TOML — со схемами, enum, проверками
-`assert`, которые роняют сборку, а не деплой, и capability-моделью, в которой
-`env()` и `read_file()` выдаются на запуск, а выданное право не наследуется
-импортированными модулями.
+Описываете сервисы один раз, а Aura разворачивает их в конфиги для каждого
+окружения. Схема ловит опечатку до деплоя, а не после - и в данных, прочитанных
+из JSON и YAML, тоже. Манифест не прочитает ни файл, ни переменную окружения,
+пока вы явно не разрешите, а импортированный пакет не сможет этого никогда.
+
+Работает как CLI, в CI, в браузере и внутри вашего Rust-приложения.
 
 Один бинарник, никакого рантайма, 16 ключевых слов, 1.7 МБ на скачивание.
 
@@ -92,37 +94,106 @@ aura-lang = { version = "0.4", default-features = false }
 > CentOS 8 и Amazon Linux 2. У статической порога нет вовсе, и стартует она
 > измеримо быстрее.
 
-## Шестьдесят секунд
+## Первый взгляд
 
 ```ruby
 # deploy.aura
-base_port = 8000                                  # `=` вычисляет, остаётся приватным
-is_prod   = env("APP_ENV", "dev") == "production" # право выдаётся флагом
+type Service
+  name: String
+  port: Int
+  replicas: Int = 2
+end
 
-# `:` экспортирует — всё, что ниже, попадёт в вывод
-api:
-  port:     base_port + 1
-  replicas: cond
-    is_prod -> 6
-    else -> 1
+# `=` привязывает значение для кода ниже; в вывод оно не попадает
+services = [
+  new Service name: "api", port: 8080, replicas: 3 end
+  new Service name: "web", port: 3000 end
+]
+
+def deploy(stage, scale)
+  services.map (s, i) ->
+    name:     "#{s.name}-#{stage}"
+    port:     s.port
+    replicas: s.replicas * scale
   end
 end
 
-assert base_port > 1024, "порты ниже 1024 требуют root"
+# `:` выводит - эти два ключа и есть весь результат
+staging:    deploy("staging", 1)
+production: deploy("production", 3)
 ```
 
 ```console
-$ aura eval deploy.aura --allow-env=APP_ENV
-{
-  "api": {
-    "port": 8001,
-    "replicas": 1
-  }
+$ aura eval deploy.aura --format yaml
+staging:
+- name: api-staging
+  port: 8080
+  replicas: 3
+- name: web-staging
+  port: 3000
+  replicas: 2
+production:
+- name: api-production
+  port: 8080
+  replicas: 9
+- name: web-production
+  port: 3000
+  replicas: 6
+```
+
+Одна функция дала оба окружения: `replicas` посчитан, а `web` получил
+умолчание схемы - 2. `services` и `deploy` в вывод не попали: `:`
+экспортирует, `=` и `def` - нет. Опечатка в поле или порт, записанный строкой,
+остановят прогон до того, как что-то будет записано.
+
+**В масштабе:** [пять сервисов в два окружения - 10 Deployment и 6
+Service, 359 строк Kubernetes YAML](examples/k8s_services/).
+
+<details>
+<summary><b>Внутри Rust-приложения</b></summary>
+
+<br>
+
+Правила живут в Aura, а сервис вызывает их со своими типами. Чтобы поменять
+правило, пересобирать ничего не нужно, а скрипт не может прочитать ничего, что
+ему не разрешили, - здесь не разрешено ничего, и `Script` доказывает это при
+загрузке.
+
+```rust
+use aura_lang::Script;
+use serde::Serialize;
+
+#[derive(Serialize)]
+struct Order {
+    plan: String,
+    seats: i64,
+}
+
+// The rule lives in Aura: change the price without rebuilding the service.
+const PRICING: &str = r#"
+pub def price(order)
+  base = order.plan == "pro" ? 20.0 : 8.0
+  base * order.seats.to_float()
+end
+"#;
+
+pub fn run() -> Result<f64, aura_lang::Error> {
+    // Loaded once; it can read no file and no variable - none was granted.
+    let rules = Script::builder().source("pricing.aura", PRICING).load()?;
+    let order = Order {
+        plan: "pro".into(),
+        seats: 3,
+    };
+    rules.call("price", (order,))
 }
 ```
 
-Обратите внимание, чего в выводе **нет**: `base_port` и `is_prod`. В этом всё
-правило — `:` экспортирует, `=` нет.
+`run()` возвращает `60.0`. Вызовы ограничены по шагам, памяти и глубине, так что
+правило, зациклившееся по ошибке, завершит вызов ошибкой, а не подвесит сервис.
+Подробнее - в главе [Встраивание](https://aura-config.github.io/aura-lang/book/ru/guides/embedding.html).
+
+</details>
+
 
 ## Почему Aura
 
