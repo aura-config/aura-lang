@@ -8,6 +8,11 @@
 use std::path::Path;
 use std::process::Command;
 
+// Only `run` is called; `main` is the example's own entry point.
+#[allow(dead_code)]
+#[path = "../examples/readme_embed.rs"]
+mod readme_embed;
+
 fn root() -> &'static Path {
     Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
 }
@@ -86,4 +91,24 @@ fn the_larger_example_is_the_size_both_readmes_say() {
     // The file the numbers come from is the example's real output; the
     // conformance test pins it too, this only keeps the claim honest alone.
     assert_eq!(eval_yaml(&dir, "services.aura").trim_end(), yaml.trim_end());
+}
+
+/// The Rust shown under "Inside a Rust application" is the example file, line
+/// for line, and the example runs and returns what the README says.
+#[test]
+fn the_embedding_example_is_the_one_that_runs() {
+    let file = read("crates/aura-lang/examples/readme_embed.rs");
+    let code = file
+        .split("// README: start\n")
+        .nth(1)
+        .and_then(|rest| rest.split("// README: end").next())
+        .expect("markers");
+    for name in ["README.md", "README.ru.md"] {
+        let text = read(name);
+        assert!(
+            text.contains(&format!("```rust\n{code}```")),
+            "{name} does not show examples/readme_embed.rs as it is"
+        );
+    }
+    assert_eq!(readme_embed::run().expect("runs"), 60.0);
 }

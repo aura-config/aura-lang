@@ -149,6 +149,52 @@ production:
 **В масштабе:** [пять сервисов в два окружения - 10 Deployment и 6
 Service, 359 строк Kubernetes YAML](examples/k8s_services/).
 
+<details>
+<summary><b>Внутри Rust-приложения</b></summary>
+
+<br>
+
+Правила живут в Aura, а сервис вызывает их со своими типами. Чтобы поменять
+правило, пересобирать ничего не нужно, а скрипт не может прочитать ничего, что
+ему не разрешили, - здесь не разрешено ничего, и `Script` доказывает это при
+загрузке.
+
+```rust
+use aura_lang::Script;
+use serde::Serialize;
+
+#[derive(Serialize)]
+struct Order {
+    plan: String,
+    seats: i64,
+}
+
+// The rule lives in Aura: change the price without rebuilding the service.
+const PRICING: &str = r#"
+pub def price(order)
+  base = order.plan == "pro" ? 20.0 : 8.0
+  base * order.seats.to_float()
+end
+"#;
+
+pub fn run() -> Result<f64, aura_lang::Error> {
+    // Loaded once; it can read no file and no variable - none was granted.
+    let rules = Script::builder().source("pricing.aura", PRICING).load()?;
+    let order = Order {
+        plan: "pro".into(),
+        seats: 3,
+    };
+    rules.call("price", (order,))
+}
+```
+
+`run()` возвращает `60.0`. Вызовы ограничены по шагам, памяти и глубине, так что
+правило, зациклившееся по ошибке, завершит вызов ошибкой, а не подвесит сервис.
+Подробнее - в главе [Встраивание](https://aura-config.github.io/aura-lang/book/ru/guides/embedding.html).
+
+</details>
+
+
 ## Почему Aura
 
 | Проблема | Решение Aura |

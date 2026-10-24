@@ -150,6 +150,51 @@ stops the run before anything is written.
 **At scale:** [five services into two environments - 10 Deployments and 6
 Services, 359 lines of Kubernetes YAML](examples/k8s_services/).
 
+<details>
+<summary><b>Inside a Rust application</b></summary>
+
+<br>
+
+The rules live in Aura and the service calls them with its own types. Editing
+the rule needs no rebuild, and the script can read nothing it was not granted -
+here, nothing at all, which `Script` proves when it loads.
+
+```rust
+use aura_lang::Script;
+use serde::Serialize;
+
+#[derive(Serialize)]
+struct Order {
+    plan: String,
+    seats: i64,
+}
+
+// The rule lives in Aura: change the price without rebuilding the service.
+const PRICING: &str = r#"
+pub def price(order)
+  base = order.plan == "pro" ? 20.0 : 8.0
+  base * order.seats.to_float()
+end
+"#;
+
+pub fn run() -> Result<f64, aura_lang::Error> {
+    // Loaded once; it can read no file and no variable - none was granted.
+    let rules = Script::builder().source("pricing.aura", PRICING).load()?;
+    let order = Order {
+        plan: "pro".into(),
+        seats: 3,
+    };
+    rules.call("price", (order,))
+}
+```
+
+`run()` returns `60.0`. Calls are bounded in steps, memory and depth, so a rule
+that loops by mistake ends the call with an error instead of stalling the
+service. More in [Embedding](https://aura-config.github.io/aura-lang/book/guides/embedding.html).
+
+</details>
+
+
 ## Why Aura
 
 | Problem | Aura's answer |
