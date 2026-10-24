@@ -159,6 +159,15 @@ const CASES: &[Case] = &[
         format: Format::Yaml,
     },
     Case {
+        dir: "k8s_services",
+        entry: "services.aura",
+        read: false,
+        strict: false,
+        env: &[],
+        expected: "expected.yaml",
+        format: Format::Yaml,
+    },
+    Case {
         dir: "k8s_deploy",
         entry: "k8s_deploy.aura",
         read: false,

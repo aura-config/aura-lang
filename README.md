@@ -2,11 +2,14 @@
 
 # Aura
 
-**A configuration language that reads its own inputs — and never lets an import do the same.**
+**Write configuration as a small program - and get plain JSON, YAML or TOML.**
 
-Manifests compile to JSON, YAML or TOML, with schemas, enums, assertions that fail
-the build instead of the deploy, and a capability model in which `env()` and
-`read_file()` are granted per run — and the grant does not reach imported modules.
+Describe your services once, and Aura turns them into the configuration for
+every environment. A schema catches a typo before the deploy, not after it -
+including in data read from JSON and YAML. A manifest cannot read a file or an
+environment variable until you allow it, and a package you import never can.
+
+It runs as a CLI, in CI, in the browser, and inside your Rust application.
 
 One binary, no runtime to install, 16 keywords, a 1.7 MB download.
 
@@ -92,37 +95,60 @@ and no C dependencies at all.
 > Debian 11, CentOS 8 or Amazon Linux 2. The static build has no such floor, and
 > starts measurably faster.
 
-## Sixty seconds
+## A first look
 
 ```ruby
 # deploy.aura
-base_port = 8000                                  # `=` computes, stays private
-is_prod   = env("APP_ENV", "dev") == "production" # capability-gated
+type Service
+  name: String
+  port: Int
+  replicas: Int = 2
+end
 
-# `:` exports — everything under here ends up in the output
-api:
-  port:     base_port + 1
-  replicas: cond
-    is_prod -> 6
-    else -> 1
+# `=` binds a value for use below; it never reaches the output
+services = [
+  new Service name: "api", port: 8080, replicas: 3 end
+  new Service name: "web", port: 3000 end
+]
+
+def deploy(stage, scale)
+  services.map (s, i) ->
+    name:     "#{s.name}-#{stage}"
+    port:     s.port
+    replicas: s.replicas * scale
   end
 end
 
-assert base_port > 1024, "ports below 1024 need root"
+# `:` outputs - these two keys are the whole result
+staging:    deploy("staging", 1)
+production: deploy("production", 3)
 ```
 
 ```console
-$ aura eval deploy.aura --allow-env=APP_ENV
-{
-  "api": {
-    "port": 8001,
-    "replicas": 1
-  }
-}
+$ aura eval deploy.aura --format yaml
+staging:
+- name: api-staging
+  port: 8080
+  replicas: 3
+- name: web-staging
+  port: 3000
+  replicas: 2
+production:
+- name: api-production
+  port: 8080
+  replicas: 9
+- name: web-production
+  port: 3000
+  replicas: 6
 ```
 
-Note what is *not* in the output: `base_port` and `is_prod`. That is the whole
-rule — `:` exports, `=` does not.
+One function made both environments: `replicas` is computed, and `web` got the
+schema's default of 2. `services` and `deploy` are not in the output - `:`
+exports, `=` and `def` do not. A typo in a field, or a port written as a string,
+stops the run before anything is written.
+
+**At scale:** [five services into two environments - 10 Deployments and 6
+Services, 359 lines of Kubernetes YAML](examples/k8s_services/).
 
 ## Why Aura
 

@@ -59,6 +59,7 @@ that fail if a second copy appears and disagrees.
 | Float results, native and wasm | `tests/fixtures/float_cases.json` | `tests/float_round.rs` natively, and `crates/aura-wasm/smoke.cjs` on the real wasm32 module in CI's wasm-runtime job - digit for digit |
 | The examples' outputs | `examples/*/expected.*` | `tests/conformance.rs` through the binary, and `tests/script_output.rs` through `Script` - one set of answers for both, and a test that fails if an example is left out |
 | The Russian READMEs and book | `README.md`, `editors/README.md`, each chapter of `docs/book` | `tests/translation_parity.rs` - sections, code (comments and string text aside), every flag, error code and decision named, and the tables' shape |
+| The README example | the code at the top of `README.md` and `README.ru.md` | `tests/readme_example.rs` runs it as the README's command line does and checks the output shown line for line, and checks the sizes quoted for `examples/k8s_services` against that example |
 | Line-ending independence | — | `tests/line_endings.rs` writes CRLF at run time, because `.gitattributes` hides it from every checkout CI makes |
 
 If you are about to write down a fact that already exists somewhere, do not.

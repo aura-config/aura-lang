@@ -67,6 +67,20 @@ fn check_ok(
     );
 }
 
+/// The example the README links to: five services into two environments of
+/// Kubernetes objects. Its sizes are quoted in both READMEs, which
+/// `readme_example.rs` checks against these files.
+#[test]
+fn k8s_services_yaml() {
+    check_ok(
+        "k8s_services",
+        "services.aura",
+        &["--format", "yaml"],
+        &[],
+        "expected.yaml",
+    );
+}
+
 #[test]
 fn environments() {
     check_ok(
