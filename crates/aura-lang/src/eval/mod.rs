@@ -22,6 +22,11 @@ use methods::MethodRegistry;
 use value::{EnumDef, FuncBody, FunctionDef, SchemaDef, Value};
 
 const MAX_CALL_DEPTH: u32 = 256;
+/// D41: how many schemas deep a value may be checked. Lower than the call
+/// limit because a level of checking is several frames: a debug build overflows
+/// the 1 MiB main-thread stack on Windows at about 75 levels, and a release
+/// build clears 256. Configuration is never this deep on purpose.
+const MAX_SCHEMA_DEPTH: u32 = 32;
 
 /// Ceiling on a container built by concatenation, and the same ceiling `range()`
 /// uses. `+` is the only operator whose result can be larger than its operands,
@@ -196,6 +201,8 @@ pub struct Interpreter<'a> {
     /// Evaluated modules by alias; populated by the VFS loader (or by tests directly).
     modules: HashMap<String, Value<'a>>,
     call_depth: u32,
+    /// D41: how deep a schema check has gone into a value.
+    schema_depth: u32,
     /// Expressions this interpreter may still evaluate (D33). `u64::MAX` — no
     /// budget — unless a host set one, so the CLI is unaffected.
     steps_left: u64,
@@ -239,10 +246,11 @@ fn edit_distance(a: &str, b: &str) -> usize {
 
 /// Does a value have the shape a declared type calls for?
 ///
-/// Shape only. A `Custom` name is satisfied by any `Object`, because a value
-/// carries no schema tag at runtime — `new Endpoint` produces a plain object,
-/// indistinguishable from one written by hand. Element checking inherits
-/// exactly that depth rather than pretending to more.
+/// Shape only: a `Custom` name is satisfied here by any `Object`. A value
+/// carries no schema tag at runtime - `new Endpoint` produces a plain object,
+/// indistinguishable from one written by hand - so what a schema-typed field
+/// holds is checked structurally afterwards, by `conform_fields` (D41): the
+/// value must be what `new` of that schema would accept.
 fn shape_ok(ty: &TypeName, v: &Value) -> bool {
     match ty {
         TypeName::String => matches!(v, Value::Str(_)),
@@ -252,6 +260,31 @@ fn shape_ok(ty: &TypeName, v: &Value) -> bool {
         TypeName::List(_) => matches!(v, Value::List(_)),
         TypeName::Object | TypeName::Custom(_) => matches!(v, Value::Object(_)),
     }
+}
+
+/// D41: say where in a value an error is - `ports[2].number` - by adding one
+/// step to the path an inner check already reported. A step is a field name
+/// or an index (`[2]`); the innermost step is added first.
+fn nest(mut d: Diagnostic, step: &str) -> Diagnostic {
+    // A depth error is about the depth; a path as long as the limit says less.
+    if d.code == "E0208" {
+        return d;
+    }
+    const OPEN: &str = " (in ";
+    match d.message.rfind(OPEN) {
+        Some(at) if d.message.ends_with(')') => {
+            let inner = d.message[at + OPEN.len()..d.message.len() - 1].to_string();
+            let joined = if inner.starts_with('[') {
+                format!("{step}{inner}")
+            } else {
+                format!("{step}.{inner}")
+            };
+            d.message.truncate(at);
+            d.message.push_str(&format!("{OPEN}{joined})"));
+        }
+        _ => d.message.push_str(&format!("{OPEN}{step})")),
+    }
+    d
 }
 
 /// A declared type as the author wrote it. The previous `{:?}` printed
@@ -323,6 +356,7 @@ impl<'a> Interpreter<'a> {
             current_dir: None,
             modules: HashMap::new(),
             call_depth: 0,
+            schema_depth: 0,
             env_arena: Vec::new(),
             steps_left: u64::MAX,
             host_call_steps: crate::host::DEFAULT_HOST_CALL_STEPS,
@@ -422,11 +456,24 @@ impl<'a> Interpreter<'a> {
                         }
                     }
                 }
+                // D41: and each schema-typed field to its schema.
+                let mut field_schemas = HashMap::new();
+                for f in &schema.fields {
+                    let Some(tname) = f.ty.custom_name() else {
+                        continue;
+                    };
+                    if tname == schema.name {
+                        field_schemas.insert(f.name, None);
+                    } else if let Some(Value::Schema(sub)) = env.get(tname) {
+                        field_schemas.insert(f.name, Some(sub));
+                    }
+                }
                 let v = Value::Schema(Arc::new(SchemaDef {
                     name: schema.name,
                     fields: schema.fields.clone(),
                     field_enums,
                     invariants: schema.invariants.clone(),
+                    field_schemas,
                 }));
                 self.define(env, schema.name, v.clone(), false, schema.span)?;
                 // D12: pub type is visible to importers via the module object
@@ -799,58 +846,164 @@ impl<'a> Interpreter<'a> {
                 let Value::Object(pmap) = &provided else {
                     unreachable!()
                 };
-                // Apply defaults for optional fields omitted here. Evaluated in
-                // the instantiation scope.
-                let mut map: IndexMap<String, Value<'a>> = (**pmap).clone();
-                for f in &def.fields {
-                    if !map.contains_key(f.name) {
-                        if let Some(default_expr) = &f.default {
-                            let v = self.eval_expr(env, default_expr)?;
-                            map.insert(f.name.to_string(), v);
-                        }
-                    }
-                }
-                let obj = Value::object(map);
-                self.validate_schema(&def, &obj, *span)?;
-                // D28: after the types are known good, so an invariant can say
-                // what the values must be to each other without re-checking
-                // what they are.
-                if let Value::Object(m) = &obj {
-                    self.check_invariants(&def, m, *span)?;
-                }
-
-                // Key order comes from the schema, not from the construction
-                // site. Two instances of one schema previously differed whenever
-                // one supplied an optional field and the other let it default,
-                // because defaults were appended after whatever was written:
-                //
-                //   a: { "id", "fallback", "quota" }   // quota defaulted
-                //   b: { "id", "quota", "fallback" }   // quota written
-                //
-                // Same schema, same meaning, different bytes. For a language
-                // whose point is that two environments produce comparable
-                // output, a diff showing reordered lines teaches the reader to
-                // ignore diffs. Ordering here also makes the field order at the
-                // construction site stop mattering at all.
-                let Value::Object(m) = &obj else {
-                    unreachable!()
-                };
-                let mut ordered: IndexMap<String, Value<'a>> = IndexMap::with_capacity(m.len());
-                for f in &def.fields {
-                    if let Some(v) = m.get(f.name) {
-                        ordered.insert(f.name.to_string(), v.clone());
-                    }
-                }
-                // Undeclared fields are an error under --strict and a warning
-                // otherwise, in which case they are kept — after the declared
-                // ones, in the order they were written.
-                for (k, v) in m.iter() {
-                    if !ordered.contains_key(k) {
-                        ordered.insert(k.clone(), v.clone());
-                    }
-                }
-                Ok(Value::object(ordered))
+                self.instantiate(&def, (**pmap).clone(), env, *span)
             }
+        }
+    }
+
+    /// `new Schema` with these fields: defaults, then the checks, then the
+    /// schema's own key order. D41: also what a schema-typed field does to the
+    /// value it is given, so `[Port]` holds exactly what `new Port` accepts -
+    /// whether the value came from `new`, from parsed data or from a host.
+    fn instantiate(
+        &mut self,
+        def: &Arc<SchemaDef<'a>>,
+        provided: IndexMap<String, Value<'a>>,
+        env: &Env<'a>,
+        span: Span,
+    ) -> Result<Value<'a>, Diagnostic> {
+        // Apply defaults for optional fields omitted here. Evaluated in
+        // the instantiation scope.
+        let mut map: IndexMap<String, Value<'a>> = provided;
+        for f in &def.fields {
+            if !map.contains_key(f.name) {
+                if let Some(default_expr) = &f.default {
+                    let v = self.eval_expr(env, default_expr)?;
+                    map.insert(f.name.to_string(), v);
+                }
+            }
+        }
+        let obj = Value::object(map);
+        self.validate_schema(def, &obj, span)?;
+        // D41: a field typed by a schema is held to that schema, after
+        // its own shape is known good.
+        let obj = self.conform_fields(def, obj, env, span)?;
+        // D28: after the types are known good, so an invariant can say
+        // what the values must be to each other without re-checking
+        // what they are.
+        if let Value::Object(m) = &obj {
+            self.check_invariants(def, m, span)?;
+        }
+
+        // Key order comes from the schema, not from the construction
+        // site. Two instances of one schema previously differed whenever
+        // one supplied an optional field and the other let it default,
+        // because defaults were appended after whatever was written:
+        //
+        //   a: { "id", "fallback", "quota" }   // quota defaulted
+        //   b: { "id", "quota", "fallback" }   // quota written
+        //
+        // Same schema, same meaning, different bytes. For a language
+        // whose point is that two environments produce comparable
+        // output, a diff showing reordered lines teaches the reader to
+        // ignore diffs. Ordering here also makes the field order at the
+        // construction site stop mattering at all.
+        let Value::Object(m) = &obj else {
+            unreachable!()
+        };
+        let mut ordered: IndexMap<String, Value<'a>> = IndexMap::with_capacity(m.len());
+        for f in &def.fields {
+            if let Some(v) = m.get(f.name) {
+                ordered.insert(f.name.to_string(), v.clone());
+            }
+        }
+        // Undeclared fields are an error under --strict and a warning
+        // otherwise, in which case they are kept — after the declared
+        // ones, in the order they were written.
+        for (k, v) in m.iter() {
+            if !ordered.contains_key(k) {
+                ordered.insert(k.clone(), v.clone());
+            }
+        }
+        Ok(Value::object(ordered))
+    }
+
+    /// D41: each schema-typed field of `obj`, conformed to its schema.
+    fn conform_fields(
+        &mut self,
+        def: &Arc<SchemaDef<'a>>,
+        obj: Value<'a>,
+        env: &Env<'a>,
+        span: Span,
+    ) -> Result<Value<'a>, Diagnostic> {
+        if def.field_schemas.is_empty() {
+            return Ok(obj);
+        }
+        let Value::Object(map) = &obj else {
+            unreachable!()
+        };
+        let mut out = (**map).clone();
+        for f in &def.fields {
+            let Some(target) = def.field_schemas.get(f.name) else {
+                continue;
+            };
+            let target = target.clone().unwrap_or_else(|| def.clone());
+            let Some(v) = map.get(f.name) else {
+                continue;
+            };
+            if f.nullable && matches!(v, Value::Null) {
+                continue;
+            }
+            let conformed = self
+                .conform_value(&f.ty, &target, v, env, span)
+                .map_err(|d| nest(d, f.name))?;
+            out.insert(f.name.to_string(), conformed);
+        }
+        Ok(Value::object(out))
+    }
+
+    /// A value of type `ty`, whose innermost name is the schema `target`:
+    /// an object is instantiated, a list is conformed element by element.
+    fn conform_value(
+        &mut self,
+        ty: &TypeName<'a>,
+        target: &Arc<SchemaDef<'a>>,
+        v: &Value<'a>,
+        env: &Env<'a>,
+        span: Span,
+    ) -> Result<Value<'a>, Diagnostic> {
+        match (ty, v) {
+            (TypeName::List(Some(el)), Value::List(items)) => {
+                let mut out = Vec::with_capacity(items.len());
+                for (i, item) in items.iter().enumerate() {
+                    out.push(
+                        self.conform_value(el, target, item, env, span)
+                            .map_err(|d| nest(d, &format!("[{i}]")))?,
+                    );
+                }
+                Ok(Value::list(out))
+            }
+            (TypeName::Custom(_), Value::Object(m)) => {
+                // Data has no depth limit of its own - a host or a chain of
+                // lambdas can build a tree of any height - so the check carries
+                // one, as calls do, and ends in an error rather than the stack.
+                self.schema_depth += 1;
+                if self.schema_depth > MAX_SCHEMA_DEPTH {
+                    self.schema_depth -= 1;
+                    let mut d = rt(
+                        "E0208",
+                        format!(
+                            "nesting too deep: more than {MAX_SCHEMA_DEPTH} levels of schema {}",
+                            target.name
+                        ),
+                        span,
+                    );
+                    d.help = Some("a value this deep is almost always built by mistake".into());
+                    return Err(d);
+                }
+                let r = self.instantiate(target, (**m).clone(), env, span);
+                self.schema_depth -= 1;
+                r
+            }
+            (expected, other) => Err(rt(
+                "E0512",
+                format!(
+                    "expected {}, got {}",
+                    type_label(expected),
+                    other.type_name()
+                ),
+                span,
+            )),
         }
     }
 

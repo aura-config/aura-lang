@@ -141,6 +141,58 @@ This also reaches the host. `aura types` emits `Vec<Endpoint>`, `Endpoint[]` or
 
 Bare `List` keeps its old meaning, so nothing written before this needs changing.
 
+## A field typed by a schema holds what `new` would accept
+
+A field typed `Port`, `[Port]` or `[[Port]]` holds values that `new Port` would
+accept - wherever they came from (D41). An element read from JSON, YAML or a
+host is checked by the same rules as one written with `new`: required fields,
+types, enums and invariants.
+
+```aura
+type Port
+  number: Int
+  protocol: String = "tcp"
+
+  assert number > 0, "port must be positive"
+end
+
+type Service
+  ports: [Port]
+end
+
+raw = read_file("ports.json").parse_json()
+svc: new Service ports: raw end
+```
+
+A wrong value names the way down to it:
+
+```
+[E0515] Error: Port: port must be positive (in ports[2])
+[E0511] Error: missing field 'port' required by schema Endpoint (in routes[1].target)
+```
+
+### How it behaves, and why
+
+- **Structural, not nominal.** A value carries no mark of the schema that made
+  it, so the question is "would `new Port` accept this?", not "was this made by
+  `new Port`?". Data from outside passes when it is right, without being rebuilt
+  field by field through `.map`.
+- **Defaults are filled in.** `{"number": 80}` in a `[Port]` field becomes
+  `{"number": 80, "protocol": "tcp"}`, in the schema's field order, exactly as
+  `new` would make it. One schema gives one shape of output, whatever the
+  source - which is what `aura types` and a host reading the result rely on.
+- **An instance made by `new` is checked again.** The checks are pure and the
+  defaults are already there, so nothing changes; the alternative, a hidden mark
+  saying "already checked", would be state a reader cannot see.
+- **Extra fields** follow `new`: kept, and `E0513` under `--strict`.
+- **A schema may hold itself** - `children: [Node]` - to any depth up to 32
+  levels; deeper is `E0208` rather than a crash, since data, unlike code, can
+  be built to any depth.
+
+Before D41 such a field took any object at all: one without `number`, or one
+whose `number` broke the invariant. A manifest that relied on that now stops
+with an error that says which element is wrong.
+
 ## Rules the schema states about itself
 
 A type says what shape the values have. It can also say what they must be:
