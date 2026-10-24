@@ -52,6 +52,18 @@ pub(crate) fn charge_list(len: usize) {
     charge(len * size_of::<Value<'_>>());
 }
 
+/// What is left of this thread's byte budget, so evaluation moved to another
+/// thread (D42, debug builds) can carry it there and bring it back.
+#[cfg(all(not(target_family = "wasm"), debug_assertions))]
+pub(crate) fn bytes_left() -> u64 {
+    BYTES_LEFT.with(Cell::get)
+}
+
+#[cfg(all(not(target_family = "wasm"), debug_assertions))]
+pub(crate) fn set_bytes_left(bytes: u64) {
+    BYTES_LEFT.with(|c| c.set(bytes));
+}
+
 #[inline]
 pub(crate) fn bytes_exhausted() -> bool {
     BYTES_LEFT.with(|c| c.get() == 0)

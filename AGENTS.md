@@ -55,6 +55,7 @@ that fail if a second copy appears and disagrees.
 | Grouping, sorting by key, flat_map and zip | D39 in `SPEC.md` | `tests/list_methods.rs` (written before the implementation, one test per clause; every help line's remedy is run) and the `eval/*_10k` benchmarks |
 | A function's value, and no value discarded | D40 in `SPEC.md` | `tests/function_values.rs` (written before the implementation, one test per clause; each help line's remedy is run) |
 | What a schema-typed field holds | D41 in `SPEC.md` | `tests/schema_fields.rs` (written before the implementation, one test per clause) |
+| No input overflows the stack | D42 in `SPEC.md` | `tests/eval_nesting.rs` - the fuzzer's inputs, chains, recursion, and (in a release build) the whole limit on a 512 KiB thread |
 | Float results, native and wasm | `tests/fixtures/float_cases.json` | `tests/float_round.rs` natively, and `crates/aura-wasm/smoke.cjs` on the real wasm32 module in CI's wasm-runtime job - digit for digit |
 | The examples' outputs | `examples/*/expected.*` | `tests/conformance.rs` through the binary, and `tests/script_output.rs` through `Script` - one set of answers for both, and a test that fails if an example is left out |
 | The Russian READMEs and book | `README.md`, `editors/README.md`, each chapter of `docs/book` | `tests/translation_parity.rs` - sections, code (comments and string text aside), every flag, error code and decision named, and the tables' shape |

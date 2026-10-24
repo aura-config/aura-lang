@@ -354,6 +354,15 @@ struct Attempt {
 
 /// A loaded script. `Send + Sync`: one instance serves every thread, and a
 /// call takes `&self`.
+///
+/// # Stack
+///
+/// A call needs at most 512 KiB of the calling thread's stack in a release
+/// build - enough for the deepest evaluation the language allows (D42), past
+/// which a call returns `E0399` rather than overflowing. Rust's spawned threads
+/// default to 2 MiB and an iOS secondary thread has exactly 512 KiB; a thread
+/// configured smaller than that can overflow. A debug build evaluates on a
+/// thread of its own, so this does not apply to it.
 pub struct Script {
     shared: Arc<Shared>,
     watcher: Option<Watcher>,
@@ -553,8 +562,8 @@ impl Script {
 
             let args = args.to_values().map_err(|e| Error::host("E0005", e.0))?;
             let span = Span::new(0, 0, 0);
-            let result = it
-                .call_value(f, &args, span)
+            // D42: on a debug build, on a thread with room for its frames.
+            let result = crate::eval::with_debug_stack(|| it.call_value(f, &args, span))
                 .map_err(|d| Error::from(vec![to_report(&d, cache)]))?;
             // Converted before `it` is dropped, which is what releases every
             // environment the call created.

@@ -21,11 +21,19 @@ use env::{Env, Environment};
 use methods::MethodRegistry;
 use value::{EnumDef, FuncBody, FunctionDef, SchemaDef, Value};
 
-const MAX_CALL_DEPTH: u32 = 256;
-/// D41: how many schemas deep a value may be checked. Lower than the call
-/// limit because a level of checking is several frames: a debug build overflows
-/// the 1 MiB main-thread stack on Windows at about 75 levels, and a release
-/// build clears 256. Configuration is never this deep on purpose.
+/// D42: how deeply evaluation may nest - one level per expression being
+/// evaluated, so a recursive call counts as the expressions it passes through.
+/// The parser holds a single expression to the same number; this bounds what
+/// recursion builds at run time. It is a count, not a measurement, so a
+/// manifest stops at the same point on every machine, in every build and in
+/// the browser - and 256 levels of the slimmed interpreter fit in about 300 KB
+/// of stack in a release build, inside the 512 KB of an iOS secondary thread.
+const MAX_NESTING: u32 = 256;
+
+/// D41: how many schemas deep a value may be checked. Lower than
+/// `MAX_NESTING` because a level of checking is several frames: a debug build
+/// overflowed the 1 MiB main-thread stack on Windows at about 75 levels, and a
+/// release build clears 256. Configuration is never this deep on purpose.
 const MAX_SCHEMA_DEPTH: u32 = 32;
 
 /// Ceiling on a container built by concatenation, and the same ceiling `range()`
@@ -200,9 +208,10 @@ pub struct Interpreter<'a> {
     pub current_dir: Option<Arc<std::path::Path>>,
     /// Evaluated modules by alias; populated by the VFS loader (or by tests directly).
     modules: HashMap<String, Value<'a>>,
-    call_depth: u32,
     /// D41: how deep a schema check has gone into a value.
     schema_depth: u32,
+    /// D42: expressions being evaluated, innermost included.
+    nesting: u32,
     /// Expressions this interpreter may still evaluate (D33). `u64::MAX` — no
     /// budget — unless a host set one, so the CLI is unaffected.
     steps_left: u64,
@@ -287,6 +296,62 @@ fn nest(mut d: Diagnostic, step: &str) -> Diagnostic {
     d
 }
 
+/// D42: run `f` on a thread with a stack sized for a debug build's frames.
+/// Already on such a thread - a module importing another, a script calling
+/// back - it runs in place rather than spawning again. The byte budget is
+/// thread-local, so what is left of it goes with `f` and comes back with the
+/// result: moved, not copied, or a debug build would stop enforcing it.
+#[cfg(all(not(target_family = "wasm"), debug_assertions))]
+pub(crate) fn with_debug_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
+    thread_local! {
+        static ON_BIG_STACK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+    if ON_BIG_STACK.with(|b| b.get()) {
+        return f();
+    }
+    let bytes = budget::bytes_left();
+    let (r, left) = std::thread::scope(|s| {
+        std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn_scoped(s, || {
+                ON_BIG_STACK.with(|b| b.set(true));
+                budget::set_bytes_left(bytes);
+                let r = f();
+                (r, budget::bytes_left())
+            })
+            .expect("spawn evaluation thread")
+            .join()
+            .unwrap_or_else(|p| std::panic::resume_unwind(p))
+    });
+    budget::set_bytes_left(left);
+    r
+}
+
+/// See the note on the debug version above.
+#[cfg(any(target_family = "wasm", not(debug_assertions)))]
+#[inline(always)]
+pub(crate) fn with_debug_stack<T>(f: impl FnOnce() -> T) -> T {
+    f()
+}
+
+/// D42: evaluation nested past `MAX_NESTING`.
+#[cold]
+#[inline(never)]
+fn too_deep(e: &Expr<'_>) -> Diagnostic {
+    let mut d = rt(
+        "E0399",
+        format!("evaluation nested too deep: more than {MAX_NESTING} levels"),
+        e.span().unwrap_or(Span::new(0, 0, 0)),
+    );
+    d.help = Some(
+        "a function that calls itself this deep is almost always missing the case \
+         that stops it; to walk a list, use `map`, `filter` or `reduce`, which do \
+         not nest"
+            .into(),
+    );
+    d
+}
+
 /// A declared type as the author wrote it. The previous `{:?}` printed
 /// `Custom("Tls")`, which is a Rust variant name leaking into a user's error.
 fn type_label(ty: &TypeName) -> String {
@@ -355,8 +420,8 @@ impl<'a> Interpreter<'a> {
             current_root: true,
             current_dir: None,
             modules: HashMap::new(),
-            call_depth: 0,
             schema_depth: 0,
+            nesting: 0,
             env_arena: Vec::new(),
             steps_left: u64::MAX,
             host_call_steps: crate::host::DEFAULT_HOST_CALL_STEPS,
@@ -380,7 +445,15 @@ impl<'a> Interpreter<'a> {
     }
 
     /// A module evaluates to an Object of its exported properties and domain blocks.
+    /// D42: a debug build's frames are about five times a release build's, so
+    /// `MAX_NESTING` levels that fit easily in release would overflow a 1 MiB
+    /// main-thread stack there. As the parser does, a debug build evaluates on
+    /// a thread with room; a release build, and wasm, pay nothing.
     pub fn eval_module(&mut self, module: &Module<'a>) -> Result<Value<'a>, Diagnostic> {
+        with_debug_stack(|| self.eval_module_impl(module))
+    }
+
+    fn eval_module_impl(&mut self, module: &Module<'a>) -> Result<Value<'a>, Diagnostic> {
         let env = self.track(Environment::root());
         for imp in &module.imports {
             let v = self.modules.get(imp.alias).cloned().ok_or_else(|| {
@@ -637,218 +710,308 @@ impl<'a> Interpreter<'a> {
     }
 
     pub fn eval_expr(&mut self, env: &Env<'a>, e: &Expr<'a>) -> Result<Value<'a>, Diagnostic> {
+        self.nesting += 1;
+        if self.nesting > MAX_NESTING {
+            self.nesting -= 1;
+            return Err(too_deep(e));
+        }
+        let r = self.eval_expr_inner(env, e);
+        self.nesting -= 1;
+        r
+    }
+
+    /// The dispatch itself. Each arm with work of its own is a separate
+    /// `#[inline(never)]` method (D42): the frame on the stack for every level
+    /// of nesting is this small one plus the one arm running, rather than room
+    /// for every arm's temporaries at once - 496 bytes instead of 1672 in a
+    /// release build.
+    fn eval_expr_inner(&mut self, env: &Env<'a>, e: &Expr<'a>) -> Result<Value<'a>, Diagnostic> {
         self.step(e)?;
         match e {
             Expr::Literal(lit, span) => self.eval_literal(env, lit, *span),
-            Expr::Variable(name, span) => env.get(name).ok_or_else(|| {
-                rt(
-                    "E0504",
-                    format!("use of undefined variable '{name}'"),
-                    *span,
-                )
-            }),
-            Expr::Unary { op, rhs, span } => {
-                let v = self.eval_expr(env, rhs)?;
-                match (op, v) {
-                    (UnaryOp::Neg, Value::Int(n)) => n
-                        .checked_neg()
-                        .map(Value::Int)
-                        .ok_or_else(|| rt("E0304", "integer overflow in negation", *span)),
-                    (UnaryOp::Neg, Value::Float(n)) => Ok(Value::Float(-n)),
-                    (UnaryOp::Not, Value::Bool(b)) => Ok(Value::Bool(!b)),
-                    (_, v) => Err(rt(
-                        "E0306",
-                        format!("invalid operand type {}", v.type_name()),
-                        *span,
-                    )),
-                }
-            }
+            Expr::Variable(..) => self.eval_variable(env, e),
+            Expr::Unary { .. } => self.eval_unary(env, e),
             Expr::Binary { op, lhs, rhs, span } => self.eval_binary(env, *op, lhs, rhs, *span),
-            Expr::Ternary {
-                cond,
-                then,
-                otherwise,
-                span,
-            } => match self.eval_expr(env, cond)? {
-                Value::Bool(true) => self.eval_expr(env, then),
-                Value::Bool(false) => self.eval_expr(env, otherwise),
-                other => Err(rt(
-                    "E0306",
-                    format!("ternary condition must be Bool, got {}", other.type_name()),
-                    *span,
-                )),
-            },
-            // D14: first true arm wins; conditions must be Bool; `else` is the fallback.
-            Expr::Cond {
-                arms,
-                otherwise,
-                span,
-            } => {
-                for (condition, value) in arms {
-                    match self.eval_expr(env, condition)? {
-                        Value::Bool(true) => return self.eval_expr(env, value),
-                        Value::Bool(false) => {}
-                        other => {
-                            return Err(rt(
-                                "E0306",
-                                format!("cond condition must be Bool, got {}", other.type_name()),
-                                *span,
-                            ))
-                        }
-                    }
-                }
-                self.eval_expr(env, otherwise)
-            }
-            Expr::Call { callee, args, span } => {
-                let argv: Vec<Value<'a>> = args
-                    .iter()
-                    .map(|a| self.eval_expr(env, a))
-                    .collect::<Result<_, _>>()?;
-                if let Expr::Variable(name, _) = callee.as_ref() {
-                    if let Some(r) = self.try_builtin_call(name, &argv, *span)? {
-                        return Ok(r);
-                    }
-                }
-                let f = self.eval_expr(env, callee)?;
-                self.call_value(&f, &argv, *span)
-            }
-            Expr::MethodCall {
-                recv,
-                method,
-                args,
-                lambda,
-                span,
-            } => {
-                let recv_v = self.eval_expr(env, recv)?;
-                let mut argv: Vec<Value<'a>> = args
-                    .iter()
-                    .map(|a| self.eval_expr(env, a))
-                    .collect::<Result<_, _>>()?;
-                if let Some(l) = lambda {
-                    argv.push(self.eval_expr(env, l)?);
-                }
-                if let Some(f) = self.registry.get(recv_v.tag(), method) {
-                    return f(self, &recv_v, &argv, *span);
-                }
-                // D12: calling an exported module function — obj.fn(args);
-                // builtin methods take precedence over same-named fields
-                if let Value::Object(m) = &recv_v {
-                    if let Some(f @ Value::Function(_)) = m.get(*method) {
-                        let f = f.clone();
-                        return self.call_value(&f, &argv, *span);
-                    }
-                }
-                Err(rt(
-                    "E0309",
-                    format!("unknown method '{}' on {}", method, recv_v.type_name()),
-                    *span,
-                ))
-            }
-            Expr::FieldAccess { recv, field, span } => {
-                let v = self.eval_expr(env, recv)?;
-                match v {
-                    Value::Object(m) => m
-                        .get(*field)
-                        .cloned()
-                        .ok_or_else(|| rt("E0308", format!("unknown field '{field}'"), *span)),
-                    other => Err(rt(
-                        "E0306",
-                        format!("cannot access field '{}' on {}", field, other.type_name()),
-                        *span,
-                    )),
-                }
-            }
-            // D11: `xs[int]` for lists; `obj."#{key}"` (bracket=false) for objects
-            Expr::Index {
-                recv,
-                key,
-                bracket,
-                span,
-            } => {
-                let r = self.eval_expr(env, recv)?;
-                let k = self.eval_expr(env, key)?;
-                match (&r, &k) {
-                    (Value::List(xs), Value::Int(i)) => {
-                        let i = *i;
-                        if i < 0 || i as usize >= xs.len() {
-                            let mut d = rt(
-                                "E0317",
-                                format!(
-                                    "index {i} out of bounds (list has {} element{})",
-                                    xs.len(),
-                                    if xs.len() == 1 { "" } else { "s" }
-                                ),
-                                *span,
-                            );
-                            d.help = Some(format!(
-                                "when the index may be out of range: xs.get({i}, \"none\")"
-                            ));
-                            return Err(d);
-                        }
-                        Ok(xs[i as usize].clone())
-                    }
-                    (Value::Object(m), Value::Str(s)) => {
-                        if *bracket {
-                            let mut d =
-                                rt("E0318", "bracket access on objects is not supported", *span);
-                            d.help = Some(format!(
-                                "use dot access instead: `.\"{s}\"` or `.get(\"{s}\", default)`"
-                            ));
-                            return Err(d);
-                        }
-                        m.get(s.as_ref())
-                            .cloned()
-                            .ok_or_else(|| rt("E0308", format!("unknown field '{s}'"), *span))
-                    }
-                    _ => Err(rt(
-                        "E0306",
-                        format!("cannot index {} with {}", r.type_name(), k.type_name()),
-                        *span,
-                    )),
-                }
-            }
+            Expr::Ternary { .. } => self.eval_ternary(env, e),
+            Expr::Cond { .. } => self.eval_cond(env, e),
+            Expr::Call { .. } => self.eval_call(env, e),
+            Expr::MethodCall { .. } => self.eval_method_call(env, e),
+            Expr::FieldAccess { .. } => self.eval_field(env, e),
+            Expr::Index { .. } => self.eval_index(env, e),
             Expr::ObjectLiteral(body) => self.eval_object_body(env, body),
-            Expr::ListLiteral(items, _) => {
-                let vs: Vec<Value<'a>> = items
-                    .iter()
-                    .map(|i| self.eval_expr(env, i))
-                    .collect::<Result<_, _>>()?;
-                Ok(Value::list(vs))
-            }
-            Expr::Lambda { params, body, .. } => {
-                self.closures_made += 1;
-                Ok(Value::Function(Arc::new(FunctionDef {
-                    params: params.clone(),
-                    body: FuncBody::Lambda(body.clone()),
-                    closure: Arc::downgrade(env),
-                    defined_in_root: self.current_root,
-                    origin_dir: self.current_dir.clone(),
-                })))
-            }
-            Expr::SchemaInstance {
-                schema,
-                schema_alias,
-                body,
-                span,
-            } => {
-                // D12: `new alias.Schema` — a schema from an imported module's object
-                let resolved = match schema_alias {
-                    Some(alias) => match env.get(alias) {
-                        Some(Value::Object(m)) => m.get(*schema).cloned(),
-                        _ => None,
-                    },
-                    None => env.get(schema),
-                };
-                let Some(Value::Schema(def)) = resolved else {
-                    return Err(rt("E0504", format!("unknown schema '{schema}'"), *span));
-                };
-                let provided = self.eval_object_body(env, body)?;
-                let Value::Object(pmap) = &provided else {
-                    unreachable!()
-                };
-                self.instantiate(&def, (**pmap).clone(), env, *span)
+            Expr::ListLiteral(..) => self.eval_list(env, e),
+            Expr::Lambda { .. } => self.eval_lambda(env, e),
+            Expr::SchemaInstance { .. } => self.eval_new(env, e),
+        }
+    }
+
+    #[inline(never)]
+    fn eval_variable(&mut self, env: &Env<'a>, e: &Expr<'a>) -> Result<Value<'a>, Diagnostic> {
+        let Expr::Variable(name, span) = e else {
+            unreachable!()
+        };
+        env.get(name).ok_or_else(|| {
+            rt(
+                "E0504",
+                format!("use of undefined variable '{name}'"),
+                *span,
+            )
+        })
+    }
+
+    #[inline(never)]
+    fn eval_unary(&mut self, env: &Env<'a>, e: &Expr<'a>) -> Result<Value<'a>, Diagnostic> {
+        let Expr::Unary { op, rhs, span } = e else {
+            unreachable!()
+        };
+        let v = self.eval_expr(env, rhs)?;
+        match (op, v) {
+            (UnaryOp::Neg, Value::Int(n)) => n
+                .checked_neg()
+                .map(Value::Int)
+                .ok_or_else(|| rt("E0304", "integer overflow in negation", *span)),
+            (UnaryOp::Neg, Value::Float(n)) => Ok(Value::Float(-n)),
+            (UnaryOp::Not, Value::Bool(b)) => Ok(Value::Bool(!b)),
+            (_, v) => Err(rt(
+                "E0306",
+                format!("invalid operand type {}", v.type_name()),
+                *span,
+            )),
+        }
+    }
+
+    #[inline(never)]
+    fn eval_ternary(&mut self, env: &Env<'a>, e: &Expr<'a>) -> Result<Value<'a>, Diagnostic> {
+        let Expr::Ternary {
+            cond,
+            then,
+            otherwise,
+            span,
+        } = e
+        else {
+            unreachable!()
+        };
+        match self.eval_expr(env, cond)? {
+            Value::Bool(true) => self.eval_expr(env, then),
+            Value::Bool(false) => self.eval_expr(env, otherwise),
+            other => Err(rt(
+                "E0306",
+                format!("ternary condition must be Bool, got {}", other.type_name()),
+                *span,
+            )),
+        }
+    }
+
+    // D14: first true arm wins; conditions must be Bool; `else` is the fallback.
+    #[inline(never)]
+    fn eval_cond(&mut self, env: &Env<'a>, e: &Expr<'a>) -> Result<Value<'a>, Diagnostic> {
+        let Expr::Cond {
+            arms,
+            otherwise,
+            span,
+        } = e
+        else {
+            unreachable!()
+        };
+        for (condition, value) in arms {
+            match self.eval_expr(env, condition)? {
+                Value::Bool(true) => return self.eval_expr(env, value),
+                Value::Bool(false) => {}
+                other => {
+                    return Err(rt(
+                        "E0306",
+                        format!("cond condition must be Bool, got {}", other.type_name()),
+                        *span,
+                    ))
+                }
             }
         }
+        self.eval_expr(env, otherwise)
+    }
+
+    #[inline(never)]
+    fn eval_call(&mut self, env: &Env<'a>, e: &Expr<'a>) -> Result<Value<'a>, Diagnostic> {
+        let Expr::Call { callee, args, span } = e else {
+            unreachable!()
+        };
+        let argv: Vec<Value<'a>> = args
+            .iter()
+            .map(|a| self.eval_expr(env, a))
+            .collect::<Result<_, _>>()?;
+        if let Expr::Variable(name, _) = callee.as_ref() {
+            if let Some(r) = self.try_builtin_call(name, &argv, *span)? {
+                return Ok(r);
+            }
+        }
+        let f = self.eval_expr(env, callee)?;
+        self.call_value(&f, &argv, *span)
+    }
+
+    #[inline(never)]
+    fn eval_method_call(&mut self, env: &Env<'a>, e: &Expr<'a>) -> Result<Value<'a>, Diagnostic> {
+        let Expr::MethodCall {
+            recv,
+            method,
+            args,
+            lambda,
+            span,
+        } = e
+        else {
+            unreachable!()
+        };
+        let recv_v = self.eval_expr(env, recv)?;
+        let mut argv: Vec<Value<'a>> = args
+            .iter()
+            .map(|a| self.eval_expr(env, a))
+            .collect::<Result<_, _>>()?;
+        if let Some(l) = lambda {
+            argv.push(self.eval_expr(env, l)?);
+        }
+        if let Some(f) = self.registry.get(recv_v.tag(), method) {
+            return f(self, &recv_v, &argv, *span);
+        }
+        // D12: calling an exported module function — obj.fn(args);
+        // builtin methods take precedence over same-named fields
+        if let Value::Object(m) = &recv_v {
+            if let Some(f @ Value::Function(_)) = m.get(*method) {
+                let f = f.clone();
+                return self.call_value(&f, &argv, *span);
+            }
+        }
+        Err(rt(
+            "E0309",
+            format!("unknown method '{}' on {}", method, recv_v.type_name()),
+            *span,
+        ))
+    }
+
+    #[inline(never)]
+    fn eval_field(&mut self, env: &Env<'a>, e: &Expr<'a>) -> Result<Value<'a>, Diagnostic> {
+        let Expr::FieldAccess { recv, field, span } = e else {
+            unreachable!()
+        };
+        let v = self.eval_expr(env, recv)?;
+        match v {
+            Value::Object(m) => m
+                .get(*field)
+                .cloned()
+                .ok_or_else(|| rt("E0308", format!("unknown field '{field}'"), *span)),
+            other => Err(rt(
+                "E0306",
+                format!("cannot access field '{}' on {}", field, other.type_name()),
+                *span,
+            )),
+        }
+    }
+
+    // D11: `xs[int]` for lists; `obj."#{key}"` (bracket=false) for objects
+    #[inline(never)]
+    fn eval_index(&mut self, env: &Env<'a>, e: &Expr<'a>) -> Result<Value<'a>, Diagnostic> {
+        let Expr::Index {
+            recv,
+            key,
+            bracket,
+            span,
+        } = e
+        else {
+            unreachable!()
+        };
+        let r = self.eval_expr(env, recv)?;
+        let k = self.eval_expr(env, key)?;
+        match (&r, &k) {
+            (Value::List(xs), Value::Int(i)) => {
+                let i = *i;
+                if i < 0 || i as usize >= xs.len() {
+                    let mut d = rt(
+                        "E0317",
+                        format!(
+                            "index {i} out of bounds (list has {} element{})",
+                            xs.len(),
+                            if xs.len() == 1 { "" } else { "s" }
+                        ),
+                        *span,
+                    );
+                    d.help = Some(format!(
+                        "when the index may be out of range: xs.get({i}, \"none\")"
+                    ));
+                    return Err(d);
+                }
+                Ok(xs[i as usize].clone())
+            }
+            (Value::Object(m), Value::Str(s)) => {
+                if *bracket {
+                    let mut d = rt("E0318", "bracket access on objects is not supported", *span);
+                    d.help = Some(format!(
+                        "use dot access instead: `.\"{s}\"` or `.get(\"{s}\", default)`"
+                    ));
+                    return Err(d);
+                }
+                m.get(s.as_ref())
+                    .cloned()
+                    .ok_or_else(|| rt("E0308", format!("unknown field '{s}'"), *span))
+            }
+            _ => Err(rt(
+                "E0306",
+                format!("cannot index {} with {}", r.type_name(), k.type_name()),
+                *span,
+            )),
+        }
+    }
+
+    #[inline(never)]
+    fn eval_list(&mut self, env: &Env<'a>, e: &Expr<'a>) -> Result<Value<'a>, Diagnostic> {
+        let Expr::ListLiteral(items, _) = e else {
+            unreachable!()
+        };
+        let vs: Vec<Value<'a>> = items
+            .iter()
+            .map(|i| self.eval_expr(env, i))
+            .collect::<Result<_, _>>()?;
+        Ok(Value::list(vs))
+    }
+
+    #[inline(never)]
+    fn eval_lambda(&mut self, env: &Env<'a>, e: &Expr<'a>) -> Result<Value<'a>, Diagnostic> {
+        let Expr::Lambda { params, body, .. } = e else {
+            unreachable!()
+        };
+        self.closures_made += 1;
+        Ok(Value::Function(Arc::new(FunctionDef {
+            params: params.clone(),
+            body: FuncBody::Lambda(body.clone()),
+            closure: Arc::downgrade(env),
+            defined_in_root: self.current_root,
+            origin_dir: self.current_dir.clone(),
+        })))
+    }
+
+    #[inline(never)]
+    fn eval_new(&mut self, env: &Env<'a>, e: &Expr<'a>) -> Result<Value<'a>, Diagnostic> {
+        let Expr::SchemaInstance {
+            schema,
+            schema_alias,
+            body,
+            span,
+        } = e
+        else {
+            unreachable!()
+        };
+        // D12: `new alias.Schema` — a schema from an imported module's object
+        let resolved = match schema_alias {
+            Some(alias) => match env.get(alias) {
+                Some(Value::Object(m)) => m.get(*schema).cloned(),
+                _ => None,
+            },
+            None => env.get(schema),
+        };
+        let Some(Value::Schema(def)) = resolved else {
+            return Err(rt("E0504", format!("unknown schema '{schema}'"), *span));
+        };
+        let provided = self.eval_object_body(env, body)?;
+        let Value::Object(pmap) = &provided else {
+            unreachable!()
+        };
+        self.instantiate(&def, (**pmap).clone(), env, *span)
     }
 
     /// `new Schema` with these fields: defaults, then the checks, then the
@@ -1320,17 +1483,12 @@ impl<'a> Interpreter<'a> {
                 span,
             ));
         }
-        self.call_depth += 1;
-        if self.call_depth > MAX_CALL_DEPTH {
-            self.call_depth -= 1;
-            return Err(rt("E0399", "maximum call depth (256) exceeded", span));
-        }
         // The closure's env is kept alive by the interpreter's arena for the whole
         // eval, so this upgrade always succeeds while a call is in flight.
-        let closure = def.closure.upgrade().ok_or_else(|| {
-            self.call_depth -= 1;
-            rt("E0398", "internal: closure environment was dropped", span)
-        })?;
+        let closure = def
+            .closure
+            .upgrade()
+            .ok_or_else(|| rt("E0398", "internal: closure environment was dropped", span))?;
         let arena_mark = self.env_arena.len();
         let closures_mark = self.closures_made;
         let env = self.track(Environment::child(&closure));
@@ -1350,7 +1508,6 @@ impl<'a> Interpreter<'a> {
         };
         self.current_root = saved_root;
         self.current_dir = saved_dir;
-        self.call_depth -= 1;
         // Release the frames this call made, if nothing can refer to them. Only a
         // function value holds a reference to an environment, so a call that
         // created no function left nothing behind that could: its result and

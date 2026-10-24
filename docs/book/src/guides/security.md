@@ -55,6 +55,16 @@ every machine. The defaults are about thirty thousand times what the heaviest
 example in the repository spends; `--stats` prints what a manifest spends, so a
 budget can be set from a measurement.
 
+Depth has a limit of its own, because steps do not bound it: a function calling
+itself a few hundred times spends few steps and a great deal of stack. A single
+expression nests at most 256 levels - a long chain such as `a + b + c + ...`
+counts its length - and evaluation nests at most 256 levels at run time, a
+recursive call counting the expressions it passes through. Past either is an
+error, `E0208` or `E0399`, never a stack overflow (D42). Like the budget, the
+limit is a count, so it stops a manifest at the same point everywhere. A release
+build fits it in 512 KiB of stack, so a host may call a `Script` from any thread
+with at least that much - an iOS secondary thread has exactly 512 KiB.
+
 ## Import isolation
 
 Rights belong to the **root manifest**. An imported module:

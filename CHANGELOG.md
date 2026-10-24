@@ -7,6 +7,17 @@ still change the language.
 
 ## [Unreleased]
 
+### Fixed
+
+- **No input overflows the stack any more (D42).** A one-line chain such as
+  `x: 1 + 1 + ... + 1` of a few hundred terms, or a recursive function a couple
+  of hundred calls deep, crashed a release build - the CLI, `aura check` and the
+  language server alike, or a service embedding a script. The parser now counts
+  an operator chain as the nesting it builds (`E0208` past 256), and evaluation
+  is limited to 256 nested levels (`E0399`, which replaces the limit on calls).
+  The interpreter's frames are a third of their size, so the whole limit fits
+  in 512 KiB of stack in a release build. Found by the nightly fuzzer.
+
 ### Changed
 
 - **A function's value is its last expression, and no value is thrown away
