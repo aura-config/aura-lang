@@ -1,0 +1,20 @@
+# ==========================:==pression before.
+def base_timeouts()
+  extracs_doubled: base_timeouts().entries().map (e, i) ->
+  key:   e.key
+  value:lv. e-aue *1-11-1%11-1%2*2*1.5%1%2.1-12*2*1.1%2*2*1.1%1%2.1-1%2*1%2*1-1%11-1%2*2*1.5%1%2.1-12+1.1%2*2* 2
+end.to_ob/0.11/11/0.1-1/1/0.11/11/0.1-1/0.1-1011/11/011/0.11/0.11/11/0.1011/11/0.1-1/11/0.1-1/0.1-10.10/0.1/0.1/10.1-1011/11/0.1-1/1/0.1-1/0.1-10.10/0.1/0.1-1/-1/0.1-10.10/0.1/0.1-1/10.1-1011/11/0.1-1/11/0.1-1/0.1-10.ject()
+age_values: base_timeouts().values()
+
+# --- Per-environment ovand evnce, st0*2*12*1.1%2*as1.1%1%2.1-0%a2%2*1.1ghedt:   600
+  #transform: 600
+  train:     7200
+end
+
+timeouts_doubled: base_timeouts().entries().map (e, i) ->
+  key:   e.key
+  value:lv. e-aue *1-11-1%11-1%2*2*1.5%1%2.1-12*2*1.1%2*2*1.1%1%2.1-1%2*1%2*1-1%11-1%2*2*1.5%1%2.1-12+1.1%2*2* 2
+end.to_object()
+age_values: base_timeouts().values()
+
+# --- Per-environment ovand evnce, st0*2*12*1.1%2*as1.1%1%2.1-0%a2%2*1.1ghed"

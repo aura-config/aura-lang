@@ -110,11 +110,19 @@ impl<'a> Parser<'a> {
         self.depth += 1;
         if self.depth > MAX_PARSE_DEPTH {
             self.depth -= 1;
-            return Err(self.err(
+            let mut d = self.err(
                 "E0208",
                 "nesting too deep",
                 "simplify or split this expression/block",
+            );
+            // D42: the commonest way here is a long chain, which does not look
+            // nested, so the remedy names it.
+            d.help = Some(format!(
+                "an expression nests at most {MAX_PARSE_DEPTH} levels, and each operator or \
+                 call in a chain counts as one; split it with bindings: \
+                 `part = a + b + ...`, then `total: part + ...`"
             ));
+            return Err(d);
         }
         Ok(())
     }
@@ -919,20 +927,37 @@ impl<'a> Parser<'a> {
 
     fn parse_expr(&mut self, min_bp: u8) -> Result<Expr<'a>, Diagnostic> {
         self.enter()?;
-        let r = self.parse_expr_impl(min_bp);
+        // D42: each turn of the loop below wraps the expression one level
+        // deeper - `a + b + c` is `(a + b) + c` - without recursing, so it
+        // counts against the same depth as nesting does, and is released here
+        // however the loop ends.
+        let mut wraps = 0;
+        let r = self.parse_expr_impl(min_bp, &mut wraps);
+        for _ in 0..wraps {
+            self.leave();
+        }
         self.leave();
         r
     }
 
-    fn parse_expr_impl(&mut self, min_bp: u8) -> Result<Expr<'a>, Diagnostic> {
+    /// One more level of the expression being built: E0208 past the cap.
+    fn wrap(&mut self, wraps: &mut u32) -> Result<(), Diagnostic> {
+        self.enter()?;
+        *wraps += 1;
+        Ok(())
+    }
+
+    fn parse_expr_impl(&mut self, min_bp: u8, wraps: &mut u32) -> Result<Expr<'a>, Diagnostic> {
         let start = self.span();
         let mut lhs = self.parse_prefix()?;
         loop {
             match self.peek() {
                 TokenKind::Dot => {
+                    self.wrap(wraps)?;
                     lhs = self.parse_postfix_dot(lhs, start)?;
                 }
                 TokenKind::LParen => {
+                    self.wrap(wraps)?;
                     let args = self.parse_args()?;
                     lhs = Expr::Call {
                         callee: Box::new(lhs),
@@ -942,6 +967,7 @@ impl<'a> Parser<'a> {
                 }
                 // List indexing `xs[0]` (D11)
                 TokenKind::LBracket => {
+                    self.wrap(wraps)?;
                     self.bump();
                     // obj["key"] — hint towards dot form (E0318)
                     if matches!(self.peek(), TokenKind::Str(_))
@@ -967,6 +993,7 @@ impl<'a> Parser<'a> {
                     };
                 }
                 TokenKind::Question if TERNARY_LBP >= min_bp => {
+                    self.wrap(wraps)?;
                     self.bump();
                     let then = self.parse_expr(0)?;
                     self.expect(&TokenKind::Colon, "`:` in ternary expression")?;
@@ -985,6 +1012,7 @@ impl<'a> Parser<'a> {
                     if lbp < min_bp {
                         break;
                     }
+                    self.wrap(wraps)?;
                     self.bump();
                     let rhs = self.parse_expr(rbp)?;
                     lhs = Expr::Binary {

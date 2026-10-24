@@ -48,7 +48,7 @@ Raised at the boundary between a manifest and the application that embeds it.
 | E0205 | statements are separated by line breaks | |
 | E0206 | `pub` not immediately before `def`, `type` or `enum` | properties export themselves; `=` is always private |
 | E0207 | a `cond` with no `else` arm | add `else -> ...`: every branch must produce a value (D14) |
-| E0208 | nesting too deep | the recursion limit that makes deeply-nested input an error rather than a stack overflow |
+| E0208 | nesting too deep | the recursion limit that makes deeply-nested input an error rather than a stack overflow; a chain like `a + b + c` counts its length (D42) |
 | E0211 | an `enum` member is not a quoted string | members are listed as strings, one per line (D18) |
 | E0212 | a duplicate `enum` member | list each member once |
 | E0213 | an `enum` with no members | an empty set cannot be satisfied |
@@ -87,7 +87,7 @@ Raised at the boundary between a manifest and the application that embeds it.
 | E0326 | an evaluation ran out of its memory budget | `--max-memory` raises it; every value and frame created counts (D34) |
 | E0327 | `zip()` got lists of different lengths | a dropped tail would drop configuration silently; cut the longer one with `slice` first (D39) |
 | E0398 | internal: a closure's environment was dropped | a bug in Aura — please report it with the manifest |
-| E0399 | call depth exceeded (256) | recursion in a function? |
+| E0399 | evaluation nested more than 256 levels | almost always a recursive function without the case that stops it; `map`, `filter` and `reduce` walk a list without nesting (D42) |
 | E0533 | `now()` and `timestamp()` do not exist | the host passes time in: `env("BUILD_TIME", ...)` (D13) |
 
 ## Modules and packages (E04xx)
