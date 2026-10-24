@@ -29,6 +29,37 @@ use super::value::Value;
 
 thread_local! {
     static BYTES_LEFT: Cell<u64> = const { Cell::new(u64::MAX) };
+    /// D43: a container deeper than `MAX_VALUE_DEPTH` was made. Set where the
+    /// container is built, read at the next step - as the byte budget is - so
+    /// no constructor has to return a `Result`.
+    /// Holds the byte budget it set aside, to give back once the error is out.
+    static TOO_DEEP: Cell<Option<u64>> = const { Cell::new(None) };
+}
+
+/// D43: stop the evaluation at its next step. The byte budget is emptied too,
+/// so `step` keeps the one check it had - this is the rare path, and the
+/// common one pays nothing for it - and tells the two causes apart only once
+/// that check has fired.
+#[cold]
+pub(crate) fn value_too_deep() {
+    TOO_DEEP.with(|deep| {
+        if deep.get().is_none() {
+            deep.set(Some(BYTES_LEFT.with(|c| c.replace(0))));
+        }
+    });
+}
+
+/// Whether the stop was a too-deep value rather than spent memory. If so, the
+/// byte budget it set aside is restored, so a thread with no budget installed
+/// - an interpreter driven directly - is not left believing memory ran out.
+pub(crate) fn take_too_deep() -> bool {
+    match TOO_DEEP.with(|c| c.take()) {
+        Some(bytes) => {
+            BYTES_LEFT.with(|c| c.set(bytes));
+            true
+        }
+        None => false,
+    }
 }
 
 /// Charge `bytes` against the current call. Saturates at zero; the interpreter
@@ -79,6 +110,9 @@ pub(crate) struct ByteBudget {
 impl ByteBudget {
     pub(crate) fn install(bytes: u64) -> Self {
         let previous = BYTES_LEFT.with(|c| c.replace(bytes));
+        // A too-deep value from an earlier evaluation on this thread is not
+        // this one's error (D43).
+        TOO_DEEP.with(|c| c.set(None));
         ByteBudget { previous }
     }
 }

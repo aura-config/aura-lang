@@ -9,6 +9,13 @@ still change the language.
 
 ### Fixed
 
+- **No value is deeper than 256 lists and objects (D43).** A loop that wraps
+  its result each turn built a value deep enough to crash a release build -
+  when it was written out at about 5 000 levels, and when it was merely freed
+  at 100 000 - inside the default memory budget. Such a value is now `E0328`
+  where it is built, and a value from a host deeper than that is refused at the
+  boundary.
+
 - **No input overflows the stack any more (D42).** A one-line chain such as
   `x: 1 + 1 + ... + 1` of a few hundred terms, or a recursive function a couple
   of hundred calls deep, crashed a release build - the CLI, `aura check` and the

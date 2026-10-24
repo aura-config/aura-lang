@@ -65,6 +65,13 @@ limit is a count, so it stops a manifest at the same point everywhere. A release
 build fits it in 512 KiB of stack, so a host may call a `Script` from any thread
 with at least that much - an iOS secondary thread has exactly 512 KiB.
 
+Values have the same limit (D43). A loop can build a deep value without any
+nesting of its own - `reduce` wrapping its accumulator adds a level a turn - and
+every walk over a value, from writing it out to freeing it, recurses once per
+level. So a list or object deeper than 256 is `E0328` where it is built, and a
+value from a host deeper than that is refused at the boundary. Parsed JSON and
+YAML already stop at 128.
+
 ## Import isolation
 
 Rights belong to the **root manifest**. An imported module:

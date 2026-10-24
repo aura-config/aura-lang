@@ -691,7 +691,7 @@ fn m_obj_merge<'a>(
     let Some(Value::Object(other)) = args.first() else {
         return Err(rt("E0306", "merge expects an Object argument", sp));
     };
-    let mut out: IndexMap<String, Value<'a>> = (**base).clone();
+    let mut out: IndexMap<String, Value<'a>> = base.to_map();
     for (k, v) in other.iter() {
         out.insert(k.clone(), v.clone());
     }
