@@ -11,7 +11,7 @@
 
 Работает как CLI, в CI, в браузере и внутри вашего Rust-приложения.
 
-Один бинарник, никакого рантайма, 16 ключевых слов, 1.7 МБ на скачивание.
+Один бинарник, никакого рантайма, 16 ключевых слов, меньше 2 МБ на скачивание.
 
 [![CI](https://github.com/aura-config/aura-lang/actions/workflows/ci.yml/badge.svg)](https://github.com/aura-config/aura-lang/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/aura-lang.svg)](https://crates.io/crates/aura-lang)
@@ -82,7 +82,8 @@ cargo install aura-lang
 aura-lang = { version = "0.4", default-features = false }
 ```
 
-Без фичи `cli` библиотека тянет 38 пакетов вместо 96 и ни одной C-зависимости.
+Без фичи `cli` библиотека тянет меньше половины пакетов и не требует
+C-тулчейна вовсе.
 
 </td>
 </tr>

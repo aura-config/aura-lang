@@ -11,7 +11,7 @@ environment variable until you allow it, and a package you import never can.
 
 It runs as a CLI, in CI, in the browser, and inside your Rust application.
 
-One binary, no runtime to install, 16 keywords, a 1.7 MB download.
+One binary, no runtime to install, 16 keywords, under 2 MB to download.
 
 [![CI](https://github.com/aura-config/aura-lang/actions/workflows/ci.yml/badge.svg)](https://github.com/aura-config/aura-lang/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/aura-lang.svg)](https://crates.io/crates/aura-lang)
@@ -82,8 +82,8 @@ Resolves the version, verifies the checksum, puts `aura` on `PATH`.
 aura-lang = { version = "0.4", default-features = false }
 ```
 
-Without the default `cli` feature the library is 38 packages instead of 96,
-and no C dependencies at all.
+Without the default `cli` feature the library needs less than half the
+packages, and no C toolchain at all.
 
 </td>
 </tr>
